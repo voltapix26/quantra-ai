@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Track Record</title>
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand">
+        <span class="brand__mark">
+          <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true">
+            <defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs>
+            <path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/>
+            <path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="82" cy="16" r="6" fill="#34D399"/>
+          </svg>
+        </span>
+        <span class="brand__name">Quantra<span class="brand__ai">AI</span></span>
+      </a>
+      <span class="bar__tag">Track record</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links">
+        <a href="index.html">Terminal</a>
+        <a href="screener.html">Screener</a>
+        <a href="track-record.html" class="is-active">Track record</a>
+        <a href="notes.html">Notes</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container legal" style="max-width:820px">
+    <div class="legal-meta" style="margin-top:1.4rem">Transparency report</div>
+    <h1 style="font-size:2rem">How the Quantra Score has actually done</h1>
+    <p style="color:var(--muted)">Every day we snapshot each asset's Quantra Score and later measure the realised forward return. This page reports the out-of-sample directional accuracy — honestly, with the sample size, and with no back-filling.</p>
+
+    <div id="trState"></div>
+
+    <div id="trCards" class="tr-cards" hidden></div>
+
+    <div id="trIntegrity"></div>
+
+    <h2 style="font-size:1.15rem;margin-top:2rem">Embed the live badge</h2>
+    <p style="color:var(--muted)">Drop this on a landing page or deck. It renders the current accuracy, sample size, and as-of date straight from the server — no numbers to hand-edit, nothing to fake.</p>
+    <p><img id="trBadge" src="/api/track-record/badge.svg" alt="Quantra Score accuracy badge" width="340" height="68" /></p>
+    <textarea id="trEmbed" class="tr-embed" readonly rows="2"></textarea>
+    <p><button id="trCopy" class="btn btn--ghost btn--sm">Copy embed code</button></p>
+
+    <h2 style="font-size:1.15rem;margin-top:2rem">Method</h2>
+    <p style="color:var(--muted)">For each daily snapshot, assets the score called <b style="color:var(--mint)">bullish</b> (score ≥ 56) or <b style="color:var(--rose)">bearish</b> (score &lt; 45) are checked against the actual price move at each horizon. “Directional accuracy” is the share of those calls that were right. We also show the average forward return across all scored assets. This is a transparency metric for an educational tool — <b>not a performance guarantee, and not investment advice.</b> Markets are uncertain; expect figures only modestly above 50%.</p>
+
+    <p class="legal-foot"><a href="index.html">← Back to the terminal</a> · <a href="screener.html">Screener</a></p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const pct = (x) => x == null ? '—' : (x * 100).toFixed(1) + '%';
+    const sret = (x) => x == null ? '—' : (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%';
+    (async () => {
+      const onServer = location.protocol === 'http:' || location.protocol === 'https:';
+      if (!onServer) { $('trState').innerHTML = '<div class="tr-note">Run the live server to see the track record.</div>'; return; }
+      let d; try { d = await (await fetch('/api/track-record')).json(); } catch { $('trState').innerHTML = '<div class="tr-note">Could not load the track record.</div>'; return; }
+      if (d.building) {
+        $('trState').innerHTML = `<div class="tr-building"><b>Building…</b> The record starts the day the server goes live and grows daily. So far: <b>${d.days || 0}</b> snapshot(s)${d.since ? ' since ' + d.since : ''}. Directional accuracy appears once snapshots span a full horizon.</div>`;
+        return;
+      }
+      $('trState').innerHTML = `<div class="tr-meta">Tracking since <b>${d.since}</b> · ${d.days} daily snapshots · ${d.samples.toLocaleString()} score→return observations</div>`;
+      const cards = $('trCards'); cards.hidden = false;
+      cards.innerHTML = d.horizons.map((h) => `
+        <div class="tr-card">
+          <div class="tr-card__h">${h.horizon}-session horizon</div>
+          <div class="tr-card__big">${pct(h.hitRate)}</div>
+          <div class="tr-card__lbl">directional accuracy${h.evaluated ? ' · ' + h.evaluated.toLocaleString() + ' calls' : ''}</div>
+          <div class="tr-card__row"><span>Bullish calls up</span><b>${pct(h.bullUp)}</b></div>
+          <div class="tr-card__row"><span>Bearish calls down</span><b>${pct(h.bearDown)}</b></div>
+          <div class="tr-card__row"><span>Avg fwd return</span><b>${sret(h.avgReturn)}</b></div>
+        </div>`).join('');
+      renderIntegrity(d.integrity);
+    })();
+
+    function renderIntegrity(i) {
+      if (!i) return;
+      const ok = i.valid;
+      $('trIntegrity').innerHTML = `<div class="tr-integrity ${ok ? 'is-ok' : 'is-bad'}">
+        <span class="tr-integrity__dot">${ok ? '🔒' : '⚠'}</span>
+        <span>${ok ? 'Tamper-evident ledger verified' : 'Ledger integrity check failed'} · ${i.length} hash-chained snapshot(s)${i.head ? ' · head <code>' + i.head + '</code>' : ''}.
+        Each day's entry is SHA-256 hashed together with the previous day's hash, so the full record is auditable at
+        <a href="/api/track-record/ledger">/api/track-record/ledger</a> — any alteration or back-dating breaks the chain.</span>
+      </div>`;
+    }
+    // Embed snippet + copy
+    (function () {
+      const origin = location.origin;
+      const code = `<a href="${origin}/track-record.html"><img src="${origin}/api/track-record/badge.svg" alt="Quantra Score accuracy" width="340" height="68"></a>`;
+      const ta = $('trEmbed'); if (ta) ta.value = code;
+      const btn = $('trCopy');
+      if (btn) btn.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(code); } catch { ta.select(); document.execCommand('copy'); }
+        btn.textContent = 'Copied ✓'; setTimeout(() => (btn.textContent = 'Copy embed code'), 1600);
+      });
+    })();
+  </script>
+</body>
+</html>

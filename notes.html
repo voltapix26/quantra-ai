@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Notes & How to Run</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .notes{max-width:880px;margin:0 auto;padding:1.5rem 0 4rem}
+    .notes h1{font-size:2rem;margin-bottom:.4rem}
+    .notes .lead{color:var(--muted);font-size:1.05rem;margin-bottom:1.8rem}
+    .note-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:1.5rem 1.6rem;margin-bottom:1.2rem}
+    .note-card h2{font-size:1.2rem;margin-bottom:.9rem;display:flex;align-items:center;gap:.6rem}
+    .note-card h2 .n{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--grad-soft);border:1px solid var(--line-2);font-family:'Space Grotesk';font-size:.9rem;color:var(--mint)}
+    .note-card h3{font-size:.95rem;margin:1.1rem 0 .5rem;color:var(--text)}
+    .note-card p,.note-card li{color:var(--muted);font-size:.94rem}
+    .note-card ul{margin:.4rem 0 .4rem 1.1rem;display:grid;gap:.35rem}
+    .note-card strong{color:var(--text)}
+    pre{background:#05080f;border:1px solid var(--line-2);border-radius:12px;padding:1rem 1.1rem;overflow-x:auto;margin:.6rem 0;position:relative}
+    pre code{font-family:'JetBrains Mono',monospace;font-size:.86rem;color:#c8e6d8;line-height:1.7;white-space:pre}
+    .cmt{color:var(--muted-2)}
+    .copy{position:absolute;top:8px;right:8px;font-size:.72rem;padding:.3em .6em;border-radius:7px;background:rgba(255,255,255,.06);border:1px solid var(--line-2);color:var(--muted);cursor:pointer}
+    .copy:hover{color:var(--text);background:rgba(255,255,255,.12)}
+    .pillrow{display:flex;flex-wrap:wrap;gap:.5rem;margin:.6rem 0}
+    .kpill{font-size:.8rem;color:var(--muted);background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:999px;padding:.3em .8em}
+    .kpill b{color:var(--text);font-family:'Space Grotesk'}
+    .filetree{font-family:'JetBrains Mono',monospace;font-size:.84rem;color:var(--muted);line-height:1.9}
+    .filetree b{color:var(--mint)}
+    .callout{background:linear-gradient(135deg,rgba(251,191,36,.08),rgba(251,113,133,.06));border:1px solid var(--line-2);border-radius:12px;padding:.9rem 1.1rem;font-size:.9rem;color:var(--muted);margin-top:.6rem}
+    .callout b{color:var(--amber)}
+    table.endpoints{width:100%;border-collapse:collapse;font-size:.86rem;margin-top:.5rem}
+    table.endpoints td,table.endpoints th{text-align:left;padding:.5em .6em;border-bottom:1px solid var(--line)}
+    table.endpoints th{color:var(--muted-2);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+    table.endpoints code{font-family:'JetBrains Mono',monospace;color:#9fd8c0;font-size:.82rem}
+    table.endpoints td span{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand">
+        <span class="brand__mark">
+          <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true">
+            <defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs>
+            <path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/>
+            <path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="82" cy="16" r="6" fill="#34D399"/>
+          </svg>
+        </span>
+        <span class="brand__name">Quantra<span class="brand__ai">AI</span></span>
+      </a>
+      <span class="bar__tag">Notes &amp; how to run</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links">
+        <a href="index.html">Terminal</a>
+        <a href="screener.html">Screener</a>
+        <a href="news.html">News</a>
+        <a href="notes.html" class="is-active">Notes</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="notes">
+      <h1>Quantra AI — Notes</h1>
+      <p class="lead">What this is, how it's built, and exactly how to run it. Everything you need is on this page.</p>
+
+      <!-- 1. WHAT IT IS -->
+      <div class="note-card">
+        <h2><span class="n">i</span> What this is</h2>
+        <p>A live market-analysis terminal for <strong>crypto</strong> and <strong>stocks</strong>. Pick any asset and Quantra pulls real price history, computes technical + fundamental indicators, writes a plain-language AI verdict, and projects an illustrative forecast. You can export the analysis to <strong>Excel</strong> and a <strong>PDF report</strong>, and read the <strong>latest news</strong> for any stock.</p>
+        <div class="pillrow">
+          <span class="kpill">Crypto: <b>CoinGecko</b></span>
+          <span class="kpill">Stocks &amp; News: <b>Yahoo Finance</b></span>
+          <span class="kpill">API keys: <b>none</b></span>
+          <span class="kpill">Dependencies: <b>none (Node built-ins)</b></span>
+          <span class="kpill">Default port: <b>5280</b></span>
+        </div>
+        <p style="margin-top:.7rem"><strong>Educational only</strong> — no signals, no automatic orders, not investment advice.</p>
+      </div>
+
+      <!-- 2. HOW TO RUN -->
+      <div class="note-card">
+        <h2><span class="n">▶</span> How to run</h2>
+        <p>You only need <strong>Node.js 18+</strong> installed. No <code>npm install</code> — the server uses only built-in modules.</p>
+
+        <h3>Windows · PowerShell</h3>
+        <pre><button class="copy" data-copy="cd C:\Users\eshan\quantra-terminal
+node server.js">Copy</button><code><span class="cmt"># 1. go to the project folder</span>
+cd C:\Users\eshan\quantra-terminal
+
+<span class="cmt"># 2. start the server</span>
+node server.js
+
+<span class="cmt"># 3. open in your browser</span>
+<span class="cmt">#    http://localhost:5280</span></code></pre>
+
+        <h3>macOS / Linux · Terminal</h3>
+        <pre><button class="copy" data-copy="cd quantra-terminal
+node server.js">Copy</button><code>cd quantra-terminal
+node server.js
+<span class="cmt"># then open http://localhost:5280</span></code></pre>
+
+        <h3>Open it</h3>
+        <ul>
+          <li><strong>Terminal:</strong> <code>http://localhost:5280</code></li>
+          <li><strong>News:</strong> <code>http://localhost:5280/news.html</code></li>
+          <li><strong>These notes:</strong> <code>http://localhost:5280/notes.html</code></li>
+        </ul>
+
+        <h3>Use a different port</h3>
+        <pre><button class="copy" data-copy="$env:PORT=8080; node server.js">Copy</button><code><span class="cmt"># PowerShell</span>
+$env:PORT=8080; node server.js
+
+<span class="cmt"># macOS / Linux</span>
+PORT=8080 node server.js</code></pre>
+
+        <h3>Stop the server</h3>
+        <p>Press <code>Ctrl + C</code> in the terminal window running it.</p>
+
+        <h3>Optional: AI-written verdicts</h3>
+        <p>The core app needs no API key. To have the <strong>Quantra AI reasoning engine</strong> rewrite each verdict in richer language and return a comprehension-based news-impact score, set an LLM API key (<code>ANTHROPIC_API_KEY</code>) before starting the server (the SDK is already installed):</p>
+        <pre><button class="copy" data-copy="$env:ANTHROPIC_API_KEY='sk-ant-...'; node server.js">Copy</button><code><span class="cmt"># PowerShell</span>
+$env:ANTHROPIC_API_KEY='sk-ant-...'
+node server.js
+
+<span class="cmt"># macOS / Linux</span>
+export ANTHROPIC_API_KEY='sk-ant-...'
+node server.js</code></pre>
+        <p>The verdict badge shows <strong>✦ Quantra AI</strong> when active, or <strong>rule-based</strong> when no key is set. Override the model with <code>QUANTRA_AI_MODEL</code>.</p>
+
+        <div class="callout"><b>Note:</b> open the app through <code>http://localhost:5280</code>, not by double-clicking <code>index.html</code>. Opening the file directly (<code>file://</code>) works for crypto only — stocks, fundamentals and news need the local server because Yahoo Finance can't be called straight from the browser.</div>
+      </div>
+
+      <!-- 3. FEATURES -->
+      <div class="note-card">
+        <h2><span class="n">★</span> What you can do</h2>
+        <ul>
+          <li><strong>Analyse any asset</strong> — switch Crypto/Stocks, or search any symbol (incl. Indian tickers like <code>RELIANCE.NS</code>).</li>
+          <li><strong>Deep technical suite</strong> — SMA-20/50/200, RSI, MACD, Bollinger, ATR, Stochastic, ADX and OBV/volume, shown as a transparent bull/bear <strong>signal breakdown</strong>.</li>
+          <li><strong>Walk-forward accuracy</strong> — Quantra learns per-asset signal weights on 70% of history and validates on the unseen 30%, reporting the out-of-sample hit-rate so the confidence figure is grounded, not guessed.</li>
+          <li><strong>Technical + fundamental verdict</strong> — the above blended with screener-style ratios into one read.</li>
+          <li><strong>Analyst estimates &amp; peers</strong> — consensus, price-target range, forward EPS/revenue estimates, next earnings date, and a one-click peer comparison.</li>
+          <li><strong>AI-written verdict (optional)</strong> — with an API key set, the verdict is rewritten by the Quantra AI reasoning engine from the computed indicators + fundamentals + news, and returns a comprehension-based news-impact score that sharpens the forecast; without one, it falls back to the built-in rule-based read. A badge shows which is active.</li>
+          <li><strong>Pick range &amp; interval</strong> — 1M–2Y, daily or weekly; optionally add a <strong>Compare</strong> symbol.</li>
+          <li><strong>⬇ Excel</strong> — workbook with Summary, full price/indicator History (with the compare column), and the Forecast table.</li>
+          <li><strong>📄 PDF report</strong> — verdict, price+forecast chart, the future prediction, and fundamentals.</li>
+          <li><strong>📰 News</strong> — latest headlines for the selected stock.</li>
+        </ul>
+      </div>
+
+      <!-- 4. FILES -->
+      <div class="note-card">
+        <h2><span class="n">{}</span> Project files</h2>
+        <div class="filetree">
+quantra-terminal/<br>
+├─ <b>server.js</b>     <span class="cmt">— Node server + market/fundamentals/news proxy</span><br>
+├─ <b>index.html</b>    <span class="cmt">— the terminal</span><br>
+├─ <b>news.html</b>     <span class="cmt">— stock news page</span><br>
+├─ <b>notes.html</b>    <span class="cmt">— this page</span><br>
+├─ <b>analysis.js</b>   <span class="cmt">— technical + fundamental + forecast engine</span><br>
+├─ <b>terminal.js</b>   <span class="cmt">— terminal UI controller</span><br>
+├─ <b>report.js</b>     <span class="cmt">— Excel + PDF generation</span><br>
+├─ <b>news.js</b>       <span class="cmt">— news page logic</span><br>
+└─ <b>styles.css</b>    <span class="cmt">— design system</span>
+        </div>
+      </div>
+
+      <!-- 5. API -->
+      <div class="note-card">
+        <h2><span class="n">⇄</span> API endpoints</h2>
+        <p>The server exposes these (all return JSON, used by the front-end):</p>
+        <table class="endpoints">
+          <tr><th>Endpoint</th><th>Purpose</th></tr>
+          <tr><td><code>/api/crypto/markets</code></td><td><span>Top-50 live crypto board</span></td></tr>
+          <tr><td><code>/api/crypto/search?q=</code></td><td><span>Search any coin</span></td></tr>
+          <tr><td><code>/api/crypto/chart?id=&amp;days=</code></td><td><span>Price history</span></td></tr>
+          <tr><td><code>/api/stock/board</code></td><td><span>Popular stocks board</span></td></tr>
+          <tr><td><code>/api/stock/search?q=</code></td><td><span>Search any stock</span></td></tr>
+          <tr><td><code>/api/stock/chart?symbol=&amp;range=&amp;interval=</code></td><td><span>OHLC history</span></td></tr>
+          <tr><td><code>/api/stock/fundamentals?symbol=</code></td><td><span>Screener-style ratios</span></td></tr>
+          <tr><td><code>/api/stock/news?symbol=</code></td><td><span>Latest headlines</span></td></tr>
+        </table>
+      </div>
+
+      <!-- 6. TROUBLESHOOTING -->
+      <div class="note-card">
+        <h2><span class="n">?</span> Troubleshooting</h2>
+        <ul>
+          <li><strong>"node is not recognized"</strong> — install Node.js 18+ from nodejs.org, then reopen the terminal.</li>
+          <li><strong>Stocks/news won't load</strong> — make sure you opened <code>localhost:5280</code> (not the file), and the server window is still running.</li>
+          <li><strong>Port already in use</strong> — start on another port: <code>$env:PORT=8080; node server.js</code>.</li>
+          <li><strong>Fundamentals empty</strong> — Yahoo rate-limits; wait a few seconds and reselect. Crypto has no fundamentals by design.</li>
+          <li><strong>Excel/PDF button does nothing</strong> — those use CDN libraries; if you're offline, Excel falls back to CSV. Reconnect for full <code>.xlsx</code>/PDF.</li>
+        </ul>
+      </div>
+
+      <p class="disclaimer">Quantra AI · For educational purposes only — no signals, no automatic orders, not investment advice.</p>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+  <script>
+    document.querySelectorAll('.copy').forEach((b) => b.addEventListener('click', () => {
+      navigator.clipboard.writeText(b.dataset.copy).then(() => {
+        const t = document.getElementById('toast'); t.textContent = 'Copied to clipboard'; t.classList.add('show');
+        clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 1800);
+        const old = b.textContent; b.textContent = 'Copied'; setTimeout(() => (b.textContent = old), 1400);
+      });
+    }));
+  </script>
+</body>
+</html>

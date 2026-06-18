@@ -1,0 +1,81 @@
+name: CI & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Lint & smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Syntax-check all JS
+        run: |
+          set -e
+          for f in *.js; do
+            echo "checking $f"
+            node --check "$f"
+          done
+
+      - name: Smoke test (boot + health)
+        run: |
+          set -e
+          node server.js &
+          SERVER_PID=$!
+          # wait for the port to come up (max ~20s)
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:5280/api/auth/me >/dev/null; then break; fi
+            sleep 1
+          done
+          echo "auth/me:" && curl -sf http://localhost:5280/api/auth/me
+          echo "" && echo "crypto markets:" && curl -sf "http://localhost:5280/api/fx" >/dev/null && echo "fx ok"
+          kill $SERVER_PID
+        env:
+          PORT: 5280
+
+  deploy:
+    name: Deploy to Render
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy hook
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL secret not set — skipping deploy."
+            echo "Add it under Settings → Secrets and variables → Actions to enable auto-deploy."
+            exit 0
+          fi
+          echo "Triggering Render deploy…"
+          curl -fsS -X POST "$HOOK" && echo "Deploy triggered."
+
+  # ---------------------------------------------------------------
+  # Alternative: deploy to Railway instead of Render.
+  # Replace the 'deploy' job above with this (needs RAILWAY_TOKEN):
+  #
+  # deploy:
+  #   needs: test
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: npm i -g @railway/cli
+  #     - run: railway up --service quantra --detach
+  #       env:
+  #         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  # ---------------------------------------------------------------

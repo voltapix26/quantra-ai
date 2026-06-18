@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Verify Email</title>
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <main class="container" style="max-width:480px;margin-top:14vh;text-align:center">
+    <div class="brand__name" style="font-size:1.6rem;justify-content:center;display:flex;margin-bottom:1.4rem">Quantra<span class="brand__ai">AI</span></div>
+    <div class="card" style="padding:2rem">
+      <h1 id="vTitle" style="font-size:1.4rem;margin-bottom:.6rem">Verifying your email…</h1>
+      <p id="vMsg" style="color:var(--muted)">One moment.</p>
+      <a id="vGo" href="index.html" class="btn btn--primary btn--block" style="margin-top:1.2rem;display:none">Go to the terminal</a>
+    </div>
+  </main>
+  <script>
+    (async () => {
+      const t = new URLSearchParams(location.search).get('token');
+      const title = document.getElementById('vTitle'), msg = document.getElementById('vMsg'), go = document.getElementById('vGo');
+      if (!t) { title.textContent = 'Invalid link'; msg.textContent = 'No verification token found.'; return; }
+      try {
+        const r = await fetch('/api/auth/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }) });
+        const d = await r.json();
+        if (r.ok && d.ok) { title.textContent = '✓ Email verified'; title.style.color = 'var(--mint)'; msg.textContent = 'Your account is confirmed. You can head back to the terminal.'; go.style.display = ''; }
+        else { title.textContent = 'Link expired'; msg.textContent = (d && d.error) || 'This verification link is invalid or expired.'; go.style.display = ''; go.textContent = 'Back to Quantra'; }
+      } catch { title.textContent = 'Something went wrong'; msg.textContent = 'Please try again later.'; }
+    })();
+  </script>
+</body>
+</html>

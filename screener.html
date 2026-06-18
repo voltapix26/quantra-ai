@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Screener & Top Picks</title>
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand">
+        <span class="brand__mark">
+          <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true">
+            <defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs>
+            <path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/>
+            <path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="82" cy="16" r="6" fill="#34D399"/>
+          </svg>
+        </span>
+        <span class="brand__name">Quantra<span class="brand__ai">AI</span></span>
+      </a>
+      <span class="bar__tag">Screener &amp; AI top picks</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links">
+        <a href="index.html">Terminal</a>
+        <a href="screener.html" class="is-active">Screener</a>
+        <a href="news.html">News</a>
+        <a href="notes.html">Notes</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container scr">
+    <div class="scr-head">
+      <h1>Quantra Score — AI top picks</h1>
+      <p>Every asset is scored <b>1–99</b> from momentum, trend, probability and structure. Higher = stronger near-term setup. <span class="scr-note">Educational ranking, not advice.</span></p>
+    </div>
+
+    <!-- WATCHLIST -->
+    <section class="scr-watch" id="watchSection" hidden>
+      <div class="scr-subhead">★ Your watchlist</div>
+      <div class="picks" id="watchPicks"></div>
+    </section>
+
+    <!-- TOP PICKS -->
+    <div class="scr-subhead">Top picks now</div>
+    <div class="picks" id="topPicks"><div class="scr-empty" id="picksEmpty">Scoring the market…</div></div>
+
+    <!-- FULL SCREENER -->
+    <div class="scr-controls">
+      <div class="seg" role="tablist">
+        <button class="seg__btn is-active" data-class="all">All</button>
+        <button class="seg__btn" data-class="crypto">Crypto</button>
+        <button class="seg__btn" data-class="stock">Stocks</button>
+      </div>
+      <label class="scr-min">Min score <b id="minVal">0</b>
+        <input id="minScore" type="range" min="0" max="90" step="5" value="0" />
+      </label>
+      <div class="spacer"></div>
+      <label class="scr-sort">Sort
+        <select id="sortSel">
+          <option value="score">Quantra Score</option>
+          <option value="chg">24h change</option>
+          <option value="sym">Symbol</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="scr-table">
+      <div class="scr-thead"><span>#</span><span>Asset</span><span>Class</span><span>Price</span><span>24h</span><span>7d</span><span>Quantra Score</span></div>
+      <div id="scrList"><div class="scr-empty" id="scrEmpty">Loading universe…</div></div>
+    </div>
+    <p class="disclaimer">Scores are computed from live market data for education only — no signals, no automatic orders, not investment advice.</p>
+  </main>
+
+  <script src="analysis.js"></script>
+  <script src="screener.js"></script>
+</body>
+</html>

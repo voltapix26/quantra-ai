@@ -1,0 +1,10 @@
+node_modules/
+.env
+data/
+*.pptx
+*.xlsx
+output.pdf
+slide-*.jpg
+cloudflared.exe
+*.log
+.DS_Store
