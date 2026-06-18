@@ -835,6 +835,48 @@ async function trackDevSeed() {
   ]);
 }
 
+/* ============================================================
+   Finnhub trade relay → SSE. One upstream WS to Finnhub (key stays
+   server-side); per-symbol fan-out to browser EventSource clients
+   gives true tick-by-tick US stock/ETF data without exposing the key.
+   ============================================================ */
+const WSImpl = (typeof WebSocket !== 'undefined') ? WebSocket : null;
+const fhSubs = new Map();            // symbol -> Set(res)
+let fhWS = null, fhReady = false;
+function fhSend(o) { try { if (fhWS && fhReady) fhWS.send(JSON.stringify(o)); } catch {} }
+function fhConnect() {
+  if (!FINNHUB_KEY || !WSImpl || fhWS) return;
+  try {
+    fhWS = new WSImpl(`wss://ws.finnhub.io?token=${FINNHUB_KEY}`);
+    fhWS.onopen = () => { fhReady = true; for (const sym of fhSubs.keys()) fhSend({ type: 'subscribe', symbol: sym }); };
+    fhWS.onmessage = (ev) => {
+      let m; try { m = JSON.parse(typeof ev.data === 'string' ? ev.data : ev.data.toString()); } catch { return; }
+      if (m.type !== 'trade' || !Array.isArray(m.data)) return;
+      const last = new Map();                       // collapse to the latest price per symbol per batch
+      for (const t of m.data) last.set(t.s, t);
+      for (const [sym, t] of last) {
+        const set = fhSubs.get(sym); if (!set || !set.size) continue;
+        const line = `data: ${JSON.stringify({ p: t.p, t: t.t, v: t.v })}\n\n`;
+        for (const res of set) { try { res.write(line); } catch {} }
+      }
+    };
+    fhWS.onclose = () => { fhWS = null; fhReady = false; if (fhSubs.size) setTimeout(fhConnect, 3000); };
+    fhWS.onerror = () => { try { fhWS && fhWS.close(); } catch {} };
+  } catch { fhWS = null; }
+}
+function fhSubscribe(sym, res) { let set = fhSubs.get(sym); if (!set) { set = new Set(); fhSubs.set(sym, set); fhConnect(); fhSend({ type: 'subscribe', symbol: sym }); } set.add(res); }
+function fhUnsubscribe(sym, res) { const set = fhSubs.get(sym); if (!set) return; set.delete(res); if (!set.size) { fhSubs.delete(sym); fhSend({ type: 'unsubscribe', symbol: sym }); } }
+function tradeStream(req, res, u) {
+  const sym = (u.searchParams.get('symbol') || '').toUpperCase();
+  if (!FINNHUB_KEY || !WSImpl) { return send(res, 200, { ok: false, reason: 'stream-unavailable' }); }
+  if (!sym) return send(res, 400, { error: 'no symbol' });
+  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', 'Access-Control-Allow-Origin': '*' });
+  res.write('retry: 3000\n\n: connected\n\n');
+  fhSubscribe(sym, res);
+  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 25000);
+  req.on('close', () => { clearInterval(ping); fhUnsubscribe(sym, res); });
+}
+
 store.ready().then(() => {
   snapshotToday();
   setInterval(snapshotToday, 6 * 60 * 60 * 1000).unref(); // daily-ish; no-ops if today is done
@@ -850,6 +892,7 @@ store.ready().then(() => {
     // health checks
     if (u.pathname === '/healthz' || u.pathname === '/readyz') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ ok: true, storage: store.kind })); }
     // public track record
+    if (u.pathname === '/api/stream/trades' && req.method === 'GET') return tradeStream(req, res, u);
     if (u.pathname === '/api/track-record' && req.method === 'GET') return send(res, 200, await trackRecord());
     if (u.pathname === '/api/track-record/ledger' && req.method === 'GET') return send(res, 200, await verifyLedger());
     if (u.pathname === '/api/track-record/badge.svg' && req.method === 'GET') {

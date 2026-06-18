@@ -15,6 +15,7 @@
   let aiToken = 0;             // guards stale async AI responses
   let live = { cryptoStream: false, finnhub: false };  // available live sources
   let arrWS = null, tradeWS = null, quoteTimer = null, coinSubs = null;  // crypto board stream, selected-coin stream, stock poll, subscribed products
+  let stockES = null, stockWatch = null;  // stock/ETF tick stream (SSE) + fallback watchdog
 
   // ---- currency conversion ----
   let fxRates = { USD: 1 };
@@ -759,8 +760,24 @@
     };
     tick(); quoteTimer = setInterval(tick, 1200);
   }
-  function stopLive() { stopTrade(); stopQuote(); liveTag(false); }
-  function startLive(item) { if (item.type === 'crypto') startTrade(item.symbol); else if (tickMode) startStockTick(item); else startQuote(item); }
+  // True tick-by-tick stock/ETF stream via the server's Finnhub SSE relay.
+  // Falls back to ~1s polling if the stream sends nothing (relay off / market closed).
+  function startStockStream(item) {
+    stopStockStream();
+    if (!live.finnhub || !onServer) return;
+    if (typeof EventSource === 'undefined') { startStockTick(item); return; }
+    let gotTick = false;
+    try {
+      stockES = new EventSource(`${API}/stream/trades?symbol=${encodeURIComponent(item.id)}`);
+      stockES.onmessage = (ev) => {
+        try { const d = JSON.parse(ev.data); const p = +d.p; if (p > 0 && current && current.id === item.id) { gotTick = true; item.price = p; setDetailPrice(p); updateRowPrice(item); if (tickMode) pushTick(p); liveTag(true, 'LIVE · Finnhub ticks'); } } catch {}
+      };
+    } catch { startStockTick(item); return; }
+    stockWatch = setTimeout(() => { if (!gotTick && current && current.id === item.id) { stopStockStream(); startStockTick(item); } }, 6000);
+  }
+  function stopStockStream() { if (stockES) { try { stockES.close(); } catch {} stockES = null; } if (stockWatch) { clearTimeout(stockWatch); stockWatch = null; } }
+  function stopLive() { stopTrade(); stopQuote(); stopStockStream(); liveTag(false); }
+  function startLive(item) { if (item.type === 'crypto') startTrade(item.symbol); else if (tickMode) startStockStream(item); else startQuote(item); }
 
   /* ---------------- controls ---------------- */
   document.querySelectorAll('.seg__btn').forEach((b) => b.addEventListener('click', () => switchClass(b.dataset.class)));
