@@ -527,8 +527,14 @@
     current = item;
     stopLive(); stopTick();
     let interval = $('intervalSel').value, range = $('rangeSel').value;
-    if (interval === 'sec' && item.type !== 'crypto') { R.toast('Seconds (live tick) is available for crypto only.'); interval = '1m'; $('intervalSel').value = '1m'; fillRanges(); range = $('rangeSel').value; }
-    const secMode = interval === 'sec';
+    let secMode = interval === 'sec';
+    if (secMode) {
+      const supported = item.type === 'crypto' || ((item.type === 'stock' || item.type === 'etf') && live.finnhub);
+      if (!supported) {
+        R.toast((item.type === 'stock' || item.type === 'etf') ? 'Live seconds needs a Finnhub key (set on the server).' : 'Live seconds is available for crypto, stocks and ETFs.');
+        interval = '1m'; $('intervalSel').value = '1m'; fillRanges(); range = $('rangeSel').value; secMode = false;
+      }
+    }
     const dataInterval = secMode ? '1m' : interval, dataRange = secMode ? '1d' : range;
     if (secMode) tickWinMs = secWindowMs(range);
     $('dTicker').textContent = item.symbol + (item.type === 'crypto' ? ' / USD' : '');
@@ -741,8 +747,20 @@
     tick(); quoteTimer = setInterval(tick, 4000);
   }
   function stopQuote() { if (quoteTimer) { clearInterval(quoteTimer); quoteTimer = null; } }
+  // Live seconds for stocks/ETFs: poll Finnhub real-time quote ~1s and feed the tick chart.
+  function startStockTick(item) {
+    stopQuote();
+    if (!live.finnhub || !onServer) return;
+    const tick = async () => {
+      try {
+        const q = await getJSON(`${API}/stock/quote?symbol=${encodeURIComponent(item.id)}`);
+        if (q && q.ok && q.price && current && current.id === item.id) { item.price = q.price; setDetailPrice(q.price); updateRowPrice(item); if (tickMode) pushTick(q.price); liveTag(true, 'LIVE · Finnhub ~1s'); }
+      } catch {}
+    };
+    tick(); quoteTimer = setInterval(tick, 1200);
+  }
   function stopLive() { stopTrade(); stopQuote(); liveTag(false); }
-  function startLive(item) { if (item.type === 'crypto') startTrade(item.symbol); else startQuote(item); }
+  function startLive(item) { if (item.type === 'crypto') startTrade(item.symbol); else if (tickMode) startStockTick(item); else startQuote(item); }
 
   /* ---------------- controls ---------------- */
   document.querySelectorAll('.seg__btn').forEach((b) => b.addEventListener('click', () => switchClass(b.dataset.class)));
