@@ -14,7 +14,7 @@
   let state = null;            // full render state for reports
   let aiToken = 0;             // guards stale async AI responses
   let live = { cryptoStream: false, finnhub: false };  // available live sources
-  let arrWS = null, tradeWS = null, quoteTimer = null;  // crypto board stream, selected-coin trade stream, stock poll
+  let arrWS = null, tradeWS = null, quoteTimer = null, coinSubs = null;  // crypto board stream, selected-coin stream, stock poll, subscribed products
 
   // ---- currency conversion ----
   let fxRates = { USD: 1 };
@@ -606,30 +606,47 @@
     const row = list.querySelector('.trow[data-type="' + it.type + '"][data-symbol="' + it.symbol + '"]');
     const c = row && row.querySelector('.trow__price'); if (c) c.textContent = money(it.price, it.currency);
   }
-  // Crypto board: one Binance public WS (all mini-tickers, ~1s) filtered to the shown coins.
+  // Crypto: one Coinbase public WS (ticker channel) for the whole board + the
+  // selected coin. Sub-second per-trade updates, and US-accessible (unlike Binance).
+  const coinProd = (sym) => (sym || '').toUpperCase() + '-USD';
   function startArr() {
     stopArr();
     if (!live.cryptoStream || !onServer || assetClass !== 'crypto') return;
-    const want = new Map(board.filter((b) => b.type === 'crypto').map((b) => [(b.symbol || '').toUpperCase() + 'USDT', b]));
-    if (!want.size) return;
+    const byProd = new Map(board.filter((b) => b.type === 'crypto').map((b) => [coinProd(b.symbol), b]));
+    coinSubs = new Set(byProd.keys());
+    if (!coinSubs.size) return;
     try {
-      arrWS = new WebSocket('wss://stream.binance.com:9443/ws/!miniTicker@arr');
+      arrWS = new WebSocket('wss://ws-feed.exchange.coinbase.com');
+      arrWS.onopen = () => { try { arrWS.send(JSON.stringify({ type: 'subscribe', product_ids: [...coinSubs], channels: ['ticker'] })); } catch {} };
       arrWS.onmessage = (ev) => {
-        let arr; try { arr = JSON.parse(ev.data); } catch { return; }
-        if (!Array.isArray(arr)) return;
-        for (const t of arr) { const it = want.get(t.s); if (it) { const p = parseFloat(t.c); if (p > 0) { it.price = p; updateRowPrice(it); if (current && current.type === 'crypto' && current.symbol === it.symbol) setDetailPrice(p); } } }
+        let d; try { d = JSON.parse(ev.data); } catch { return; }
+        if (!d || d.type !== 'ticker' || !d.product_id) return;
+        const p = parseFloat(d.price); if (!(p > 0)) return;
+        const it = byProd.get(d.product_id);
+        if (it) { it.price = p; updateRowPrice(it); }
+        if (current && current.type === 'crypto' && coinProd(current.symbol) === d.product_id) setDetailPrice(p);
       };
     } catch {}
   }
-  function stopArr() { if (arrWS) { try { arrWS.close(); } catch {} arrWS = null; } }
-  // Selected coin: dedicated trade stream → sub-second last price.
+  function stopArr() { if (arrWS) { try { arrWS.close(); } catch {} arrWS = null; } coinSubs = null; }
+  // Ensure the selected coin streams (it may not be in the board, e.g. via search).
   function startTrade(sym) {
-    stopTrade();
     if (!live.cryptoStream || !onServer) return;
+    const prod = coinProd(sym);
+    if (arrWS) {
+      // board feed exists (open or connecting) — it already handles the detail price.
+      if (!coinSubs || !coinSubs.has(prod)) {
+        const sub = () => { try { arrWS.send(JSON.stringify({ type: 'subscribe', product_ids: [prod], channels: ['ticker'] })); coinSubs && coinSubs.add(prod); } catch {} };
+        if (arrWS.readyState === 1) sub(); else arrWS.addEventListener('open', sub, { once: true });
+      }
+      liveTag(true, 'LIVE · Coinbase');
+      return;
+    }
+    // no board feed (e.g. deep-link before board loads) — dedicated socket
     try {
-      tradeWS = new WebSocket('wss://stream.binance.com:9443/ws/' + sym.toLowerCase() + 'usdt@trade');
-      tradeWS.onopen = () => liveTag(true, 'LIVE · Binance');
-      tradeWS.onmessage = (ev) => { try { const d = JSON.parse(ev.data); const p = parseFloat(d.p); if (p > 0 && current && current.type === 'crypto' && current.symbol.toUpperCase() === sym.toUpperCase()) setDetailPrice(p); } catch {} };
+      tradeWS = new WebSocket('wss://ws-feed.exchange.coinbase.com');
+      tradeWS.onopen = () => { try { tradeWS.send(JSON.stringify({ type: 'subscribe', product_ids: [prod], channels: ['ticker'] })); liveTag(true, 'LIVE · Coinbase'); } catch {} };
+      tradeWS.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.type === 'ticker' && current && current.type === 'crypto' && coinProd(current.symbol) === d.product_id) { const p = parseFloat(d.price); if (p > 0) setDetailPrice(p); } } catch {} };
     } catch {}
   }
   function stopTrade() { if (tradeWS) { try { tradeWS.close(); } catch {} tradeWS = null; } }

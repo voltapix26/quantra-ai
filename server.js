@@ -845,7 +845,7 @@ store.ready().then(() => {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.coingecko.com https://open.er-api.com https://query1.finance.yahoo.com https://query2.finance.yahoo.com https://finnhub.io wss://stream.binance.com:9443 wss://stream.binance.com; frame-ancestors 'self'; base-uri 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.coingecko.com https://open.er-api.com https://query1.finance.yahoo.com https://query2.finance.yahoo.com https://finnhub.io wss://ws-feed.exchange.coinbase.com wss://stream.binance.com:9443 wss://stream.binance.com; frame-ancestors 'self'; base-uri 'self'");
     if (isHttps(req)) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     // health checks
     if (u.pathname === '/healthz' || u.pathname === '/readyz') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ ok: true, storage: store.kind })); }
