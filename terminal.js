@@ -13,6 +13,8 @@
   let current = null;          // selected board item {id,type,symbol,name}
   let state = null;            // full render state for reports
   let aiToken = 0;             // guards stale async AI responses
+  let live = { cryptoStream: false, finnhub: false };  // available live sources
+  let arrWS = null, tradeWS = null, quoteTimer = null;  // crypto board stream, selected-coin trade stream, stock poll
 
   // ---- currency conversion ----
   let fxRates = { USD: 1 };
@@ -87,6 +89,7 @@
   async function loadNews(item) {
     if (!onServer) return [];
     const sym = item.type === 'crypto' ? item.symbol : item.id;
+    if (live.finnhub) { try { const n = await getJSON(`${API}/news/live?symbol=${encodeURIComponent(sym)}`); if (n && n.length) return n; } catch {} }
     try { return await getJSON(`${API}/stock/news?symbol=${encodeURIComponent(sym)}`); } catch { return []; }
   }
   async function reasonAI(payload) {
@@ -131,7 +134,7 @@
     document.querySelectorAll('.seg__btn').forEach((b) => b.classList.toggle('is-active', b.dataset.class === cls));
     $('search').value = ''; $('results').hidden = true;
     $('list').innerHTML = '<div class="tempty" id="empty">Loading live markets…</div>';
-    try { board = await loadBoard(cls); renderBoard(); if (board[0]) select(board[0]); }
+    try { board = await loadBoard(cls); renderBoard(); (cls === 'crypto' ? startArr() : stopArr()); if (board[0]) select(board[0]); }
     catch (e) {
       const empty = $('empty');
       if (cls === 'stock' && !onServer) empty.innerHTML = 'Stocks need the live server.<br>Run <code>node server.js</code> then open <b>localhost:5280</b>';
@@ -371,6 +374,7 @@
   /* ---------------- select + analyze ---------------- */
   async function select(item) {
     current = item;
+    stopLive();
     const range = $('rangeSel').value, interval = $('intervalSel').value;
     $('dTicker').textContent = item.symbol + (item.type === 'crypto' ? ' / USD' : '');
     $('dText').textContent = 'Crunching technicals + fundamentals…';
@@ -497,8 +501,65 @@
       if (rg) { rg.textContent = res.regime ? res.regime.label : '—'; rg.style.color = res.regime && res.regime.label.includes('up') ? 'var(--mint)' : res.regime && res.regime.label.includes('down') ? 'var(--rose)' : 'var(--amber)'; }
       $('newsRationale').hidden = true;
       renderFundamentals(fund);
+      startLive(item);
     } catch (e) { $('dText').textContent = 'Could not load data for ' + item.symbol + '.'; }
   }
+
+  /* ---------------- live streaming ---------------- */
+  async function loadLiveConfig() { try { live = await getJSON(`${API}/config`); } catch {} }
+  function liveTag(on, label) {
+    let t = $('liveTag');
+    if (!t) { const h = document.querySelector('.dhead'); if (!h) return; t = document.createElement('span'); t.id = 'liveTag'; t.className = 'live-tag'; h.insertBefore(t, h.children[1] || null); }
+    t.hidden = !on; if (on) t.innerHTML = '<span class="live-dot"></span>' + (label || 'LIVE');
+  }
+  function setDetailPrice(p) { const dp = $('dPrice'); if (!dp) return; dp.textContent = money(p, curBase); dp.classList.remove('tick'); void dp.offsetWidth; dp.classList.add('tick'); }
+  function updateRowPrice(it) {
+    const list = $('list'); if (!list) return;
+    const row = list.querySelector('.trow[data-type="' + it.type + '"][data-symbol="' + it.symbol + '"]');
+    const c = row && row.querySelector('.trow__price'); if (c) c.textContent = money(it.price, it.currency);
+  }
+  // Crypto board: one Binance public WS (all mini-tickers, ~1s) filtered to the shown coins.
+  function startArr() {
+    stopArr();
+    if (!live.cryptoStream || !onServer || assetClass !== 'crypto') return;
+    const want = new Map(board.filter((b) => b.type === 'crypto').map((b) => [(b.symbol || '').toUpperCase() + 'USDT', b]));
+    if (!want.size) return;
+    try {
+      arrWS = new WebSocket('wss://stream.binance.com:9443/ws/!miniTicker@arr');
+      arrWS.onmessage = (ev) => {
+        let arr; try { arr = JSON.parse(ev.data); } catch { return; }
+        if (!Array.isArray(arr)) return;
+        for (const t of arr) { const it = want.get(t.s); if (it) { const p = parseFloat(t.c); if (p > 0) { it.price = p; updateRowPrice(it); if (current && current.type === 'crypto' && current.symbol === it.symbol) setDetailPrice(p); } } }
+      };
+    } catch {}
+  }
+  function stopArr() { if (arrWS) { try { arrWS.close(); } catch {} arrWS = null; } }
+  // Selected coin: dedicated trade stream → sub-second last price.
+  function startTrade(sym) {
+    stopTrade();
+    if (!live.cryptoStream || !onServer) return;
+    try {
+      tradeWS = new WebSocket('wss://stream.binance.com:9443/ws/' + sym.toLowerCase() + 'usdt@trade');
+      tradeWS.onopen = () => liveTag(true, 'LIVE · Binance');
+      tradeWS.onmessage = (ev) => { try { const d = JSON.parse(ev.data); const p = parseFloat(d.p); if (p > 0 && current && current.type === 'crypto' && current.symbol.toUpperCase() === sym.toUpperCase()) setDetailPrice(p); } catch {} };
+    } catch {}
+  }
+  function stopTrade() { if (tradeWS) { try { tradeWS.close(); } catch {} tradeWS = null; } }
+  // Selected stock/ETF: poll Finnhub real-time quote every ~4s (key stays server-side).
+  function startQuote(item) {
+    stopQuote();
+    if (!live.finnhub || !onServer || (item.type !== 'stock' && item.type !== 'etf')) return;
+    const tick = async () => {
+      try {
+        const q = await getJSON(`${API}/stock/quote?symbol=${encodeURIComponent(item.id)}`);
+        if (q && q.ok && q.price && current && current.id === item.id) { item.price = q.price; setDetailPrice(q.price); updateRowPrice(item); liveTag(true, 'LIVE · Finnhub'); }
+      } catch {}
+    };
+    tick(); quoteTimer = setInterval(tick, 4000);
+  }
+  function stopQuote() { if (quoteTimer) { clearInterval(quoteTimer); quoteTimer = null; } }
+  function stopLive() { stopTrade(); stopQuote(); liveTag(false); }
+  function startLive(item) { if (item.type === 'crypto') startTrade(item.symbol); else startQuote(item); }
 
   /* ---------------- controls ---------------- */
   document.querySelectorAll('.seg__btn').forEach((b) => b.addEventListener('click', () => switchClass(b.dataset.class)));
@@ -547,6 +608,8 @@
   $('wStar').addEventListener('click', () => { if (current) toggleWatch(current); });
 
   loadFX().then(() => { if (board.length) renderBoard(); if (current) select(current); });
+  // start live streams once we know which sources are available (covers any load ordering)
+  loadLiveConfig().then(() => { if (assetClass === 'crypto' && board.length) startArr(); if (current) startLive(current); });
 
   // deep-link from the screener: index.html?type=&id=&symbol=&name=
   const P = new URLSearchParams(location.search);

@@ -21,6 +21,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Quantra
 const CG = 'https://api.coingecko.com/api/v3';
 const YF = 'https://query1.finance.yahoo.com';
 const YF2 = 'https://query2.finance.yahoo.com';
+const FINNHUB = 'https://finnhub.io/api/v1';
 
 // Load .env (no dependency) — keeps keys + model id out of source.
 try {
@@ -36,6 +37,7 @@ try {
 // Optional AI reasoning engine (graceful if absent). Reads ANTHROPIC_API_KEY + QUANTRA_AI_MODEL from .env/env.
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 const AI_MODEL = process.env.QUANTRA_AI_MODEL || '';
+const FINNHUB_KEY = process.env.FINNHUB_API_KEY || ''; // free tier: real-time US stock quotes + news
 let Anthropic = null;
 try { Anthropic = require('@anthropic-ai/sdk'); } catch { /* SDK not installed — AI feature disabled */ }
 
@@ -341,6 +343,43 @@ const api = {
         tickers: n.relatedTickers || [],
       }));
     });
+  },
+
+  /* ---- live config: tells the client which live sources are available ---- */
+  async config() {
+    return { cryptoStream: true, finnhub: !!FINNHUB_KEY };
+  },
+
+  /* ---- Finnhub real-time US stock quote (key stays server-side) ---- */
+  async 'stock/quote'(q) {
+    if (!FINNHUB_KEY) return { ok: false, reason: 'no-finnhub' };
+    if (!q.symbol) return { ok: false, reason: 'no-symbol' };
+    try {
+      const d = await getJSON(`${FINNHUB}/quote?symbol=${encodeURIComponent(q.symbol)}&token=${FINNHUB_KEY}`);
+      // Finnhub: c=current, d=change, dp=percent, t=epoch seconds. c===0 => no data for symbol.
+      if (!d || d.c === 0 || d.c == null) return { ok: false, reason: 'no-data' };
+      return { ok: true, price: d.c, change: d.d, changePct: d.dp, high: d.h, low: d.l, open: d.o, prevClose: d.pc, t: d.t || null, source: 'finnhub' };
+    } catch (e) { return { ok: false, reason: String(e.message || e) }; }
+  },
+
+  /* ---- Finnhub live news (general market or per-symbol) ---- */
+  async 'news/live'(q) {
+    if (!FINNHUB_KEY) return [];
+    try {
+      let raw;
+      if (q.symbol) {
+        const to = new Date().toISOString().slice(0, 10);
+        const from = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+        raw = await getJSON(`${FINNHUB}/company-news?symbol=${encodeURIComponent(q.symbol)}&from=${from}&to=${to}&token=${FINNHUB_KEY}`);
+      } else {
+        raw = await getJSON(`${FINNHUB}/news?category=general&token=${FINNHUB_KEY}`);
+      }
+      return (raw || []).slice(0, 30).map((n) => ({
+        title: n.headline, publisher: n.source, link: n.url,
+        time: n.datetime ? new Date(n.datetime * 1000).toISOString() : null,
+        thumb: n.image || null, tickers: n.related ? String(n.related).split(',').filter(Boolean) : [],
+      }));
+    } catch { return []; }
   },
 };
 
@@ -789,7 +828,7 @@ store.ready().then(() => {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.coingecko.com https://open.er-api.com https://query1.finance.yahoo.com https://query2.finance.yahoo.com; frame-ancestors 'self'; base-uri 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.coingecko.com https://open.er-api.com https://query1.finance.yahoo.com https://query2.finance.yahoo.com https://finnhub.io wss://stream.binance.com:9443 wss://stream.binance.com; frame-ancestors 'self'; base-uri 'self'");
     if (isHttps(req)) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     // health checks
     if (u.pathname === '/healthz' || u.pathname === '/readyz') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ ok: true, storage: store.kind })); }
