@@ -37,6 +37,20 @@
     table.endpoints th{color:var(--muted-2);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
     table.endpoints code{font-family:'JetBrains Mono',monospace;color:#9fd8c0;font-size:.82rem}
     table.endpoints td span{color:var(--muted)}
+    /* ---- phone layout ---- */
+    @media (max-width:600px){
+      .notes{padding:1.1rem 0 3rem}
+      .notes h1{font-size:1.55rem}
+      .notes .lead{font-size:.96rem;margin-bottom:1.2rem}
+      .note-card{padding:1.1rem 1rem}
+      .note-card h2{font-size:1.08rem}
+      pre{padding:.85rem .9rem}
+      pre code{font-size:.78rem}
+      .copy{font-size:.66rem;padding:.25em .5em}
+      table.endpoints{font-size:.8rem}
+      table.endpoints code{word-break:break-all}
+      .filetree{font-size:.78rem;overflow-x:auto}
+    }
   </style>
 </head>
 <body>
