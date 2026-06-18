@@ -47,6 +47,10 @@ function fileStore() {
 function pgStore() {
   const { Pool } = require('pg');
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: false } });
+  // CRITICAL: managed Postgres drops idle connections; without this handler the
+  // pool's 'error' event is unhandled and Node crashes the whole process
+  // (Render then restarts it → crash loop / intermittent 502s). Swallow + log.
+  pool.on('error', (err) => { console.error('[pg] idle client error (recovered):', err.message); });
   const q = (t, p) => pool.query(t, p);
   const one = (r) => (r.rows[0] ? r.rows[0].data : null);
   return {

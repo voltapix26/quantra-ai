@@ -10,6 +10,11 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// Resilience: a stray async error should degrade one request, never take the
+// whole web server down. Log and keep serving instead of crashing the process.
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', (e && e.stack) || e));
+process.on('uncaughtException', (e) => console.error('[uncaughtException]', (e && e.stack) || e));
+
 const ROOT = __dirname;
 const PORT = process.env.PORT || 5280;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 QuantraAI/2.0';
