@@ -406,4 +406,56 @@ button{font-family:inherit}
   .news-hero__content{max-width:100%;text-align:center;align-items:center}
   .news-hero::after{background:linear-gradient(180deg,rgba(6,9,18,.4),rgba(6,9,18,.82))}
 }
+/* ============================================================
+   MOBILE / PHONE  (≤600px) — single-column, scrollable nav,
+   bigger tap targets, no horizontal overflow.
+   ============================================================ */
+@media (max-width:600px){
+  html,body{overflow-x:hidden}
+  .container{width:min(1280px,95vw)}
+  .wrap{padding:1rem 0 2.4rem}
+
+  /* header: brand + currency + account on row 1, nav scrolls on row 2 */
+  .bar__inner{height:auto;flex-wrap:wrap;gap:.45rem .5rem;padding:.55rem 0}
+  .bar__spacer{display:none}
+  .bar__tag{display:none}
+  .brand__name{font-size:.98rem}
+  .cur-pick{margin-left:auto;margin-right:0}
+  .acct-btn{margin-left:.3rem}
+  .bar__links{order:10;width:100%;flex-wrap:nowrap;overflow-x:auto;gap:.25rem;
+    padding-bottom:.15rem;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .bar__links::-webkit-scrollbar{display:none}
+  .bar__links a,.bar__links>span{white-space:nowrap;flex:0 0 auto;font-size:.84rem;padding:.35em .55em}
+  .acct-menu{top:56px;right:3vw;width:min(90vw,300px)}
+
+  /* board + detail already stack at 920px; tighten spacing */
+  .term{gap:1rem}
+  .board{padding:.8rem;top:72px}
+  .tlist{max-height:300px}
+  .card{padding:1.05rem}
+  .dhead h2{font-size:1.15rem}
+  .dprice{font-size:1.15rem}
+  .chart{height:200px}
+
+  /* grids: collapse wide multi-column blocks for narrow screens */
+  .signals{grid-template-columns:1fr}
+  .meters{grid-template-columns:repeat(2,1fr)}
+  .funds,.peers{grid-template-columns:repeat(2,1fr)}
+  .tr-cards{grid-template-columns:1fr}
+  .news-grid{grid-template-columns:1fr}
+  .picks{grid-template-columns:1fr 1fr}
+
+  /* controls: comfortable touch targets */
+  .controls select,.controls input{padding:.55em .65em;font-size:.85rem}
+  .legend{font-size:.72rem;gap:.8rem}
+}
+
+/* Extra-small phones (≤400px) — one column everywhere */
+@media (max-width:400px){
+  .meters,.funds,.peers,.picks{grid-template-columns:1fr}
+  .seg__btn{flex:1 1 46%}
+  .dprice{font-size:1.05rem}
+  .dhead{gap:.45rem}
+}
+
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
