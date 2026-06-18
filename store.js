@@ -17,9 +17,13 @@ function fileStore() {
   const sv = (f, o) => { try { fs.writeFileSync(f, JSON.stringify(o, null, 2)); } catch {} };
   const users = ld(F('users.json'), {}), orgs = ld(F('orgs.json'), {}), sessions = ld(F('sessions.json'), {}), tokens = ld(F('tokens.json'), {}), snaps = ld(F('snapshots.json'), {});
   const audit = ld(F('audit.json'), []);
+  const stats = ld(F('stats.json'), {});
   return {
     kind: 'file',
     async allUsers() { return Object.values(users); },
+    async getStats(date) { return stats[date] || null; },
+    async putStats(date, rec) { stats[date] = rec; sv(F('stats.json'), stats); },
+    async allStats() { return Object.keys(stats).sort().map((date) => ({ date, ...stats[date] })); },
     async appendAudit(ev) { audit.push(ev); if (audit.length > 5000) audit.splice(0, audit.length - 5000); sv(F('audit.json'), audit); },
     async listAudit(limit, offset) { const n = audit.length, off = offset || 0, lim = limit || 200; return audit.slice(Math.max(0, n - off - lim), n - off).reverse(); },
     async getSnapshot(date) { return snaps[date] || null; },
@@ -60,6 +64,9 @@ function pgStore() {
   return {
     kind: 'postgres',
     async allUsers() { const r = await q('select data from users'); return r.rows.map((x) => x.data); },
+    async getStats(date) { return one(await q('select data from stats where date=$1', [date])); },
+    async putStats(date, rec) { await q('insert into stats(date,data) values($1,$2) on conflict(date) do update set data=$2', [date, rec]); },
+    async allStats() { const r = await q('select date, data from stats order by date'); return r.rows.map((x) => ({ date: x.date, ...x.data })); },
     async appendAudit(ev) { await q('insert into audit(data) values($1)', [ev]); },
     async listAudit(limit, offset) { const r = await q('select data from audit order by id desc limit $1 offset $2', [limit || 200, offset || 0]); return r.rows.map((x) => x.data); },
     async getSnapshot(date) { return one(await q('select data from snapshots where date=$1', [date])); },
@@ -73,6 +80,7 @@ function pgStore() {
       await q('CREATE TABLE IF NOT EXISTS tokens(token text primary key, data jsonb)');
       await q('CREATE TABLE IF NOT EXISTS userdata(uid text primary key, data jsonb)');
       await q('CREATE TABLE IF NOT EXISTS audit(id bigserial primary key, data jsonb, at timestamptz default now())');
+      await q('CREATE TABLE IF NOT EXISTS stats(date text primary key, data jsonb)');
       await q('CREATE INDEX IF NOT EXISTS users_id_idx ON users(id)');
     },
     async getUserByEmail(e) { return one(await q('select data from users where email=$1', [e])); },

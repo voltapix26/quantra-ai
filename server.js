@@ -551,6 +551,32 @@ const clientIp = (req) => (String(req.headers['x-forwarded-for'] || '').split(',
 function audit(action, req, email, detail) {
   try { store.appendAudit({ ts: Date.now(), action, email: email || null, ip: clientIp(req), ua: String((req && req.headers['user-agent']) || '').slice(0, 160), detail: detail || null }); } catch {}
 }
+
+/* ---- lightweight, privacy-friendly traffic analytics (footfall) ----
+   Counts page views + unique visitors per day. Visitors are identified by a
+   one-way hash of IP (no raw IP, no cross-site tracking). Aggregated in memory
+   and flushed to storage so the admin can see real footfall over time.        */
+const metrics = { day: '', views: 0, api: 0, pages: {}, hashes: new Set() };
+const hashIp = (ip) => crypto.createHash('sha256').update('qfp:' + ip).digest('hex').slice(0, 12);
+function metricsRoll(day) { metrics.day = day; metrics.views = 0; metrics.api = 0; metrics.pages = {}; metrics.hashes = new Set(); }
+async function metricsLoad() {
+  metricsRoll(new Date().toISOString().slice(0, 10));
+  try { const r = await store.getStats(metrics.day); if (r) { metrics.views = r.views || 0; metrics.api = r.api || 0; metrics.pages = r.pages || {}; (r.hashes || []).forEach((h) => metrics.hashes.add(h)); } } catch {}
+}
+async function metricsFlush() {
+  try { await store.putStats(metrics.day, { views: metrics.views, api: metrics.api, uniques: metrics.hashes.size, pages: metrics.pages, hashes: [...metrics.hashes].slice(0, 5000), at: Date.now() }); } catch {}
+}
+function track(req, u) {
+  const day = new Date().toISOString().slice(0, 10);
+  if (metrics.day !== day) { metricsFlush(); metricsRoll(day); }
+  const p = u.pathname;
+  if (p.startsWith('/api/')) { metrics.api++; return; }
+  if (!(p === '/' || p.endsWith('.html'))) return;            // count page views, not assets
+  metrics.views++;
+  const page = p === '/' ? '/index.html' : p;
+  metrics.pages[page] = (metrics.pages[page] || 0) + 1;
+  metrics.hashes.add(hashIp(clientIp(req)));
+}
 function tooMany(res, key, max, win) {
   const r = rateLimit(key, max, win);
   if (!r.ok) { res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8', 'Retry-After': String(r.retryAfter), 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ error: `Too many attempts. Try again in ${r.retryAfter}s.` })); return true; }
@@ -709,6 +735,25 @@ async function authRoute(req, res, u) {
       const offset = Math.max(parseInt(u.searchParams.get('offset') || '0', 10), 0);
       audit('admin_view_audit', req, s.user.email);
       return send(res, 200, { events: await store.listAudit(limit, offset) });
+    }
+    if (p === '/api/admin/stats' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
+      await metricsFlush();
+      const today = new Date().toISOString().slice(0, 10);
+      const days = (await store.allStats()).slice(-30).map((d) => ({ date: d.date, views: d.views || 0, uniques: d.uniques || 0, api: d.api || 0 }));
+      const users = await store.allUsers();
+      const signups = { total: users.length, today: users.filter((u2) => u2.createdAt && new Date(u2.createdAt).toISOString().slice(0, 10) === today).length };
+      const verified = users.filter((u2) => u2.verified).length;
+      const paid = users.filter((u2) => u2.plan && u2.plan !== 'free').length;
+      const td = days.find((d) => d.date === today) || { views: 0, uniques: 0, api: 0 };
+      const topPages = Object.entries(metrics.pages).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([path, count]) => ({ path, count }));
+      audit('admin_view_stats', req, s.user.email);
+      return send(res, 200, {
+        today: td, days, topPages,
+        users: { total: users.length, verified, paid }, signups,
+        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, cryptoStream: true, uptimeSec: Math.round(process.uptime()), node: process.version },
+      });
     }
     if (p === '/api/org' && m === 'GET') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
@@ -937,8 +982,12 @@ function tradeStream(req, res, u) {
 store.ready().then(() => {
   snapshotToday();
   setInterval(snapshotToday, 6 * 60 * 60 * 1000).unref(); // daily-ish; no-ops if today is done
+  metricsLoad();
+  setInterval(metricsFlush, 120000).unref();              // persist footfall every 2 min
+  process.on('SIGTERM', () => { metricsFlush().finally(() => process.exit(0)); });
   http.createServer(async (req, res) => {
     const u = new URL(req.url, `http://localhost:${PORT}`);
+    try { track(req, u); } catch {}            // footfall analytics (non-blocking)
     // security headers on every response
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
