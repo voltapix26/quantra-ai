@@ -105,6 +105,12 @@
     const m = $('acctMenu');
     if (!m.hidden) { m.hidden = true; return; }
     $('amEmail').textContent = user.email;
+    // super-admin: show the admin-panel link
+    let adm = $('amAdmin');
+    if (user.superAdmin) {
+      if (!adm) { adm = document.createElement('a'); adm.id = 'amAdmin'; adm.href = 'admin.html'; adm.className = 'btn btn--ghost btn--block btn--sm'; adm.textContent = '🛡 Admin panel'; adm.style.margin = '.2rem 0 .4rem'; m.insertBefore(adm, m.firstChild); }
+      adm.hidden = false;
+    } else if (adm) { adm.hidden = true; }
     $('amPlan').textContent = cap(user.plan || 'free');
     $('amVerify').hidden = user.verified !== false;
     $('amBilling').innerHTML = '';

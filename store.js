@@ -16,8 +16,12 @@ function fileStore() {
   const ld = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
   const sv = (f, o) => { try { fs.writeFileSync(f, JSON.stringify(o, null, 2)); } catch {} };
   const users = ld(F('users.json'), {}), orgs = ld(F('orgs.json'), {}), sessions = ld(F('sessions.json'), {}), tokens = ld(F('tokens.json'), {}), snaps = ld(F('snapshots.json'), {});
+  const audit = ld(F('audit.json'), []);
   return {
     kind: 'file',
+    async allUsers() { return Object.values(users); },
+    async appendAudit(ev) { audit.push(ev); if (audit.length > 5000) audit.splice(0, audit.length - 5000); sv(F('audit.json'), audit); },
+    async listAudit(limit, offset) { const n = audit.length, off = offset || 0, lim = limit || 200; return audit.slice(Math.max(0, n - off - lim), n - off).reverse(); },
     async getSnapshot(date) { return snaps[date] || null; },
     async putSnapshot(date, rec) { snaps[date] = rec; sv(F('snapshots.json'), snaps); },
     async allSnapshots() { return Object.keys(snaps).sort().map((date) => { const v = snaps[date]; return (v && !Array.isArray(v) && v.items) ? { date, ...v } : { date, items: v }; }); },
@@ -55,6 +59,9 @@ function pgStore() {
   const one = (r) => (r.rows[0] ? r.rows[0].data : null);
   return {
     kind: 'postgres',
+    async allUsers() { const r = await q('select data from users'); return r.rows.map((x) => x.data); },
+    async appendAudit(ev) { await q('insert into audit(data) values($1)', [ev]); },
+    async listAudit(limit, offset) { const r = await q('select data from audit order by id desc limit $1 offset $2', [limit || 200, offset || 0]); return r.rows.map((x) => x.data); },
     async getSnapshot(date) { return one(await q('select data from snapshots where date=$1', [date])); },
     async putSnapshot(date, rec) { await q('insert into snapshots(date,data) values($1,$2) on conflict(date) do update set data=$2', [date, rec]); },
     async allSnapshots() { const r = await q('select date, data from snapshots order by date'); return r.rows.map((x) => { const v = x.data; return (v && !Array.isArray(v) && v.items) ? { date: x.date, ...v } : { date: x.date, items: v }; }); },
@@ -65,6 +72,7 @@ function pgStore() {
       await q('CREATE TABLE IF NOT EXISTS sessions(token text primary key, data jsonb)');
       await q('CREATE TABLE IF NOT EXISTS tokens(token text primary key, data jsonb)');
       await q('CREATE TABLE IF NOT EXISTS userdata(uid text primary key, data jsonb)');
+      await q('CREATE TABLE IF NOT EXISTS audit(id bigserial primary key, data jsonb, at timestamptz default now())');
       await q('CREATE INDEX IF NOT EXISTS users_id_idx ON users(id)');
     },
     async getUserByEmail(e) { return one(await q('select data from users where email=$1', [e])); },

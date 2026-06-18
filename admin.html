@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Admin</title>
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=12" />
+  <style>
+    .adm{max-width:1100px;margin:0 auto;padding:1.4rem 0 4rem}
+    .adm h1{font-size:1.8rem;margin-bottom:.3rem}
+    .adm-note{background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.25);color:var(--muted);border-radius:12px;padding:.8rem 1rem;font-size:.86rem;margin:.8rem 0 1.4rem;line-height:1.5}
+    .adm-note b{color:var(--mint)}
+    .adm-deny{background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.3);color:var(--rose);border-radius:12px;padding:1.2rem;text-align:center;margin-top:1.4rem}
+    .adm-sub{font-family:'Space Grotesk';font-size:.8rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted-2);margin:1.6rem 0 .6rem}
+    .adm-wrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg)}
+    table.adm-t{width:100%;border-collapse:collapse;font-size:.84rem}
+    table.adm-t th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-2);font-weight:600;padding:.6rem .8rem;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--panel)}
+    table.adm-t td{padding:.55rem .8rem;border-bottom:1px solid var(--line);color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+    table.adm-t tr:last-child td{border-bottom:0}
+    table.adm-t b{color:var(--text)}
+    .pill{font-size:.7rem;font-weight:600;padding:.12em .5em;border-radius:6px}
+    .pill.ok{color:var(--mint);background:rgba(52,211,153,.12)}
+    .pill.no{color:var(--amber);background:rgba(251,191,36,.12)}
+    .pill.adm{color:var(--indigo);background:rgba(129,140,248,.14)}
+    .act{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem}
+    .act.fail,.act.deny{color:var(--rose)} .act.login,.act.signup{color:var(--mint)}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;color:var(--muted-2)}
+  </style>
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand"><span class="brand__mark">
+        <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true"><defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs><path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/><path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="82" cy="16" r="6" fill="#34D399"/></svg>
+      </span><span class="brand__name">Quantra<span class="brand__ai">AI</span></span></a>
+      <span class="bar__tag">🛡 Super-admin</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links"><a href="index.html">Terminal</a><a href="track-record.html">Track record</a></nav>
+    </div>
+  </header>
+
+  <main class="container adm">
+    <h1>Admin &amp; audit</h1>
+    <div class="adm-note">🔒 <b>Passwords are never shown here.</b> They're stored as one-way salted scrypt hashes and cannot be recovered by anyone — by design. This panel is oversight only: account emails, metadata, and a security audit trail. To help a locked-out user, send a password reset.</div>
+    <div id="admState"></div>
+    <div id="admBody" hidden>
+      <div class="adm-sub" id="usersHdr">Users</div>
+      <div class="adm-wrap"><table class="adm-t" id="usersT"></table></div>
+      <div class="adm-sub" style="margin-top:1.8rem">Audit log <span style="color:var(--muted-2);font-weight:400">· most recent first</span></div>
+      <div class="adm-wrap"><table class="adm-t" id="auditT"></table></div>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const tok = (() => { try { return localStorage.getItem('quantra.sid') || ''; } catch { return ''; } })();
+    async function api(path) {
+      const r = await fetch(path, { credentials: 'same-origin', headers: tok ? { Authorization: 'Bearer ' + tok } : {} });
+      if (!r.ok) { const e = new Error('http'); e.code = r.status; throw e; }
+      return r.json();
+    }
+    const fmtTime = (ms) => ms ? new Date(ms).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    (async () => {
+      if (!(location.protocol === 'http:' || location.protocol === 'https:')) { $('admState').innerHTML = '<div class="adm-deny">Run the live server to use the admin panel.</div>'; return; }
+      let data;
+      try { data = await api('/api/admin/users'); }
+      catch (e) {
+        $('admState').innerHTML = e.code === 401
+          ? '<div class="adm-deny">You’re not signed in. <a href="index.html" style="color:var(--mint)">Sign in</a> as a super-admin, then return here.</div>'
+          : '<div class="adm-deny">⛔ Access denied. Your account is not a super-admin. Ask the owner to add your email to <code>SUPER_ADMINS</code>.</div>';
+        return;
+      }
+      $('admBody').hidden = false;
+      $('usersHdr').textContent = `Users (${data.count})`;
+      $('usersT').innerHTML = '<tr><th>Email</th><th>Name</th><th>Plan</th><th>Verified</th><th>Workspace</th><th>Created</th><th>Last login</th><th>Role</th></tr>' +
+        data.users.map((u) => `<tr>
+          <td><b>${esc(u.email)}</b>${u.superAdmin ? ' <span class="pill adm">admin</span>' : ''}</td>
+          <td>${esc(u.name)}</td>
+          <td>${esc(u.plan)}</td>
+          <td>${u.verified ? '<span class="pill ok">yes</span>' : '<span class="pill no">no</span>'}</td>
+          <td>${esc(u.workspace)}</td>
+          <td>${fmtTime(u.createdAt)}</td>
+          <td>${fmtTime(u.lastLogin)}</td>
+          <td>${esc(u.role)}</td></tr>`).join('');
+
+      try {
+        const a = await api('/api/admin/audit?limit=400');
+        $('auditT').innerHTML = '<tr><th>Time</th><th>Action</th><th>Email</th><th>IP</th><th>Detail</th></tr>' +
+          (a.events || []).map((e) => {
+            const cls = /fail|deny/.test(e.action) ? 'fail' : /login|signup/.test(e.action) ? 'login' : '';
+            return `<tr>
+              <td>${fmtTime(e.ts)}</td>
+              <td class="act ${cls}">${esc(e.action)}</td>
+              <td>${esc(e.email)}</td>
+              <td class="mono">${esc(e.ip)}</td>
+              <td class="mono">${e.detail ? esc(JSON.stringify(e.detail)) : ''}</td></tr>`;
+          }).join('');
+      } catch {}
+    })();
+  </script>
+</body>
+</html>

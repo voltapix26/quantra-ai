@@ -38,6 +38,10 @@ try {
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 const AI_MODEL = process.env.QUANTRA_AI_MODEL || '';
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || ''; // free tier: real-time US stock quotes + news
+// Super-admins (oversight only — emails/metadata + audit log, NEVER passwords).
+// Set SUPER_ADMINS="a@x.com,b@y.com". Empty = nobody has admin access (secure default).
+const SUPER_ADMINS = new Set((process.env.SUPER_ADMINS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+const isSuperAdmin = (email) => SUPER_ADMINS.has(String(email || '').toLowerCase());
 let Anthropic = null;
 try { Anthropic = require('@anthropic-ai/sdk'); } catch { /* SDK not installed — AI feature disabled */ }
 
@@ -512,7 +516,7 @@ async function createSession(email) { const t = crypto.randomBytes(24).toString(
 // the cookie (https-wrapped previews, cross-site iframes, some localhost tunnels).
 function bearerToken(req) { const h = String(req.headers['authorization'] || ''); const m = h.match(/^Bearer\s+(.+)$/i); return m ? m[1].trim() : null; }
 async function sessionUser(req) { const t = parseCookies(req).qsid || bearerToken(req); if (!t) return null; const s = await store.getSession(t); if (!s || s.exp < Date.now()) { if (s) await store.delSession(t); return null; } const u = await store.getUserByEmail(s.email); return u ? { user: u, token: t } : null; }
-async function userPublic(u) { const org = await store.getOrg(u.orgId); return { id: u.id, email: u.email, name: u.name, orgId: u.orgId, role: u.role, verified: !!u.verified, plan: (org || {}).plan || 'free' }; }
+async function userPublic(u) { const org = await store.getOrg(u.orgId); return { id: u.id, email: u.email, name: u.name, orgId: u.orgId, role: u.role, verified: !!u.verified, plan: (org || {}).plan || 'free', superAdmin: isSuperAdmin(u.email) }; }
 function sendC(res, code, obj, cookie) { const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }; if (cookie) h['Set-Cookie'] = cookie; res.writeHead(code, h); res.end(JSON.stringify(obj)); }
 
 /* ---- sliding-window rate limiting (per-instance, in-memory) ---- */
@@ -526,6 +530,10 @@ function rateLimit(key, max, windowMs) {
 }
 setInterval(() => { const cut = Date.now() - 3600000; for (const [k, arr] of rlBuckets) { while (arr.length && arr[0] <= cut) arr.shift(); if (!arr.length) rlBuckets.delete(k); } }, 600000).unref();
 const clientIp = (req) => (String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || (req.socket && req.socket.remoteAddress) || 'unknown';
+// Append a security-audit event (fire-and-forget; never logs passwords).
+function audit(action, req, email, detail) {
+  try { store.appendAudit({ ts: Date.now(), action, email: email || null, ip: clientIp(req), ua: String((req && req.headers['user-agent']) || '').slice(0, 160), detail: detail || null }); } catch {}
+}
 function tooMany(res, key, max, win) {
   const r = rateLimit(key, max, win);
   if (!r.ok) { res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8', 'Retry-After': String(r.retryAfter), 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ error: `Too many attempts. Try again in ${r.retryAfter}s.` })); return true; }
@@ -559,6 +567,7 @@ async function authRoute(req, res, u) {
       await store.putOrg({ id: orgId, name: String(body.orgName || '').trim() || `${name}'s workspace`, plan: 'free', apiKey: 'qk_live_' + crypto.randomBytes(16).toString('hex'), ownerId: userId, createdAt: Date.now() });
       const user = { id: userId, email, name, passHash: hashPw(pw), orgId, role: 'owner', verified: false, createdAt: Date.now() };
       await store.putUser(user);
+      audit('signup', req, email, { orgId });
       emailVerify(user).catch(() => {});
       const tok = await createSession(email);
       return sendC(res, 200, { ok: true, user: await userPublic(user), token: tok }, cookieFor(tok, req));
@@ -567,12 +576,16 @@ async function authRoute(req, res, u) {
       if (tooMany(res, 'li:' + ip, 12, 900000)) return;
       const email = String(body.email || '').trim().toLowerCase(), pw = String(body.password || '');
       const usr = await store.getUserByEmail(email);
-      if (!usr || !verifyPw(pw, usr.passHash)) return send(res, 401, { error: 'Wrong email or password.' });
+      if (!usr || !verifyPw(pw, usr.passHash)) { audit('login_failed', req, email); return send(res, 401, { error: 'Wrong email or password.' }); }
+      usr.lastLogin = Date.now(); await store.putUser(usr);
       const tok = await createSession(email);
+      audit('login', req, email);
       return sendC(res, 200, { ok: true, user: await userPublic(usr), token: tok }, cookieFor(tok, req));
     }
     if (p === '/api/auth/logout' && m === 'POST') {
-      const t = parseCookies(req).qsid; if (t) await store.delSession(t);
+      const t = parseCookies(req).qsid; let who = null;
+      if (t) { const s = await store.getSession(t); who = s && s.email; await store.delSession(t); }
+      audit('logout', req, who);
       return sendC(res, 200, { ok: true }, 'qsid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
     }
     if (p === '/api/auth/me') { const s = await sessionUser(req); return send(res, 200, { user: s ? await userPublic(s.user) : null }); }
@@ -582,6 +595,7 @@ async function authRoute(req, res, u) {
       if (!tok || tok.type !== 'verify' || tok.exp < Date.now()) return send(res, 400, { error: 'This verification link is invalid or expired.' });
       const usr = await store.getUserByEmail(tok.email); if (usr) { usr.verified = true; await store.putUser(usr); }
       await store.delToken(String(body.token));
+      audit('email_verified', req, tok.email);
       return send(res, 200, { ok: true });
     }
     if (p === '/api/auth/resend-verify' && m === 'POST') {
@@ -602,6 +616,7 @@ async function authRoute(req, res, u) {
           shell('Reset your password', `<p style="color:#93A0B8">Click below to choose a new password. This link expires in 1 hour.</p>${btn(url, 'Reset password')}<p style="color:#5A6680;font-size:12px">If you didn’t request this, you can ignore it. Link: ${url}</p>`),
           `Reset your Quantra AI password: ${url}`).catch(() => {});
       }
+      audit('reset_requested', req, email, { exists: !!usr });
       return send(res, 200, { ok: true }); // never reveal whether the email exists
     }
     if (p === '/api/auth/reset' && m === 'POST') {
@@ -614,6 +629,7 @@ async function authRoute(req, res, u) {
       if (usr) await store.delSessionsForEmail(tok.email); // sign out other sessions on reset
       if (usr) { usr.passHash = hashPw(pw); usr.verified = true; await store.putUser(usr); }
       await store.delToken(String(body.token));
+      audit('password_reset', req, tok.email);
       return send(res, 200, { ok: true });
     }
 
@@ -642,6 +658,7 @@ async function authRoute(req, res, u) {
       const org = await store.getOrg(s.user.orgId) || {};
       const out = { exportedAt: new Date().toISOString(), profile: { id: s.user.id, email: s.user.email, name: s.user.name, role: s.user.role, createdAt: s.user.createdAt, verified: !!s.user.verified }, workspace: { id: org.id, name: org.name, plan: org.plan }, data: await store.getUserData(s.user.id) };
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="quantra-data-export.json"', 'Cache-Control': 'no-store' });
+      audit('data_export', req, s.user.email);
       return res.end(JSON.stringify(out, null, 2));
     }
     if (p === '/api/me/delete' && m === 'POST') {
@@ -651,7 +668,30 @@ async function authRoute(req, res, u) {
       await store.delSessionsForEmail(s.user.email);
       await store.deleteUser(s.user.email);
       if (s.user.role === 'owner' && (await store.countMembers(s.user.orgId)) === 0) await store.deleteOrg(s.user.orgId);
+      audit('account_deleted', req, s.user.email);
       return sendC(res, 200, { ok: true }, 'qsid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+    }
+
+    /* ---- super-admin (oversight only: emails + metadata + audit; NEVER passwords) ---- */
+    if (p === '/api/admin/users' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
+      audit('admin_view_users', req, s.user.email);
+      const users = await store.allUsers();
+      const rows = await Promise.all(users.map(async (u) => {
+        const org = await store.getOrg(u.orgId);
+        return { id: u.id, email: u.email, name: u.name, role: u.role, verified: !!u.verified, plan: (org || {}).plan || 'free', workspace: (org || {}).name || null, createdAt: u.createdAt || null, lastLogin: u.lastLogin || null, superAdmin: isSuperAdmin(u.email) };
+      }));
+      rows.sort((a, b) => (b.lastLogin || b.createdAt || 0) - (a.lastLogin || a.createdAt || 0));
+      return send(res, 200, { count: rows.length, users: rows });
+    }
+    if (p === '/api/admin/audit' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
+      const limit = Math.min(Math.max(parseInt(u.searchParams.get('limit') || '300', 10), 1), 1000);
+      const offset = Math.max(parseInt(u.searchParams.get('offset') || '0', 10), 0);
+      audit('admin_view_audit', req, s.user.email);
+      return send(res, 200, { events: await store.listAudit(limit, offset) });
     }
     if (p === '/api/org' && m === 'GET') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
@@ -905,7 +945,7 @@ store.ready().then(() => {
       await trackDevSeed(); return send(res, 200, { ok: true });
     }
     if (u.pathname === '/api/billing/webhook') return billingWebhook(req, res);
-    if (u.pathname.startsWith('/api/auth/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname === '/api/ai/reason' || u.pathname.startsWith('/api/billing/')) {
+    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname === '/api/ai/reason' || u.pathname.startsWith('/api/billing/')) {
       return authRoute(req, res, u);
     }
     if (u.pathname.startsWith('/api/')) {
