@@ -364,8 +364,12 @@ button{font-family:inherit}
 .scr-score b{font-family:'Space Grotesk';font-size:1rem;min-width:1.6em;text-align:right}
 .scr-empty{padding:2.2rem 1rem;text-align:center;color:var(--muted)}
 @media (max-width:780px){
-  .scr-thead,.scr-row{grid-template-columns:26px 1fr 64px 70px}
-  .scr-thead span:nth-child(4),.scr-row .scr-price,.scr-thead span:nth-child(6),.scr-row .scr-spark{display:none}
+  /* show exactly 4 aligned columns: #, Asset, 24h, Quantra Score.
+     Hide Class(3), Price(4), 7d-spark(6) in BOTH header and rows so they line up. */
+  .scr-thead,.scr-row{grid-template-columns:26px 1fr 58px 72px}
+  .scr-thead span:nth-child(3),.scr-thead span:nth-child(4),.scr-thead span:nth-child(6),
+  .scr-row .scr-cls,.scr-row .scr-price,.scr-row .scr-spark{display:none}
+  .scr-table{padding:.5rem .55rem}
 }
 
 /* ---- news page ---- */
