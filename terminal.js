@@ -56,12 +56,14 @@
   }
   // valid lookback ranges per interval (keeps Yahoo combos legal) + defaults
   const RANGES = {
+    'sec': [['1m', '1m'], ['5m', '5m'], ['15m', '15m']],     // live tick window (crypto)
     '1m':  [['1d', '1D'], ['5d', '5D']],
     '60m': [['5d', '5D'], ['1mo', '1M'], ['3mo', '3M'], ['6mo', '6M']],
     '1d':  [['1mo', '1M'], ['6mo', '6M'], ['1y', '1Y'], ['2y', '2Y'], ['5y', '5Y']],
     '1wk': [['6mo', '6M'], ['1y', '1Y'], ['5y', '5Y'], ['max', 'Max']],
   };
-  const DEFAULT_RANGE = { '1m': '1d', '60m': '1mo', '1d': '6mo', '1wk': '1y' };
+  const DEFAULT_RANGE = { 'sec': '5m', '1m': '1d', '60m': '1mo', '1d': '6mo', '1wk': '1y' };
+  const secWindowMs = (r) => ({ '1m': 60000, '5m': 300000, '15m': 900000 }[r] || 300000);
   function rangeToDays(range) { return { '1d': 2, '5d': 7, '1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730, '5y': 1825, 'max': 'max' }[range] || 180; }
   function cryptoDays(interval, range) {
     if (interval === '1m') return 1;                       // ~5-min candles (today)
@@ -165,6 +167,7 @@
   let chartType = 'line';  // 'line' | 'candle'
   try { const ct = localStorage.getItem('quantra.charttype'); if (ct === 'candle' || ct === 'line') chartType = ct; } catch {}
   let candleHist = null;   // OHLC source for the candle view (crypto: Binance; else: hist)
+  let tickMode = false, tickBuf = [], tickTimer = null, tickWinMs = 300000;  // live seconds chart
 
   function drawChart(hist, fc) {
     const ohlc = candleHist || hist;
@@ -260,9 +263,11 @@
   function fmtTipDate(iso) {
     if (!iso) return '';
     const intr = $('intervalSel').value;
-    const opt = (intr === '1m' || intr === '60m')
-      ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
-      : { year: 'numeric', month: 'short', day: 'numeric' };
+    const opt = intr === 'sec'
+      ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
+      : (intr === '1m' || intr === '60m')
+        ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+        : { year: 'numeric', month: 'short', day: 'numeric' };
     return new Date(iso).toLocaleString('en-US', opt);
   }
   function setupChartHover() {
@@ -414,6 +419,7 @@
   /* ---------------- dated projections ---------------- */
   function projDateFor(lastIso, bars, interval, isCrypto) {
     const dt = new Date(lastIso || Date.now());
+    if (interval === 'sec') return new Date(dt.getTime() + bars * 1000);
     if (interval === '60m') return new Date(dt.getTime() + bars * 3600e3);
     if (interval === '1m') return new Date(dt.getTime() + bars * 60e3);
     const step = interval === '1wk' ? 7 : 1; let added = 0;
@@ -439,6 +445,69 @@
     card.hidden = false;
   }
 
+  /* ---------------- live seconds (tick) chart ---------------- */
+  function pushTick(p) {
+    if (!(p > 0)) return;
+    const t = Date.now();
+    tickBuf.push({ t, p });
+    const cut = t - tickWinMs;
+    while (tickBuf.length > 2 && tickBuf[0].t < cut) tickBuf.shift();
+    if (!tickTimer) tickTimer = setTimeout(() => { tickTimer = null; if (tickMode) { drawTickChart(); renderTickProjection(); } }, 250);
+  }
+  function tickStats() {
+    const n = tickBuf.length; if (n < 6) return null;
+    const last = tickBuf[n - 1].p, first = tickBuf[0].p;
+    const secs = (tickBuf[n - 1].t - tickBuf[0].t) / 1000 || 1;
+    const driftPerSec = (last - first) / secs;
+    let s = 0, c = 0; for (let i = 1; i < n; i++) { s += Math.abs(tickBuf[i].p - tickBuf[i - 1].p); c++; }
+    const ticksPerSec = c / secs, volPerSec = (c ? s / c : 0) * Math.sqrt(Math.max(1, ticksPerSec));
+    return { last, driftPerSec, volPerSec };
+  }
+  function drawTickChart() {
+    const svg = $('chart'); if (!svg) return;
+    const n = tickBuf.length;
+    if (n < 2) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" fill="#6B7890" font-size="12" text-anchor="middle">Accumulating live ticks…</text>`; return; }
+    const st = tickStats(), FS = 30, pj = [];
+    if (st) for (let i = 1; i <= FS; i++) { const w = st.volPerSec * Math.sqrt(i) * 1.28; pj.push({ mid: st.last + st.driftPerSec * i, lo: st.last + st.driftPerSec * i - w, hi: st.last + st.driftPerSec * i + w }); }
+    const prices = tickBuf.map((d) => d.p);
+    const allv = prices.concat(pj.flatMap((p) => [p.lo, p.hi]));
+    const min = Math.min(...allv), max = Math.max(...allv), rng = max - min || 1;
+    const total = n + pj.length, x = (i) => PAD + (i / (total - 1)) * (W - PAD * 2), y = (v) => H - PAD - ((v - min) / rng) * (H - PAD * 2);
+    const line = prices.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+    const area = `${line} L ${x(n - 1).toFixed(1)} ${H - PAD} L ${PAD} ${H - PAD} Z`;
+    let band = '', mid = '';
+    if (pj.length) { const off = n; const hiP = pj.map((p, i) => `${i ? 'L' : 'M'}${x(off + i).toFixed(1)} ${y(p.hi).toFixed(1)}`).join(' '); band = `${hiP} ${pj.map((p, i) => `L${x(off + i).toFixed(1)} ${y(p.lo).toFixed(1)}`).reverse().join(' ')} Z`; mid = `M${x(off - 1).toFixed(1)} ${y(prices[n - 1]).toFixed(1)} ` + pj.map((p, i) => `L${x(off + i).toFixed(1)} ${y(p.mid).toFixed(1)}`).join(' '); }
+    const up = prices[n - 1] >= prices[0], col = up ? '#34D399' : '#FB7185';
+    svg.innerHTML = `
+      <defs><linearGradient id="tf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".2"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+      <path d="${area}" fill="url(#tf)"/>
+      ${band ? `<path d="${band}" fill="#22D3EE" opacity=".12"/>` : ''}
+      <path d="${line}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>
+      ${mid ? `<path d="${mid}" fill="none" stroke="#22D3EE" stroke-width="1.6" stroke-dasharray="5 4"/>` : ''}
+      <circle cx="${x(n - 1).toFixed(1)}" cy="${y(prices[n - 1]).toFixed(1)}" r="3.4" fill="${col}"/>`;
+    chartState = { total, histLen: n, vals: prices, dates: tickBuf.map((d) => new Date(d.t).toISOString()), fcMid: pj.map((p) => p.mid), yAt: y, xAt: x };
+  }
+  function renderTickProjection() {
+    const card = $('projCard'); if (!card) return;
+    const st = tickStats();
+    if (!st) { $('projTable').innerHTML = ''; $('projAsof').textContent = 'Accumulating live ticks to project…'; card.hidden = false; return; }
+    const now = Date.now();
+    const rows = [5, 10, 20, 30].map((s) => {
+      const mid = st.last + st.driftPerSec * s, w = st.volPerSec * Math.sqrt(s) * 1.28, up = st.driftPerSec >= 0;
+      const d = new Date(now + s * 1000);
+      return `<tr><td>${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}<small>+${s}s</small></td><td class="proj-px">${money(mid, curBase)}</td><td class="proj-rng">${money(mid - w, curBase)} – ${money(mid + w, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${((mid / st.last - 1) * 100).toFixed(2)}%</td></tr>`;
+    }).join('');
+    $('projTable').innerHTML = '<tr><th>Time</th><th>Projected</th><th>Range (P10–P90)</th><th>Δ vs now</th></tr>' + rows;
+    $('projAsof').textContent = 'Live tick projection from the last ' + tickBuf.length + ' ticks — very short horizon, high uncertainty, not a guarantee.';
+    card.hidden = false;
+  }
+  function startTickChart() {
+    tickBuf = [];
+    if (state && state.history && state.history.closes && state.history.closes.length) tickBuf.push({ t: Date.now(), p: state.history.closes[state.history.closes.length - 1] });
+    drawTickChart(); renderTickProjection();
+  }
+  function stopTick() { tickMode = false; if (tickTimer) { clearTimeout(tickTimer); tickTimer = null; } }
+
   /* ---------------- Quantra Score + watchlist ---------------- */
   const scoreColor = (q) => q >= 70 ? '#34D399' : q >= 56 ? '#22D3EE' : q >= 45 ? '#FBBF24' : '#FB7185';
   function setScore(res) {
@@ -456,8 +525,12 @@
   /* ---------------- select + analyze ---------------- */
   async function select(item) {
     current = item;
-    stopLive();
-    const range = $('rangeSel').value, interval = $('intervalSel').value;
+    stopLive(); stopTick();
+    let interval = $('intervalSel').value, range = $('rangeSel').value;
+    if (interval === 'sec' && item.type !== 'crypto') { R.toast('Seconds (live tick) is available for crypto only.'); interval = '1m'; $('intervalSel').value = '1m'; fillRanges(); range = $('rangeSel').value; }
+    const secMode = interval === 'sec';
+    const dataInterval = secMode ? '1m' : interval, dataRange = secMode ? '1d' : range;
+    if (secMode) tickWinMs = secWindowMs(range);
     $('dTicker').textContent = item.symbol + (item.type === 'crypto' ? ' / USD' : '');
     $('dText').textContent = 'Crunching technicals + fundamentals…';
     $('indis').innerHTML = ''; $('fcast').hidden = true;
@@ -466,7 +539,7 @@
 
     $('aiBadge').hidden = true;
     try {
-      const [hist, fund, peers, news] = await Promise.all([loadChart(item, range, interval), loadFundamentals(item), loadPeers(item), loadNews(item)]);
+      const [hist, fund, peers, news] = await Promise.all([loadChart(item, dataRange, dataInterval), loadFundamentals(item), loadPeers(item), loadNews(item)]);
       curBase = (item.type === 'crypto') ? 'USD' : (hist.currency || (fund && fund.currency) || 'USD');
       const sent = Q.sentiment(news);
       const res = Q.analyze(hist, item.name || item.symbol, fund, sent);
@@ -524,13 +597,18 @@
         }).join('');
       } else sw.hidden = true;
 
-      // candle source: crypto needs real OHLC from Binance; others already have it in hist
       candleHist = null;
-      if (chartType === 'candle' && item.type === 'crypto') {
-        try { candleHist = await getJSON(`${API}/crypto/ohlc?symbol=${encodeURIComponent(item.symbol)}&interval=${interval}`); } catch { candleHist = null; }
+      if (secMode) {
+        // live seconds: stream ticks into a rolling chart (analysis above uses 1m data for context)
+        tickMode = true; startTickChart();
+      } else {
+        // candle source: crypto needs real OHLC from Coinbase; others already have it in hist
+        if (chartType === 'candle' && item.type === 'crypto') {
+          try { candleHist = await getJSON(`${API}/crypto/ohlc?symbol=${encodeURIComponent(item.symbol)}&interval=${interval}`); } catch { candleHist = null; }
+        }
+        drawChart(hist, res.forecast);
+        renderProjections(res.forecast, hist, item);
       }
-      drawChart(hist, res.forecast);
-      renderProjections(res.forecast, hist, item);
       typeOut($('dText'), res.text);
       renderPeers(peers);
       renderNews(sent, item);
@@ -560,7 +638,7 @@
           if (typeof r.newsImpact === 'number') {
             // recompute the forecast with the AI's comprehension-based news impact
             const fc2 = Q.forecast(state.history.closes, 30, r.newsImpact);
-            if (fc2) { state.analysis.forecast = fc2; drawChart(state.history, fc2); renderForecast(fc2); }
+            if (fc2) { state.analysis.forecast = fc2; if (!tickMode) { drawChart(state.history, fc2); renderProjections(fc2, state.history, item); } renderForecast(fc2); }
             const lab = r.stance === 'bullish' ? 'Positive' : r.stance === 'bearish' ? 'Negative' : 'Neutral';
             setNewsMeter(lab, r.newsImpact, ' · AI');
             const nb = $('newsSentiment');
@@ -624,7 +702,7 @@
         const p = parseFloat(d.price); if (!(p > 0)) return;
         const it = byProd.get(d.product_id);
         if (it) { it.price = p; updateRowPrice(it); }
-        if (current && current.type === 'crypto' && coinProd(current.symbol) === d.product_id) setDetailPrice(p);
+        if (current && current.type === 'crypto' && coinProd(current.symbol) === d.product_id) { setDetailPrice(p); if (tickMode) pushTick(p); }
       };
     } catch {}
   }
@@ -646,7 +724,7 @@
     try {
       tradeWS = new WebSocket('wss://ws-feed.exchange.coinbase.com');
       tradeWS.onopen = () => { try { tradeWS.send(JSON.stringify({ type: 'subscribe', product_ids: [prod], channels: ['ticker'] })); liveTag(true, 'LIVE · Coinbase'); } catch {} };
-      tradeWS.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.type === 'ticker' && current && current.type === 'crypto' && coinProd(current.symbol) === d.product_id) { const p = parseFloat(d.price); if (p > 0) setDetailPrice(p); } } catch {} };
+      tradeWS.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.type === 'ticker' && current && current.type === 'crypto' && coinProd(current.symbol) === d.product_id) { const p = parseFloat(d.price); if (p > 0) { setDetailPrice(p); if (tickMode) pushTick(p); } } } catch {} };
     } catch {}
   }
   function stopTrade() { if (tradeWS) { try { tradeWS.close(); } catch {} tradeWS = null; } }
@@ -674,8 +752,6 @@
     $('rangeSel').value = opts.some((o) => o[0] === cur) ? cur : DEFAULT_RANGE[intr];
   }
   $('intervalSel').addEventListener('change', () => {
-    const iv = $('intervalSel').value, L = window.QuantraAuth && window.QuantraAuth.limits;
-    if ((iv === '1m' || iv === '60m') && L && !L.intraday) { R.toast('Intraday timeframes are a Pro feature — upgrade in your account.'); $('intervalSel').value = '1d'; const b = $('acctBtn'); if (b) b.click(); }
     fillRanges(); if (current) select(current);
   });
   $('rangeSel').addEventListener('change', () => current && select(current));

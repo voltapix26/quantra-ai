@@ -181,8 +181,12 @@ button{font-family:inherit}
 
 /* controls row */
 .controls{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.2rem 0 1rem}
-.controls label{font-size:.78rem;color:var(--muted-2)}
-.controls select,.controls input{background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:9px;padding:.4em .6em;color:var(--text);font-size:.82rem;font-family:inherit}
+.controls label{font-size:.78rem;color:var(--muted);display:flex;align-items:center;gap:.4rem}
+.controls select,.controls input{background:rgba(34,211,238,.08);border:1px solid var(--line-2);border-radius:9px;padding:.4em .6em;color:var(--cyan);font-weight:600;font-size:.82rem;font-family:inherit}
+/* explicit dark dropdown list so option text isn't white-on-white on Windows */
+.controls select option{background:#0E1525;color:#E7ECF5;font-weight:500}
+.controls input{color:var(--text)}
+.controls select:hover{border-color:var(--cyan)}
 .controls select:focus,.controls input:focus{outline:none;border-color:var(--mint)}
 .controls .spacer{margin-left:auto}
 
