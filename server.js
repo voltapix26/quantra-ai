@@ -38,6 +38,8 @@ try {
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 const AI_MODEL = process.env.QUANTRA_AI_MODEL || '';
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || ''; // free tier: real-time US stock quotes + news
+const COINGECKO_KEY = process.env.COINGECKO_KEY || ''; // free "demo" key — raises limits + works from cloud IPs
+const cgHeaders = () => (COINGECKO_KEY ? { 'x-cg-demo-api-key': COINGECKO_KEY } : {});
 // Super-admins (oversight only — emails/metadata + audit log, NEVER passwords).
 // Set SUPER_ADMINS="a@x.com,b@y.com". Empty = nobody has admin access (secure default).
 const SUPER_ADMINS = new Set((process.env.SUPER_ADMINS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
@@ -53,7 +55,8 @@ const cache = new Map();
 function cached(key, ttl, producer) {
   const hit = cache.get(key), now = Date.now();
   if (hit && now - hit.t < ttl) return Promise.resolve(hit.v);
-  return producer().then((v) => { cache.set(key, { t: now, v }); return v; });
+  return producer().then((v) => { cache.set(key, { t: now, v }); return v; })
+    .catch((e) => { if (hit) return hit.v; throw e; });   // serve stale on upstream failure (e.g. 429)
 }
 async function getJSON(url, headers) {
   const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json', ...(headers || {}) } });
@@ -184,20 +187,34 @@ const api = {
 
   async 'crypto/markets'(q) {
     const page = Math.max(1, parseInt(q.page || '1', 10));
-    const d = await cached(`cm:${page}`, 45000, () => getJSON(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=${page}&sparkline=true&price_change_percentage=24h`));
-    return d.map((c) => ({ type: 'crypto', id: c.id, symbol: (c.symbol || '').toUpperCase(), name: c.name,
-      price: c.current_price, change24h: c.price_change_percentage_24h, marketCap: c.market_cap, volume: c.total_volume,
-      spark: (c.sparkline_in_7d && c.sparkline_in_7d.price) || [] }));
+    try {
+      const d = await cached(`cm:${page}`, 45000, () => getJSON(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=${page}&sparkline=true&price_change_percentage=24h`, cgHeaders()));
+      return d.map((c) => ({ type: 'crypto', id: c.id, symbol: (c.symbol || '').toUpperCase(), name: c.name,
+        price: c.current_price, change24h: c.price_change_percentage_24h, marketCap: c.market_cap, volume: c.total_volume,
+        spark: (c.sparkline_in_7d && c.sparkline_in_7d.price) || [] }));
+    } catch (e) {
+      // CoinGecko throttles cloud IPs hard (HTTP 429). Fall back to CoinPaprika so the board still loads.
+      return cached(`cmfb:${page}`, 60000, async () => {
+        const d = await getJSON('https://api.coinpaprika.com/v1/tickers?quotes=USD');
+        const start = (page - 1) * 50;
+        return (Array.isArray(d) ? d : []).slice(start, start + 50).map((c) => {
+          const u = (c.quotes && c.quotes.USD) || {};
+          // CoinPaprika id is "{sym}-{slug}"; the slug usually matches the CoinGecko id used by the chart endpoint.
+          return { type: 'crypto', id: String(c.id || '').replace(/^[^-]+-/, '') || c.id, symbol: (c.symbol || '').toUpperCase(), name: c.name,
+            price: u.price, change24h: u.percent_change_24h, marketCap: u.market_cap, volume: u.volume_24h, spark: [] };
+        }).filter((x) => x.price != null);
+      });
+    }
   },
   async 'crypto/search'(q) {
     if (!q.q) return [];
-    const d = await cached(`cs:${q.q}`, 120000, () => getJSON(`${CG}/search?query=${encodeURIComponent(q.q)}`));
+    const d = await cached(`cs:${q.q}`, 120000, () => getJSON(`${CG}/search?query=${encodeURIComponent(q.q)}`, cgHeaders()));
     return (d.coins || []).slice(0, 12).map((c) => ({ type: 'crypto', id: c.id, symbol: (c.symbol || '').toUpperCase(), name: c.name }));
   },
   async 'crypto/chart'(q) {
     if (!q.id) throw new Error('missing id');
     const days = q.days || '90';
-    const d = await cached(`cc:${q.id}:${days}`, 60000, () => getJSON(`${CG}/coins/${encodeURIComponent(q.id)}/market_chart?vs_currency=usd&days=${days}`));
+    const d = await cached(`cc:${q.id}:${days}`, 60000, () => getJSON(`${CG}/coins/${encodeURIComponent(q.id)}/market_chart?vs_currency=usd&days=${days}`, cgHeaders()));
     const closes = (d.prices || []).map((p) => p[1]);
     const dates = (d.prices || []).map((p) => new Date(p[0]).toISOString());
     const volumes = (d.total_volumes || []).map((p) => p[1]);
