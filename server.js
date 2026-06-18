@@ -813,6 +813,15 @@ store.ready().then(() => {
       } catch (e) { return send(res, 502, { error: String(e.message || e) }); }
     }
     serveStatic(req, res);
+  }).on('error', (e) => {
+    if (e.code === 'EADDRINUSE') {
+      console.error(`\n  ⚠ Port ${PORT} is already in use — a Quantra server is probably already running.`);
+      console.error(`  → Either just open  http://localhost:${PORT}  (it's already up),`);
+      console.error(`  → or free the port first:  npx kill-port ${PORT}   then run  node server.js`);
+      console.error(`  → or pick another port:    set PORT=5300 && node server.js\n`);
+      process.exit(1);
+    }
+    console.error('Server error:', e.message); process.exit(1);
   }).listen(PORT, () => {
     console.log('\n  ⚡ Quantra AI Terminal  →  http://localhost:' + PORT);
     console.log('  storage: ' + store.kind + ' · billing: ' + (stripe ? 'on' : 'off') + ' · email: ' + (process.env.RESEND_API_KEY ? 'resend' : 'dev-console') + '\n');
