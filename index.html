@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -125,6 +125,12 @@
             <label>Range
               <select id="rangeSel"></select>
             </label>
+            <label>Chart
+              <select id="chartTypeSel">
+                <option value="line">Line</option>
+                <option value="candle">Candles</option>
+              </select>
+            </label>
             <label>Compare
               <input id="compareInput" type="text" placeholder="e.g. MSFT" size="7" autocomplete="off" />
             </label>
@@ -170,6 +176,15 @@
             <div><span class="label">Annualised vol</span><b id="fcVol">—</b></div>
             <div class="fc-horizons" id="fcHorizons"></div>
             <small>Monte-Carlo simulation (500 paths) — educational only, not a forecast you should trade on.</small>
+          </div>
+
+          <div class="proj" id="projCard" hidden>
+            <div class="section-title" style="margin-top:1.3rem">
+              <span>📅 Dated projection <span style="color:var(--muted-2);font-weight:400;font-size:.85rem">· check it against reality as dates arrive</span></span>
+              <a class="btn btn--ghost btn--sm" href="track-record.html" style="margin-left:auto">📈 Track record</a>
+            </div>
+            <div class="proj-asof" id="projAsof"></div>
+            <div class="proj-wrap"><table class="proj-table" id="projTable"></table></div>
           </div>
         </div>
 
@@ -235,10 +250,10 @@
     <span class="legal-links"><a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refund.html">Refunds</a></span>
   </p>
 
-  <script src="globe.js?v=6"></script>
-  <script src="auth.js?v=6"></script>
-  <script src="analysis.js?v=6"></script>
-  <script src="report.js?v=6"></script>
-  <script src="terminal.js?v=6"></script>
+  <script src="globe.js?v=7"></script>
+  <script src="auth.js?v=7"></script>
+  <script src="analysis.js?v=7"></script>
+  <script src="report.js?v=7"></script>
+  <script src="terminal.js?v=7"></script>
 </body>
 </html>

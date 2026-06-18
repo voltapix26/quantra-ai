@@ -162,7 +162,19 @@
   /* ---------------- chart (price + SMAs + forecast) ---------------- */
   const W = 720, H = 240, PAD = 8;
   let chartState = null;   // {total, histLen, vals, dates, fcMid, yAt} for hover tooltip
+  let chartType = 'line';  // 'line' | 'candle'
+  try { const ct = localStorage.getItem('quantra.charttype'); if (ct === 'candle' || ct === 'line') chartType = ct; } catch {}
+  let candleHist = null;   // OHLC source for the candle view (crypto: Binance; else: hist)
+
   function drawChart(hist, fc) {
+    const ohlc = candleHist || hist;
+    const hasOHLC = ohlc && ohlc.opens && ohlc.highs && ohlc.lows && ohlc.opens.length === ohlc.closes.length
+      && ohlc.highs.some((h, i) => h > ohlc.lows[i]);   // real OHLC (not degenerate)
+    if (chartType === 'candle' && hasOHLC) return drawCandles(ohlc, fc);
+    return drawLine(hist, fc);
+  }
+
+  function drawLine(hist, fc) {
     const svg = $('chart');
     const closes = hist.closes, s = Q.series(closes);
     const dates = hist.dates || [];
@@ -205,6 +217,45 @@
     chartState = { total, histLen: histSlice.length, vals: histSlice, dates: histDates, fcMid, yAt: y, xAt: x };
   }
 
+  function drawCandles(ohlc, fc) {
+    const svg = $('chart');
+    const view = Math.min(ohlc.closes.length, 110), start = ohlc.closes.length - view;
+    const o = ohlc.opens.slice(start), h = ohlc.highs.slice(start), l = ohlc.lows.slice(start), c = ohlc.closes.slice(start), d = (ohlc.dates || []).slice(start);
+    const s = Q.series(c);
+    const fcMid = fc ? fc.mid : [], fcHi = fc ? fc.hi : [], fcLo = fc ? fc.lo : [];
+    const all = h.concat(l, fcHi, fcLo);
+    const min = Math.min(...all), max = Math.max(...all), rng = max - min || 1;
+    const total = c.length + fcMid.length;
+    const x = (i) => PAD + (i / (total - 1)) * (W - PAD * 2);
+    const y = (v) => H - PAD - ((v - min) / rng) * (H - PAD * 2);
+    const slot = (W - PAD * 2) / total, bw = Math.max(1.2, Math.min(slot * 0.66, 9));
+    let candles = '';
+    for (let i = 0; i < c.length; i++) {
+      const up = c[i] >= o[i], col = up ? '#34D399' : '#FB7185', cx = x(i);
+      const top = Math.min(y(o[i]), y(c[i])), bh = Math.max(1, Math.abs(y(c[i]) - y(o[i])));
+      candles += `<line x1="${cx.toFixed(1)}" y1="${y(h[i]).toFixed(1)}" x2="${cx.toFixed(1)}" y2="${y(l[i]).toFixed(1)}" stroke="${col}" stroke-width="1"/>`;
+      candles += `<rect x="${(cx - bw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" fill="${col}" opacity=".9"/>`;
+    }
+    const lineFrom = (arr) => { let st = false; return arr.map((v, i) => { if (v == null) { st = false; return ''; } const cmd = st ? 'L' : 'M'; st = true; return `${cmd}${x(i).toFixed(1)} ${y(v).toFixed(1)}`; }).join(' '); };
+    const sma20Line = lineFrom(s.sma20.slice(start)), sma50Line = lineFrom(s.sma50.slice(start));
+    let fcBand = '', fcLine = '';
+    if (fc) {
+      const off = c.length;
+      const hiPath = fcHi.map((v, i) => `${i ? 'L' : 'M'}${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+      fcBand = `${hiPath} ${fcLo.map((v, i) => `L${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).reverse().join(' ')} Z`;
+      fcLine = `M${x(off - 1).toFixed(1)} ${y(c[c.length - 1]).toFixed(1)} ` + fcMid.map((v, i) => `L${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+    }
+    svg.innerHTML = `
+      ${fc ? `<path d="${fcBand}" fill="#22D3EE" opacity=".12"/>` : ''}
+      ${sma50Line ? `<path d="${sma50Line}" fill="none" stroke="#FBBF24" stroke-width="1.3" opacity=".8"/>` : ''}
+      ${sma20Line ? `<path d="${sma20Line}" fill="none" stroke="#818CF8" stroke-width="1.3" opacity=".85"/>` : ''}
+      ${candles}
+      ${fc ? `<path d="${fcLine}" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-dasharray="5 4"/>` : ''}
+      <line id="xhair" y1="${PAD}" y2="${H - PAD}" stroke="rgba(231,236,245,.45)" stroke-width="1" stroke-dasharray="3 3" style="display:none" vector-effect="non-scaling-stroke"/>
+      <circle id="xdot" r="3.6" fill="#E7ECF5" stroke="#0A0F1C" stroke-width="1" style="display:none"/>`;
+    chartState = { total, histLen: c.length, vals: c, dates: d, fcMid, yAt: y, xAt: x };
+  }
+
   /* ---------------- chart hover tooltip (date + price) ---------------- */
   function fmtTipDate(iso) {
     if (!iso) return '';
@@ -232,7 +283,10 @@
       const leftPx = (vx / W) * rect.width;
       tip.style.display = 'block';
       tip.style.left = Math.max(2, Math.min(rect.width - tip.offsetWidth - 2, leftPx - tip.offsetWidth / 2)) + 'px';
-      tip.innerHTML = `<b>${money(price, curBase)}</b><span>${isHist ? fmtTipDate(chartState.dates[idx]) : 'projected'}</span>`;
+      let when;
+      if (isHist) when = fmtTipDate(chartState.dates[idx]);
+      else { const lastIso = chartState.dates[chartState.histLen - 1]; const fd = projDateFor(lastIso, idx - chartState.histLen + 1, $('intervalSel').value, current && current.type === 'crypto'); when = 'proj · ' + fmtTipDate(fd.toISOString()); }
+      tip.innerHTML = `<b>${money(price, curBase)}</b><span>${when}</span>`;
     };
     const onLeave = () => {
       tip.style.display = 'none';
@@ -357,6 +411,34 @@
     if (hz) hz.innerHTML = (fc.horizons || []).map((h) => `<span class="fch"><i>+${h.bars} bars</i> <b class="${h.move >= 0 ? 'up' : 'down'}">${h.move >= 0 ? '+' : ''}${(h.move * 100).toFixed(1)}%</b> <em>${(h.lo * 100).toFixed(0)}…${(h.hi * 100).toFixed(0)}%</em></span>`).join('');
   }
 
+  /* ---------------- dated projections ---------------- */
+  function projDateFor(lastIso, bars, interval, isCrypto) {
+    const dt = new Date(lastIso || Date.now());
+    if (interval === '60m') return new Date(dt.getTime() + bars * 3600e3);
+    if (interval === '1m') return new Date(dt.getTime() + bars * 60e3);
+    const step = interval === '1wk' ? 7 : 1; let added = 0;
+    while (added < bars) { dt.setDate(dt.getDate() + step); if (isCrypto || (dt.getDay() !== 0 && dt.getDay() !== 6)) added++; }
+    return dt;
+  }
+  function renderProjections(fc, hist, item) {
+    const card = $('projCard'); if (!card) return;
+    if (!fc || !fc.horizons || !fc.horizons.length) { card.hidden = true; return; }
+    const interval = $('intervalSel').value, isCrypto = item.type === 'crypto';
+    const lastIso = (hist.dates && hist.dates[hist.dates.length - 1]) || null;
+    const p0 = fc.p0;
+    const fmtD = (d) => d.toLocaleString('en-US', (interval === '1m' || interval === '60m')
+      ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+      : { weekday: 'short', month: 'short', day: 'numeric' });
+    const rows = fc.horizons.map((h) => {
+      const d = projDateFor(lastIso, h.bars, interval, isCrypto);
+      const proj = p0 * (1 + h.move), lo = p0 * (1 + h.lo), hi = p0 * (1 + h.hi), up = h.move >= 0;
+      return `<tr><td>${fmtD(d)}<small>+${h.bars} ${interval === '1wk' ? 'wk' : interval === '60m' ? 'h' : interval === '1m' ? 'm' : 'sessions'}</small></td><td class="proj-px">${money(proj, curBase)}</td><td class="proj-rng">${money(lo, curBase)} – ${money(hi, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${(h.move * 100).toFixed(1)}%</td></tr>`;
+    }).join('');
+    $('projTable').innerHTML = '<tr><th>Date</th><th>Projected (P50)</th><th>Range (P10–P90)</th><th>Δ vs now</th></tr>' + rows;
+    $('projAsof').textContent = 'Anchored to ' + fmtD(new Date(lastIso || Date.now())) + ' · ' + Math.round((fc.probUp || 0) * 100) + '% modelled chance of finishing higher. Monte-Carlo projection — probabilistic, not a guarantee.';
+    card.hidden = false;
+  }
+
   /* ---------------- Quantra Score + watchlist ---------------- */
   const scoreColor = (q) => q >= 70 ? '#34D399' : q >= 56 ? '#22D3EE' : q >= 45 ? '#FBBF24' : '#FB7185';
   function setScore(res) {
@@ -442,7 +524,13 @@
         }).join('');
       } else sw.hidden = true;
 
+      // candle source: crypto needs real OHLC from Binance; others already have it in hist
+      candleHist = null;
+      if (chartType === 'candle' && item.type === 'crypto') {
+        try { candleHist = await getJSON(`${API}/crypto/ohlc?symbol=${encodeURIComponent(item.symbol)}&interval=${interval}`); } catch { candleHist = null; }
+      }
       drawChart(hist, res.forecast);
+      renderProjections(res.forecast, hist, item);
       typeOut($('dText'), res.text);
       renderPeers(peers);
       renderNews(sent, item);
@@ -575,6 +663,8 @@
   });
   $('rangeSel').addEventListener('change', () => current && select(current));
   $('compareInput').addEventListener('change', () => current && select(current));
+  const ctSel = $('chartTypeSel');
+  if (ctSel) { ctSel.value = chartType; ctSel.addEventListener('change', () => { chartType = ctSel.value; try { localStorage.setItem('quantra.charttype', chartType); } catch {} if (current) select(current); }); }
   setupChartHover();
   fillRanges();
   function gateFeature(flag, msg) {

@@ -199,6 +199,20 @@ const api = {
     const volumes = (d.total_volumes || []).map((p) => p[1]);
     return { symbol: q.id, closes, highs: closes, lows: closes, opens: closes, volumes, dates };
   },
+  // Real crypto OHLC candles via Binance klines (free, no key) for the candlestick view.
+  async 'crypto/ohlc'(q) {
+    if (!q.symbol) throw new Error('missing symbol');
+    const map = { '1m': '1m', '60m': '1h', '1d': '1d', '1wk': '1w' };
+    const interval = map[q.interval] || '1d';
+    const limit = Math.min(Math.max(parseInt(q.limit || '200', 10), 10), 1000);
+    const pair = (q.symbol || '').toUpperCase() + 'USDT';
+    return cached(`bk:${pair}:${interval}:${limit}`, 30000, async () => {
+      const d = await getJSON(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`);
+      const opens = [], highs = [], lows = [], closes = [], dates = [];
+      for (const k of d) { dates.push(new Date(k[0]).toISOString()); opens.push(+k[1]); highs.push(+k[2]); lows.push(+k[3]); closes.push(+k[4]); }
+      return { symbol: q.symbol, opens, highs, lows, closes, dates };
+    });
+  },
   async 'stock/search'(q) {
     if (!q.q) return [];
     const d = await cached(`ss:${q.q}`, 120000, () => getJSON(`${YF}/v1/finance/search?q=${encodeURIComponent(q.q)}&quotesCount=14&newsCount=0`));
