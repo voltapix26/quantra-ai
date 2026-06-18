@@ -105,12 +105,13 @@
     const m = $('acctMenu');
     if (!m.hidden) { m.hidden = true; return; }
     $('amEmail').textContent = user.email;
-    // super-admin: show the admin-panel link
-    let adm = $('amAdmin');
+    // super-admin: show the admin-panel + notes links (notes is admin-only)
+    let adm = $('amAdmin'), nts = $('amNotes');
     if (user.superAdmin) {
+      if (!nts) { nts = document.createElement('a'); nts.id = 'amNotes'; nts.href = 'notes.html'; nts.className = 'btn btn--ghost btn--block btn--sm'; nts.textContent = '📝 Notes (admin)'; nts.style.margin = '.2rem 0 .4rem'; m.insertBefore(nts, m.firstChild); }
       if (!adm) { adm = document.createElement('a'); adm.id = 'amAdmin'; adm.href = 'admin.html'; adm.className = 'btn btn--ghost btn--block btn--sm'; adm.textContent = '🛡 Admin panel'; adm.style.margin = '.2rem 0 .4rem'; m.insertBefore(adm, m.firstChild); }
-      adm.hidden = false;
-    } else if (adm) { adm.hidden = true; }
+      adm.hidden = false; nts.hidden = false;
+    } else { if (adm) adm.hidden = true; if (nts) nts.hidden = true; }
     $('amPlan').textContent = cap(user.plan || 'free');
     $('amVerify').hidden = user.verified !== false;
     $('amBilling').innerHTML = '';

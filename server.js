@@ -973,6 +973,11 @@ store.ready().then(() => {
         return send(res, 200, await handler(Object.fromEntries(u.searchParams.entries()), body));
       } catch (e) { return send(res, 502, { error: String(e.message || e) }); }
     }
+    // Notes page is super-admin only — gate it server-side (not just hide the link).
+    if (u.pathname === '/notes.html' || u.pathname === '/notes') {
+      const s = await sessionUser(req);
+      if (!s || !isSuperAdmin(s.user.email)) { res.writeHead(302, { Location: '/' }); return res.end(); }
+    }
     serveStatic(req, res);
   }).on('error', (e) => {
     if (e.code === 'EADDRINUSE') {
