@@ -199,17 +199,20 @@ const api = {
     const volumes = (d.total_volumes || []).map((p) => p[1]);
     return { symbol: q.id, closes, highs: closes, lows: closes, opens: closes, volumes, dates };
   },
-  // Real crypto OHLC candles via Binance klines (free, no key) for the candlestick view.
+  // Real crypto OHLC candles via Coinbase (free, no key, US-accessible — Binance
+  // geo-blocks US/cloud IPs with HTTP 451, so it can't be used server-side).
   async 'crypto/ohlc'(q) {
     if (!q.symbol) throw new Error('missing symbol');
-    const map = { '1m': '1m', '60m': '1h', '1d': '1d', '1wk': '1w' };
-    const interval = map[q.interval] || '1d';
-    const limit = Math.min(Math.max(parseInt(q.limit || '200', 10), 10), 1000);
-    const pair = (q.symbol || '').toUpperCase() + 'USDT';
-    return cached(`bk:${pair}:${interval}:${limit}`, 30000, async () => {
-      const d = await getJSON(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`);
+    const map = { '1m': 60, '60m': 3600, '1d': 86400, '1wk': 86400 };
+    const gran = map[q.interval] || 86400;
+    const limit = Math.min(Math.max(parseInt(q.limit || '200', 10), 10), 300);
+    const prod = (q.symbol || '').toUpperCase() + '-USD';
+    return cached(`cb:${prod}:${gran}:${limit}`, 30000, async () => {
+      const d = await getJSON(`https://api.exchange.coinbase.com/products/${encodeURIComponent(prod)}/candles?granularity=${gran}`);
+      // Coinbase rows: [time(s), low, high, open, close, volume], newest-first.
+      const rows = (Array.isArray(d) ? d : []).slice(0, limit).reverse();
       const opens = [], highs = [], lows = [], closes = [], dates = [];
-      for (const k of d) { dates.push(new Date(k[0]).toISOString()); opens.push(+k[1]); highs.push(+k[2]); lows.push(+k[3]); closes.push(+k[4]); }
+      for (const k of rows) { dates.push(new Date(k[0] * 1000).toISOString()); lows.push(+k[1]); highs.push(+k[2]); opens.push(+k[3]); closes.push(+k[4]); }
       return { symbol: q.symbol, opens, highs, lows, closes, dates };
     });
   },
