@@ -163,6 +163,17 @@ const UNIV = {
     { y: 'VWO', s: 'VWO', n: 'Emerging Markets' }, { y: 'TLT', s: 'TLT', n: '20+ Yr Treasuries' },
     { y: 'HYG', s: 'HYG', n: 'High-Yield Bonds' }, { y: 'EEM', s: 'EEM', n: 'MSCI Emerging Mkts' },
     { y: 'EFA', s: 'EFA', n: 'MSCI EAFE' }, { y: 'SMH', s: 'SMH', n: 'Semiconductor ETF' },
+    // — regional / country ETFs (US-listed, USD) —
+    { y: 'INDA', s: 'INDA', n: 'India (MSCI)' }, { y: 'EPI', s: 'EPI', n: 'India Earnings' },
+    { y: 'VGK', s: 'VGK', n: 'Europe (Vanguard)' }, { y: 'EZU', s: 'EZU', n: 'Eurozone' },
+    { y: 'EWU', s: 'EWU', n: 'United Kingdom' }, { y: 'EWG', s: 'EWG', n: 'Germany' },
+    { y: 'EWJ', s: 'EWJ', n: 'Japan' }, { y: 'MCHI', s: 'MCHI', n: 'China (MSCI)' },
+    { y: 'FXI', s: 'FXI', n: 'China Large-Cap' }, { y: 'KWEB', s: 'KWEB', n: 'China Internet' },
+    { y: 'EWY', s: 'EWY', n: 'South Korea' }, { y: 'EWT', s: 'EWT', n: 'Taiwan' },
+    { y: 'EWA', s: 'EWA', n: 'Australia' }, { y: 'EWH', s: 'EWH', n: 'Hong Kong' },
+    { y: 'EWS', s: 'EWS', n: 'Singapore' }, { y: 'EWZ', s: 'EWZ', n: 'Brazil' },
+    { y: 'EWW', s: 'EWW', n: 'Mexico' }, { y: 'KSA', s: 'KSA', n: 'Saudi Arabia' },
+    { y: 'UAE', s: 'UAE', n: 'UAE' }, { y: 'EZA', s: 'EZA', n: 'South Africa' },
   ],
   commodity: [
     { y: 'GC=F', s: 'GOLD', n: 'Gold (COMEX)' }, { y: 'SI=F', s: 'SILVER', n: 'Silver (COMEX)' },
@@ -349,7 +360,7 @@ const api = {
   async 'discover'(q) {
     const cls = q.class || 'crypto';
     const boards = {
-      crypto: () => api['crypto/markets']({}), stock: () => api['stock/board'](), etf: () => api['etf/board'](),
+      crypto: () => api['crypto/markets']({}), stock: () => api['stock/board']({ market: q.market }), etf: () => api['etf/board'](),
       commodity: () => api['commodity/board'](), index: () => api['index/board'](), fx: () => api['fx/board'](),
     };
     let raw = [];

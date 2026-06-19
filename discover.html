@@ -77,6 +77,7 @@
     <p class="dsc-lead">What's moving right now — a live heatmap, top movers and market breadth. <span id="dscAsof" style="color:var(--muted-2)"></span></p>
 
     <div class="dsc-tabs" id="dscTabs"></div>
+    <select id="dscMarket" hidden aria-label="Stock market" style="margin-bottom:1.1rem;background:var(--panel);border:1px solid var(--line-2);color:var(--text);border-radius:9px;padding:.45em .7em;font-size:.84rem;font-family:inherit"></select>
     <div id="dscBody"><div class="dsc-state">Loading live market…</div></div>
     <p class="dsc-foot">Daily % change from free live feeds; figures move when the underlying market is open (crypto trades 24/7). Click any tile to open it in the terminal. Educational — not investment advice.</p>
   </main>
@@ -86,6 +87,7 @@
     const onServer = location.protocol === 'http:' || location.protocol === 'https:';
     const TABS = [['crypto','Crypto'],['all','All markets'],['stock','Stocks'],['etf','ETFs'],['commodity','Commodities'],['index','Indices'],['fx','Forex']];
     let curClass = 'crypto';
+    let dscMarket = 'us', dscMarkets = null;
     const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const sChg = (n) => (n == null ? '—' : (n >= 0 ? '+' : '') + n.toFixed(2) + '%');
     const money = (n, c) => n == null ? '—' : (c === 'USD' || !c ? '$' : '') + Number(n).toLocaleString('en-US',{maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : Math.abs(n) >= 1 ? 2 : 6}) + (c && c !== 'USD' ? ' ' + c : '');
@@ -97,7 +99,19 @@
 
     function renderTabs() {
       $('dscTabs').innerHTML = TABS.map(([k, l]) => `<button class="dsc-tab ${k === curClass ? 'is-active' : ''}" data-c="${k}">${l}</button>`).join('');
-      $('dscTabs').querySelectorAll('.dsc-tab').forEach((b) => b.addEventListener('click', () => { curClass = b.dataset.c; renderTabs(); load(); }));
+      $('dscTabs').querySelectorAll('.dsc-tab').forEach((b) => b.addEventListener('click', () => { curClass = b.dataset.c; renderTabs(); updateMarketSel(); load(); }));
+      updateMarketSel();
+    }
+    async function updateMarketSel() {
+      const sel = $('dscMarket'); if (!sel) return;
+      const show = (curClass === 'stock') && onServer;
+      sel.hidden = !show; if (!show) return;
+      if (!dscMarkets) { try { dscMarkets = await (await fetch('/api/stock/markets')).json(); } catch { dscMarkets = []; } }
+      if (dscMarkets.length && !sel.dataset.filled) {
+        sel.innerHTML = dscMarkets.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('');
+        sel.value = dscMarket; sel.dataset.filled = '1';
+        sel.addEventListener('change', () => { dscMarket = sel.value; load(); });
+      }
     }
     function moverRow(it) {
       return `<a class="mv-row" href="${link(it)}"><span class="mv-row__sym">${esc(it.symbol)}</span><span class="mv-row__name">${esc(it.name || '')}</span><span class="mv-row__px">${money(it.price, it.currency)}</span><span class="mv-row__chg ${it.change >= 0 ? 'up' : 'down'}">${sChg(it.change)}</span></a>`;
@@ -131,7 +145,8 @@
       if (!onServer) { $('dscBody').innerHTML = '<div class="dsc-state">Run the live server to see market discovery.</div>'; return; }
       $('dscBody').innerHTML = '<div class="dsc-state">Loading live market…</div>';
       try {
-        const d = await (await fetch('/api/discover?class=' + curClass)).json();
+        const mq = (curClass === 'stock') ? '&market=' + encodeURIComponent(dscMarket) : '';
+        const d = await (await fetch('/api/discover?class=' + curClass + mq)).json();
         if (!d || !d.count) { $('dscBody').innerHTML = '<div class="dsc-state">No live data for this market right now — try another tab.</div>'; return; }
         render(d);
       } catch { $('dscBody').innerHTML = '<div class="dsc-state">Could not load the market right now.</div>'; }
