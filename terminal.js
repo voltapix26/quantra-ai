@@ -142,6 +142,24 @@
     else return '';
     return `<span class="mkt-dot ${open ? 'open' : 'closed'}" title="${open ? 'Market open' : 'Market closed'}"></span>`;
   }
+  // Re-evaluate open/closed for every board dot + the detail badge against the clock,
+  // so they flip live the moment a session opens or closes (no full reload needed).
+  function tickMarketStatus() {
+    const list = $('list');
+    if (list) board.forEach((b) => {
+      const dot = list.querySelector('.trow[data-id="' + (b.id || '').replace(/"/g, '') + '"] .mkt-dot');
+      if (!dot) return;
+      let open;
+      if (b.type === 'crypto') open = true;
+      else if (b.type === 'fx') { const d = new Date(), dow = d.getUTCDay(), hr = d.getUTCHours(); open = !((dow === 6) || (dow === 0 && hr < 22) || (dow === 5 && hr >= 22)); }
+      else if (b.tp) { const now = Math.floor(Date.now() / 1000); open = now >= b.tp[0] && now < b.tp[1]; }
+      else return;
+      dot.className = 'mkt-dot ' + (open ? 'open' : 'closed'); dot.title = open ? 'Market open' : 'Market closed';
+    });
+    if (current && state && state.history) {
+      const mk = $('dMkt'); if (mk) { const st = marketStatus(current.type, state.history.meta); if (st) { mk.textContent = st.label; mk.className = 'dmkt ' + st.cls; mk.hidden = false; } }
+    }
+  }
   function rowHTML(it) {
     const up = (it.change24h || 0) >= 0, chg = it.change24h == null ? '—' : `${up ? '+' : ''}${it.change24h.toFixed(2)}%`;
     return `<button class="trow" data-id="${it.id}" data-type="${it.type}" data-symbol="${it.symbol}" data-name="${(it.name || '').replace(/"/g, '')}">
@@ -1380,7 +1398,7 @@
     const list = $('list');
     board.forEach((b) => {
       const f = byId.get(b.id); if (!f || f.price == null) return;
-      b.price = f.price; b.change24h = f.change24h; b.changeAbs = f.changeAbs; updateRowPrice(b);
+      b.price = f.price; b.change24h = f.change24h; b.changeAbs = f.changeAbs; b.tp = f.tp; b.asOf = f.asOf; updateRowPrice(b);
       const row = list && list.querySelector('.trow[data-id="' + b.id + '"]');
       const cg = row && row.querySelector('.trow__chg');
       if (cg && f.change24h != null) { const up = f.change24h >= 0; cg.textContent = (up ? '+' : '') + f.change24h.toFixed(2) + '%'; cg.className = 'trow__chg ' + (up ? 'up' : 'down'); }
@@ -1577,6 +1595,7 @@
   // start live streams once we know which sources are available (covers any load ordering)
   loadLiveConfig().then(() => { if (assetClass === 'crypto' && board.length) startArr(); if (current) startLive(current); });
   setInterval(refreshBoardPrices, 15000);   // keep non-crypto board prices current
+  setInterval(tickMarketStatus, 20000);     // flip open/closed dots live at session boundaries
   if ($('askqSend')) $('askqSend').addEventListener('click', () => askSend());
   if ($('askqInput')) $('askqInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); askSend(); } });
   document.addEventListener('quantra:installable', () => renderPwaButtons());
