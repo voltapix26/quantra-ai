@@ -1083,6 +1083,17 @@
       else { chip.textContent = res.verdict.trend; chip.className = 'chip chip--' + (up ? 'up' : res.verdict.dir === 'down' ? 'down' : 'neutral'); }
       const SUBS = { crypto: 'Cryptocurrency · 24/7 market', stock: 'Equity / stock', etf: 'Exchange-traded fund', commodity: 'Commodity / futures', index: 'Market index', fx: 'Foreign exchange pair' };
       $('dSub').textContent = SUBS[item.type] || '—';   // always set (fundamentals may refine it for stocks)
+      // Data-freshness line: free feeds (esp. non-US/Gulf/Asian exchanges) can lag the
+      // live market, so show exactly when this price is from instead of looking "wrong".
+      { const af = $('dAsOf'); const mt = hist && hist.meta && hist.meta.regularMarketTime; const tz = hist && hist.meta && hist.meta.exchangeTimezoneName;
+        if (af) {
+          if (item.type !== 'crypto' && mt) {
+            const t = mt * 1000, ageMin = (Date.now() - t) / 60000;
+            const tstr = new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz || undefined });
+            af.textContent = `Price as of ${tstr}${tz ? ' · ' + tz.split('/').pop().replace(/_/g, ' ') : ''}${ageMin > 30 ? ' · delayed feed' : ''}`;
+            af.className = 'das-of' + (ageMin > 30 ? ' is-stale' : ''); af.hidden = false;
+          } else { af.hidden = true; }
+        } }
 
       setScore(res); updateStar(item);
       $('mTrend').textContent = res.verdict.trend; $('mRR').textContent = res.verdict.rr;

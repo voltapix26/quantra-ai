@@ -399,6 +399,8 @@ button{font-family:inherit}
 .market-sel{width:100%;margin-top:.5rem;background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:9px;color:var(--text);font-size:.84rem;font-family:inherit;padding:.45em .6em}
 .market-sel:focus{outline:none;border-color:var(--mint)}
 .market-sel option{background:#0E1525;color:#E7ECF5}
+.das-of{font-size:.72rem;color:var(--muted-2);margin-top:.25rem}
+.das-of.is-stale{color:var(--amber)}
 @media (max-width:600px){.proj-table{font-size:.8rem}.proj-table th,.proj-table td{padding:.4rem .4rem}}
 
 .disclaimer{text-align:center;color:var(--muted-2);font-size:.76rem;margin-top:.4rem}
