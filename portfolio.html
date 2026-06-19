@@ -99,7 +99,7 @@
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const fmt = (n, c) => (n == null || isNaN(n)) ? '—' : (c === 'USD' || !c ? '$' : '') + Number(n).toLocaleString('en-US', { maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : Math.abs(n) >= 1 ? 2 : 6 }) + (c && c !== 'USD' ? ' ' + c : '');
     const pctS = (n) => (n == null || isNaN(n)) ? '—' : (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
-    function mktOpen(type, tp) { if (type === 'crypto') return true; if (type === 'fx') { const d = new Date(), dw = d.getUTCDay(), h = d.getUTCHours(); return !((dw === 6) || (dw === 0 && h < 22) || (dw === 5 && h >= 22)); } if (!tp || tp.length < 2) return null; const DAY = 86400, off = tp[2] || 0, mod = (a, n) => ((a % n) + n) % n; const s = mod(tp[0] + off, DAY), e = mod(tp[1] + off, DAY), ln = Date.now() / 1000 + off; const dow = new Date(ln * 1000).getUTCDay(); if (dow === 0 || dow === 6) return false; const lt = Math.floor(ln / DAY) * DAY; return ln >= lt + s && ln < lt + e; }
+    function mktOpen(type, pr) { pr = pr || {}; if (pr.holiday) return false; if (typeof pr.mktOpen === 'boolean') return pr.mktOpen; if (type === 'crypto') return true; if (type === 'fx') { const d = new Date(), dw = d.getUTCDay(), h = d.getUTCHours(); return !((dw === 6) || (dw === 0 && h < 22) || (dw === 5 && h >= 22)); } const tp = pr.tp; if (!tp || tp.length < 2) return null; const DAY = 86400, off = tp[2] || 0, mod = (a, n) => ((a % n) + n) % n; const s = mod(tp[0] + off, DAY), e = mod(tp[1] + off, DAY), ln = Date.now() / 1000 + off; const dow = new Date(ln * 1000).getUTCDay(); if (dow === 0 || dow === 6) return false; const lt = Math.floor(ln / DAY) * DAY; return ln >= lt + s && ln < lt + e; }
 
     async function api(path, opts) {
       const headers = Object.assign({ 'Content-Type': 'application/json' }, opts && opts.headers);
@@ -173,7 +173,7 @@
         const plc = pl == null ? '' : pl >= 0 ? 'up' : 'down';
         row.querySelector('.pl').innerHTML = `<span class="${plc}">${pl == null ? '—' : (pl >= 0 ? '+' : '') + fmt(pl, cur)}</span>`;
         row.querySelector('.plp').innerHTML = `<span class="${plc}">${pctS(plp)}</span>`;
-        const dot = row.querySelector('[data-dot]'); if (dot) { const op = mktOpen(h.type, pr.tp); dot.className = 'mvdot' + (op == null ? '' : op ? ' open' : ' closed'); if (op != null) dot.title = op ? 'Market open' : 'Market closed'; }
+        const dot = row.querySelector('[data-dot]'); if (dot) { const op = mktOpen(h.type, pr); dot.className = 'mvdot' + (op == null ? '' : op ? ' open' : ' closed'); if (op != null) dot.title = op ? 'Market open' : (pr.holiday ? 'Closed · ' + pr.holiday : 'Market closed'); }
       });
       // allocation (of priced holdings)
       holdings.forEach((h, i) => {

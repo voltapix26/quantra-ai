@@ -135,9 +135,9 @@
     return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><path d="${d}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
   }
   function rowDot(it) {
-    const st = mktState(it.type, it.tp);
+    const st = mktState(it.type, it.tp, it.mktOpen, it.holiday);
     if (!st) return '';
-    return `<span class="mkt-dot ${st.open ? 'open' : 'closed'}" title="${st.open ? 'Market open' : 'Market closed'}"></span>`;
+    return `<span class="mkt-dot ${st.open ? 'open' : 'closed'}" title="${st.open ? 'Market open' : (it.holiday ? 'Closed · ' + it.holiday : 'Market closed')}"></span>`;
   }
   // Re-evaluate open/closed for every board dot + the detail badge against the clock,
   // so they flip live the moment a session opens or closes (no full reload needed).
@@ -146,9 +146,9 @@
     if (list) board.forEach((b) => {
       const dot = list.querySelector('.trow[data-id="' + (b.id || '').replace(/"/g, '') + '"] .mkt-dot');
       if (!dot) return;
-      const st = mktState(b.type, b.tp);
+      const st = mktState(b.type, b.tp, b.mktOpen, b.holiday);
       if (!st) return;
-      dot.className = 'mkt-dot ' + (st.open ? 'open' : 'closed'); dot.title = st.open ? 'Market open' : 'Market closed';
+      dot.className = 'mkt-dot ' + (st.open ? 'open' : 'closed'); dot.title = st.open ? 'Market open' : (b.holiday ? 'Closed · ' + b.holiday : 'Market closed');
     });
     if (current && state && state.history) renderDetailBadge();
   }
@@ -254,25 +254,34 @@
   }
   // Robust open/closed + countdown, computed in the exchange's local time-of-day so it's
   // immune to Yahoo's stale dates. Returns { open, label, cls, cd }.
-  function mktState(type, tp) {
-    if (type === 'crypto') return { open: true, label: 'Open · 24/7', cls: 'open', cd: '' };
-    if (type === 'fx') { const d = new Date(), dw = d.getUTCDay(), h = d.getUTCHours(); const open = !((dw === 6) || (dw === 0 && h < 22) || (dw === 5 && h >= 22)); return { open, label: open ? 'Open · 24/5' : 'Closed', cls: open ? 'open' : 'closed', cd: '' }; }
+  // Time-of-day session state from tp=[start,end,gmtoffset] (in exchange-local time).
+  function tpState(tp) {
     if (!tp || tp.length < 2) return null;
     const DAY = 86400, off = tp[2] || 0, mod = (a, n) => ((a % n) + n) % n;
     const startTod = mod(tp[0] + off, DAY), endTod = mod(tp[1] + off, DAY);
     const localNow = Date.now() / 1000 + off, dow = new Date(localNow * 1000).getUTCDay(), weekday = dow >= 1 && dow <= 5;
     const localToday = Math.floor(localNow / DAY) * DAY, todStart = localToday + startTod, todEnd = localToday + endTod;
     const fmt = (s) => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h >= 24 ? Math.round(h / 24) + 'd ' + (h % 24) + 'h' : h > 0 ? h + 'h ' + m + 'm' : m + 'm'; };
-    if (weekday && localNow >= todStart && localNow < todEnd) return { open: true, label: 'Market open', cls: 'open', cd: 'closes in ' + fmt(todEnd - localNow) };
-    if (weekday && localNow < todStart) return { open: false, label: 'Market closed', cls: 'closed', cd: 'opens in ' + fmt(todStart - localNow) };
-    let next = todStart + DAY, nd = new Date(next * 1000).getUTCDay();
-    while (nd === 0 || nd === 6) { next += DAY; nd = new Date(next * 1000).getUTCDay(); }
-    return { open: false, label: 'Market closed', cls: 'closed', cd: 'opens in ' + fmt(next - localNow) };
+    const open = weekday && localNow >= todStart && localNow < todEnd;
+    let next = todStart; if (weekday && localNow < todStart) { /* opens today */ } else { next = todStart + DAY; let nd = new Date(next * 1000).getUTCDay(); while (nd === 0 || nd === 6) { next += DAY; nd = new Date(next * 1000).getUTCDay(); } }
+    return { open, cdOpen: 'closes in ' + fmt(todEnd - localNow), cdClosed: 'opens in ' + fmt(next - localNow) };
+  }
+  // Open/closed incl. holidays: authoritative `mktOpen` (US Finnhub) + `holiday` override
+  // win; otherwise fall back to the time-of-day session window. Returns {open,label,cls,cd}.
+  function mktState(type, tp, mktOpen, holiday) {
+    if (type === 'crypto') return { open: true, label: 'Open · 24/7', cls: 'open', cd: '' };
+    if (type === 'fx') { const d = new Date(), dw = d.getUTCDay(), h = d.getUTCHours(); const open = !((dw === 6) || (dw === 0 && h < 22) || (dw === 5 && h >= 22)); return { open, label: open ? 'Open · 24/5' : 'Closed', cls: open ? 'open' : 'closed', cd: '' }; }
+    const base = tpState(tp);
+    if (holiday) return { open: false, label: 'Closed · ' + holiday, cls: 'closed', cd: base ? base.cdClosed : '' };
+    if (typeof mktOpen === 'boolean') return { open: mktOpen, label: mktOpen ? 'Market open' : 'Market closed', cls: mktOpen ? 'open' : 'closed', cd: base ? (mktOpen ? base.cdOpen : base.cdClosed) : '' };
+    if (!base) return null;
+    return { open: base.open, label: base.open ? 'Market open' : 'Market closed', cls: base.open ? 'open' : 'closed', cd: base.open ? base.cdOpen : base.cdClosed };
   }
   function renderDetailBadge() {
     const mk = $('dMkt'); if (!mk || !current) return;
-    const tp = (board.find((b) => b.id === current.id) || {}).tp || tpFromMeta(state && state.history && state.history.meta);
-    const st = mktState(current.type, tp);
+    const bi = board.find((b) => b.id === current.id) || {};
+    const tp = bi.tp || tpFromMeta(state && state.history && state.history.meta);
+    const st = mktState(current.type, tp, bi.mktOpen, bi.holiday);
     if (!st) { mk.hidden = true; return; }
     mk.textContent = st.label + (st.cd ? ' · ' + st.cd : '');
     mk.className = 'dmkt ' + st.cls; mk.hidden = false;

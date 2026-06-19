@@ -61,6 +61,36 @@ async function fhQuote(sym) {
     return { price: d.c, prev: d.pc, change: isFinite(+d.d) ? +d.d : null, changePct: isFinite(+d.dp) ? +d.dp : null, asOf: d.t ? d.t * 1000 : null };
   } catch { return null; }
 }
+// Authoritative US market status incl. holidays (Finnhub free covers US).
+async function usMarketStatus() {
+  if (!FINNHUB_KEY) return null;
+  try { const d = await cached('mst:US', 60000, () => getJSON(`${FINNHUB}/stock/market-status?exchange=US&token=${FINNHUB_KEY}`)); if (d && typeof d.isOpen === 'boolean') return { open: d.isOpen, holiday: d.holiday || null }; } catch {} return null;
+}
+const US_INDEX = new Set(['^GSPC', '^DJI', '^IXIC', '^RUT', '^VIX']);
+const isUSsym = (s) => US_INDEX.has(s) || !/[.\^=]/.test(String(s));
+// Curated 2026 full-day exchange closures (Finnhub's free holiday feed is US-only).
+// Conservative — only well-established dates, to avoid falsely marking a trading day closed.
+const HOLIDAYS_2026 = {
+  IN: ['2026-01-26', '2026-04-03', '2026-05-01', '2026-08-15', '2026-10-02', '2026-12-25'],
+  UK: ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-04', '2026-05-25', '2026-08-31', '2026-12-25', '2026-12-28'],
+  DE: ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-01', '2026-12-24', '2026-12-25', '2026-12-31'],
+  FR: ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-01', '2026-12-25'],
+  NL: ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-01', '2026-12-25'],
+  IT: ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-01', '2026-12-25'],
+  ES: ['2026-01-01', '2026-04-03', '2026-05-01', '2026-12-25'],
+  CH: ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-01', '2026-12-25', '2026-12-26'],
+  JP: ['2026-01-01', '2026-01-02', '2026-01-03', '2026-12-31'],
+  HK: ['2026-01-01', '2026-04-03', '2026-05-01', '2026-12-25'],
+  AU: ['2026-01-01', '2026-01-26', '2026-04-03', '2026-04-06', '2026-12-25', '2026-12-28'],
+  CA: ['2026-01-01', '2026-04-03', '2026-12-25'],
+  SG: ['2026-01-01', '2026-05-01', '2026-12-25'],
+};
+const HOL_REGION = { NS: 'IN', BO: 'IN', L: 'UK', DE: 'DE', PA: 'FR', AS: 'NL', MI: 'IT', MC: 'ES', SW: 'CH', T: 'JP', HK: 'HK', AX: 'AU', TO: 'CA', SI: 'SG' };
+function curatedHoliday(sym) {
+  const i = String(sym).lastIndexOf('.'); if (i < 0) return null;
+  const reg = HOL_REGION[sym.slice(i + 1)]; if (!reg) return null;
+  return (HOLIDAYS_2026[reg] || []).includes(new Date().toISOString().slice(0, 10)) ? 'Holiday' : null;
+}
 // Real-time-ish quote from Twelve Data (returns null → caller falls back to Yahoo).
 async function tdQuote(yh) {
   if (!TWELVEDATA_KEY) return null;
@@ -311,8 +341,12 @@ async function buildBoard(list, type) {
         }
       }
       const cr = meta.currentTradingPeriod && meta.currentTradingPeriod.regular;
+      let mktOpen, holiday = null;
+      if (isUSsym(sym)) { const us = await usMarketStatus(); if (us) { mktOpen = us.open; holiday = us.holiday; } }
+      else holiday = curatedHoliday(sym);
       return { type, id: sym, symbol: (it && it.s) || meta.symbol || sym, name: (it && it.n) || meta.shortName || sym,
         price, currency: ccy, change24h, changeAbs, asOf, tp: cr ? [cr.start, cr.end, cr.gmtoffset != null ? cr.gmtoffset : (meta.gmtoffset || 0)] : null,
+        mktOpen, holiday,
         marketCap: meta.marketCap || null, volume: meta.regularMarketVolume || null, spark: closes.slice(-30) };
     } catch { return null; }
   }));
@@ -423,7 +457,7 @@ const api = {
       raw = await boards[cls]().catch(() => []);
     }
     const items = raw
-      .map((it) => ({ id: it.id, symbol: it.symbol, name: it.name, type: it.type, price: it.price, change: it.change24h, marketCap: it.marketCap || null, currency: it.currency || 'USD', tp: it.tp || null }))
+      .map((it) => ({ id: it.id, symbol: it.symbol, name: it.name, type: it.type, price: it.price, change: it.change24h, marketCap: it.marketCap || null, currency: it.currency || 'USD', tp: it.tp || null, mktOpen: it.mktOpen, holiday: it.holiday || null }))
       .filter((x) => x.change != null && isFinite(x.change) && x.price != null);
     const up = items.filter((x) => x.change > 0).length, down = items.filter((x) => x.change < 0).length;
     const avg = items.length ? items.reduce((s, x) => s + x.change, 0) / items.length : 0;
@@ -560,6 +594,10 @@ const api = {
         currency: m.currency || 'USD', asOf: m.regularMarketTime ? m.regularMarketTime * 1000 : null,
         tp: cr ? [cr.start, cr.end, cr.gmtoffset != null ? cr.gmtoffset : (m.gmtoffset || 0)] : null };
     } catch {}
+    // Market status incl. holidays: authoritative US (Finnhub), curated calendar otherwise.
+    let mktOpen, holiday = null;
+    if (isUSsym(idv)) { const us = await usMarketStatus(); if (us) { mktOpen = us.open; holiday = us.holiday; } }
+    else holiday = curatedHoliday(idv);
     // Real-time override: Finnhub for US (free, live), Twelve Data for non-US (when keyed).
     const fh = await fhQuote(idv);
     const td = fh ? null : await tdQuote(idv);
@@ -568,9 +606,9 @@ const api = {
       return { ok: true, price: rt.price, change: rt.changePct != null ? +rt.changePct.toFixed(2) : (base ? base.change : null),
         changeAbs: rt.change != null ? rt.change : (base ? base.changeAbs : null),
         currency: (rt.currency) || (base ? base.currency : 'USD'), asOf: rt.asOf || (base ? base.asOf : null),
-        tp: base ? base.tp : null, source: fh ? 'finnhub' : 'twelvedata' };
+        tp: base ? base.tp : null, mktOpen, holiday, source: fh ? 'finnhub' : 'twelvedata' };
     }
-    if (base && base.price != null) return { ok: true, ...base, source: 'yahoo' };
+    if (base && base.price != null) return { ok: true, ...base, mktOpen, holiday, source: 'yahoo' };
     return { ok: false };
   },
 
