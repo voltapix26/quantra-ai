@@ -41,6 +41,28 @@ const FINNHUB_KEY = process.env.FINNHUB_API_KEY || ''; // free tier: real-time U
 const COINGECKO_KEY = process.env.COINGECKO_KEY || ''; // free "demo" key — raises limits + works from cloud IPs
 const FMP_KEY = process.env.FMP_API_KEY || '';         // Financial Modeling Prep — economic calendar (free tier)
 const MARKETAUX_KEY = process.env.MARKETAUX_API_KEY || ''; // marketaux — premium multi-source news (free tier)
+const TWELVEDATA_KEY = process.env.TWELVEDATA_API_KEY || ''; // Twelve Data — fresher global quotes incl. Gulf/Asia
+// Map a Yahoo suffix → Twelve Data exchange code so international quotes resolve.
+const TD_EXCH = { NS: 'NSE', BO: 'BSE', L: 'LSE', HK: 'HKEX', T: 'XTKS', KS: 'KRX', TW: 'TWSE', SI: 'SGX', AX: 'ASX', SR: 'Tadawul', AE: 'DFM', AD: 'ADX', JO: 'JSE', SS: 'SSE', SZ: 'SZSE', DE: 'XETR', PA: 'Euronext', AS: 'Euronext', MI: 'MTA', MC: 'BME', SW: 'SIX', ST: 'OMX', OL: 'OSL', CO: 'OMXC', TO: 'TSX', SA: 'B3', MX: 'BMV', JK: 'IDX', BK: 'SET', KL: 'Bursa' };
+function tdSymbol(yh) {
+  const i = String(yh).lastIndexOf('.');
+  if (i < 0) return { symbol: yh };                    // US / plain ticker
+  const ex = TD_EXCH[yh.slice(i + 1)];
+  return ex ? { symbol: yh.slice(0, i), exchange: ex } : { symbol: yh };
+}
+// Real-time-ish quote from Twelve Data (returns null → caller falls back to Yahoo).
+async function tdQuote(yh) {
+  if (!TWELVEDATA_KEY) return null;
+  const { symbol, exchange } = tdSymbol(yh);
+  const u = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}${exchange ? '&exchange=' + encodeURIComponent(exchange) : ''}&apikey=${TWELVEDATA_KEY}`;
+  try {
+    const d = await cached(`td:${yh}`, 15000, () => getJSON(u));
+    if (!d || d.status === 'error' || d.code) return null;
+    const price = +d.close, prev = +d.previous_close;
+    if (!isFinite(price)) return null;
+    return { price, prev: isFinite(prev) ? prev : null, change: isFinite(+d.change) ? +d.change : null, changePct: isFinite(+d.percent_change) ? +d.percent_change : null, currency: d.currency || null, asOf: d.datetime || null };
+  } catch { return null; }
+}
 const cgHeaders = () => (COINGECKO_KEY ? { 'x-cg-demo-api-key': COINGECKO_KEY } : {});
 // Super-admins (oversight only — emails/metadata + audit log, NEVER passwords).
 // Set SUPER_ADMINS="a@x.com,b@y.com". Empty = nobody has admin access (secure default).
@@ -259,8 +281,23 @@ async function buildBoard(list, type) {
         prev = (lastBarDay && rmtDay && rmtDay > lastBarDay) ? closes[closes.length - 1]
           : (closes.length >= 2 ? closes[closes.length - 2] : last);
       }
+      let price = last, ccy = meta.currency || 'USD';
+      let changeAbs = prev ? +(last - prev).toFixed(4) : 0, change24h = prev ? ((last - prev) / prev) * 100 : 0;
+      let asOf = meta.regularMarketTime ? meta.regularMarketTime * 1000 : null;
+      // International symbols (have an exchange suffix) lag most on Yahoo's free feed —
+      // override with Twelve Data's fresher quote when a key is set (falls back silently).
+      if (TWELVEDATA_KEY && String(sym).includes('.')) {
+        const td = await tdQuote(sym);
+        if (td && td.price != null) {
+          price = td.price;
+          if (td.changePct != null) change24h = td.changePct;
+          if (td.change != null) changeAbs = td.change;
+          if (td.currency) ccy = td.currency;
+          if (td.asOf) { const t = Date.parse(td.asOf); if (t) asOf = t; }
+        }
+      }
       return { type, id: sym, symbol: (it && it.s) || meta.symbol || sym, name: (it && it.n) || meta.shortName || sym,
-        price: last, currency: meta.currency || 'USD', change24h: prev ? ((last - prev) / prev) * 100 : 0,
+        price, currency: ccy, change24h, changeAbs, asOf,
         marketCap: meta.marketCap || null, volume: meta.regularMarketVolume || null, spark: closes.slice(-30) };
     } catch { return null; }
   }));
@@ -495,13 +532,20 @@ const api = {
       try { const d = await getJSON(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(String(q.symbol || idv).toLowerCase())}-${encodeURIComponent(String(idv).toLowerCase())}?quotes=USD`); const u = d && d.quotes && d.quotes.USD; if (u && u.price != null) return { ok: true, price: u.price, change: u.percent_change_24h != null ? +u.percent_change_24h.toFixed(2) : null, currency: 'USD' }; } catch {}
       return { ok: false };
     }
+    // Twelve Data first (fresher for non-US/Gulf/Asia), Yahoo fallback.
+    const td = await tdQuote(idv);
+    if (td && td.price != null) {
+      return { ok: true, price: td.price, change: td.changePct != null ? +td.changePct.toFixed(2) : null, changeAbs: td.change, currency: td.currency || 'USD', asOf: td.asOf || null, source: 'twelvedata' };
+    }
     try {
       const d = await cached(`px:y:${idv}`, 30000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(idv)}?range=1d&interval=1d`));
       const r = d.chart.result[0], closes = (r.indicators.quote[0].close || []).filter((v) => v != null);
       const price = (r.meta && r.meta.regularMarketPrice != null) ? r.meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
       const prev = r.meta && r.meta.chartPreviousClose;
       const change = (price != null && prev) ? +(((price - prev) / prev) * 100).toFixed(2) : null;
-      return { ok: true, price, change, currency: (r.meta && r.meta.currency) || 'USD' };
+      const changeAbs = (price != null && prev) ? +(price - prev).toFixed(4) : null;
+      const asOf = r.meta && r.meta.regularMarketTime ? r.meta.regularMarketTime * 1000 : null;
+      return { ok: true, price, change, changeAbs, currency: (r.meta && r.meta.currency) || 'USD', asOf, source: 'yahoo' };
     } catch { return { ok: false }; }
   },
 
@@ -1190,7 +1234,7 @@ async function authRoute(req, res, u) {
       return send(res, 200, {
         today: td, days, topPages,
         users: { total: users.length, verified, paid }, signups,
-        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, push: PUSH_ENABLED, cryptoStream: true, uptimeSec: Math.round(process.uptime()), node: process.version },
+        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, twelvedata: !!TWELVEDATA_KEY, push: PUSH_ENABLED, cryptoStream: true, uptimeSec: Math.round(process.uptime()), node: process.version },
       });
     }
     if (p === '/api/org' && m === 'GET') {

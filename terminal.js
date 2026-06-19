@@ -44,6 +44,7 @@
     const a = Math.abs(v), d = a >= 1000 ? 0 : a >= 1 ? 2 : a >= 0.01 ? 4 : 6;
     return curSym() + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: d });
   }
+  const signedMoney = (v, base) => { if (v == null || isNaN(v)) return ''; return (v >= 0 ? '+' : '−') + money(Math.abs(v), base); };
   function capMoney(amt, base) {
     const v = conv(amt, base); if (v == null) return '—'; const s = curSym();
     return v >= 1e12 ? s + (v / 1e12).toFixed(2) + 'T' : v >= 1e9 ? s + (v / 1e9).toFixed(2) + 'B' : v >= 1e6 ? s + (v / 1e6).toFixed(1) + 'M' : s + Math.round(v).toLocaleString();
@@ -1077,19 +1078,24 @@
 
       const up = res.verdict.dir !== 'down';
       $('dPrice').textContent = money(res.price, curBase);
-      const chg = (board.find((b) => b.id === item.id) || {}).change24h;
+      const bi = board.find((b) => b.id === item.id) || {};
+      const chg = bi.change24h, chgAbs = bi.changeAbs;
       const chip = $('dChange');
-      if (chg != null) { chip.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`; chip.className = 'chip chip--' + (chg >= 0 ? 'up' : 'down'); }
-      else { chip.textContent = res.verdict.trend; chip.className = 'chip chip--' + (up ? 'up' : res.verdict.dir === 'down' ? 'down' : 'neutral'); }
+      if (chg != null) {
+        const absStr = (chgAbs != null) ? ' · ' + signedMoney(chgAbs, curBase) : '';
+        chip.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%${absStr}`;
+        chip.className = 'chip chip--' + (chg >= 0 ? 'up' : 'down');
+      } else { chip.textContent = res.verdict.trend; chip.className = 'chip chip--' + (up ? 'up' : res.verdict.dir === 'down' ? 'down' : 'neutral'); }
       const SUBS = { crypto: 'Cryptocurrency · 24/7 market', stock: 'Equity / stock', etf: 'Exchange-traded fund', commodity: 'Commodity / futures', index: 'Market index', fx: 'Foreign exchange pair' };
       $('dSub').textContent = SUBS[item.type] || '—';   // always set (fundamentals may refine it for stocks)
       // Data-freshness line: free feeds (esp. non-US/Gulf/Asian exchanges) can lag the
       // live market, so show exactly when this price is from instead of looking "wrong".
       { const af = $('dAsOf'); const mt = hist && hist.meta && hist.meta.regularMarketTime; const tz = hist && hist.meta && hist.meta.exchangeTimezoneName;
+        const tMs = bi.asOf || (mt ? mt * 1000 : null);
         if (af) {
-          if (item.type !== 'crypto' && mt) {
-            const t = mt * 1000, ageMin = (Date.now() - t) / 60000;
-            const tstr = new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz || undefined });
+          if (item.type !== 'crypto' && tMs) {
+            const ageMin = (Date.now() - tMs) / 60000;
+            const tstr = new Date(tMs).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz || undefined });
             af.textContent = `Price as of ${tstr}${tz ? ' · ' + tz.split('/').pop().replace(/_/g, ' ') : ''}${ageMin > 30 ? ' · delayed feed' : ''}`;
             af.className = 'das-of' + (ageMin > 30 ? ' is-stale' : ''); af.hidden = false;
           } else { af.hidden = true; }
@@ -1227,7 +1233,7 @@
     const list = $('list');
     board.forEach((b) => {
       const f = byId.get(b.id); if (!f || f.price == null) return;
-      b.price = f.price; b.change24h = f.change24h; updateRowPrice(b);
+      b.price = f.price; b.change24h = f.change24h; b.changeAbs = f.changeAbs; updateRowPrice(b);
       const row = list && list.querySelector('.trow[data-id="' + b.id + '"]');
       const cg = row && row.querySelector('.trow__chg');
       if (cg && f.change24h != null) { const up = f.change24h >= 0; cg.textContent = (up ? '+' : '') + f.change24h.toFixed(2) + '%'; cg.className = 'trow__chg ' + (up ? 'up' : 'down'); }
