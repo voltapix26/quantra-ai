@@ -21,7 +21,10 @@
   let fxRates = { USD: 1 };
   let selCur = 'USD';
   let curBase = 'USD';         // native currency of the selected asset's prices
-  const CUR_SYM = { USD: '$', INR: '₹', AED: 'AED ', EUR: '€', GBP: '£', JPY: '¥', CNY: 'CN¥', CAD: 'C$', AUD: 'A$', SGD: 'S$', CHF: 'CHF ' };
+  const CUR_SYM = { USD: '$', INR: '₹', AED: 'AED ', EUR: '€', GBP: '£', JPY: '¥', CNY: 'CN¥', CAD: 'C$', AUD: 'A$', SGD: 'S$', HKD: 'HK$', CHF: 'CHF ' };
+  let stockMarket = 'us';      // selected stock exchange (us/nse/bse/eu/uae/hk)
+  let stockMarkets = [{ id: 'us', label: 'United States', ccy: 'USD' }];   // populated from server
+  try { const m = localStorage.getItem('quantra.market'); if (m) stockMarket = m; } catch {}
   const fxRate = (c) => fxRates[c] || 1;
   const conv = (amt, base) => (amt == null || isNaN(amt) ? null : amt * fxRate(selCur) / fxRate(base || 'USD'));
   const curSym = () => CUR_SYM[selCur] || selCur + ' ';
@@ -53,7 +56,8 @@
       return raw.map((c) => ({ type: 'crypto', id: c.id, symbol: (c.symbol || '').toUpperCase(), name: c.name, price: c.current_price, change24h: c.price_change_percentage_24h, marketCap: c.market_cap, volume: c.total_volume, spark: (c.sparkline_in_7d && c.sparkline_in_7d.price) || [] }));
     }
     if (!onServer) throw new Error('static');
-    return getJSON(`${API}/${BOARD_EP[cls] || 'stock/board'}`);
+    const q = cls === 'stock' ? `?market=${encodeURIComponent(stockMarket)}` : '';
+    return getJSON(`${API}/${BOARD_EP[cls] || 'stock/board'}${q}`);
   }
   // valid lookback ranges per interval (keeps Yahoo combos legal) + defaults
   const RANGES = {
@@ -135,6 +139,8 @@
   async function switchClass(cls) {
     assetClass = cls;
     document.querySelectorAll('.seg__btn').forEach((b) => b.classList.toggle('is-active', b.dataset.class === cls));
+    const ms = $('marketSel'); if (ms) { ms.hidden = (cls !== 'stock'); if (cls === 'stock') ms.value = stockMarket; }
+    if (cls === 'stock' && typeof applyCurrency === 'function') { const mk = stockMarkets.find((m) => m.id === stockMarket); if (mk) applyCurrency(mk.ccy, false); }
     $('search').value = ''; $('results').hidden = true;
     $('list').innerHTML = '<div class="tempty" id="empty">Loading live markets…</div>';
     try { board = await loadBoard(cls); renderBoard(); (cls === 'crypto' ? startArr() : stopArr()); if (board[0]) select(board[0]); }
@@ -1344,13 +1350,32 @@
   // restore saved currency
   try { const saved = localStorage.getItem(CUR_KEY); if (saved && validCur(saved)) { selCur = saved; $('curSel').value = saved; } } catch (_) {}
 
-  $('curSel').addEventListener('change', (e) => {
-    selCur = e.target.value;
+  function applyCurrency(cur, rerender) {
+    if (!validCur(cur)) return;
+    selCur = cur;
     try { localStorage.setItem(CUR_KEY, selCur); } catch (_) {}
+    if ($('curSel')) $('curSel').value = selCur;
     if (window.QuantraAuth && window.QuantraAuth.user) window.QuantraAuth.pushData({ prefs: { currency: selCur } });
-    renderBoard();                              // re-price the board
-    if (current) select(current);               // re-price the detail panel
-  });
+    if (rerender !== false) { renderBoard(); if (current) select(current); }
+  }
+  $('curSel').addEventListener('change', (e) => applyCurrency(e.target.value));
+
+  // Stock markets: populate the exchange selector; currency follows the exchange.
+  async function initMarkets() {
+    const sel = $('marketSel'); if (!sel || !onServer) return;
+    try { const m = await getJSON(`${API}/stock/markets`); if (Array.isArray(m) && m.length) stockMarkets = m; } catch {}
+    if (!stockMarkets.some((m) => m.id === stockMarket)) stockMarket = 'us';
+    sel.innerHTML = stockMarkets.map((m) => `<option value="${m.id}">${m.label} · ${m.ccy}</option>`).join('');
+    sel.value = stockMarket;
+    sel.addEventListener('change', () => {
+      stockMarket = sel.value;
+      try { localStorage.setItem('quantra.market', stockMarket); } catch {}
+      const mk = stockMarkets.find((m) => m.id === stockMarket);
+      if (mk) applyCurrency(mk.ccy, false);     // currency follows the exchange (re-render via switchClass)
+      switchClass('stock');
+    });
+  }
+  initMarkets();
 
   // when an account syncs, adopt its currency + refresh the watchlist UI
   window.addEventListener('quantra:synced', () => {

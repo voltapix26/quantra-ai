@@ -113,6 +113,17 @@ async function ensureCrumb() {
 const DEFAULT_STOCKS = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'AMD', 'NFLX', 'JPM', 'XOM',
   'AVGO', 'ORCL', 'CRM', 'ADBE', 'COST', 'WMT', 'DIS', 'BA', 'PYPL', 'UBER', 'INTC', 'QCOM', 'V'];
 
+/* Stocks bifurcated by exchange/market. Each market quotes in its own currency
+   (Yahoo's exchange suffix → native ccy), so the UI can follow the exchange. */
+const STOCK_MARKETS = {
+  us:  { label: 'United States', ccy: 'USD', list: DEFAULT_STOCKS },
+  nse: { label: 'India · NSE', ccy: 'INR', list: ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS', 'SBIN.NS', 'BHARTIARTL.NS', 'ITC.NS', 'LT.NS', 'HINDUNILVR.NS', 'AXISBANK.NS', 'BAJFINANCE.NS', 'MARUTI.NS', 'SUNPHARMA.NS', 'KOTAKBANK.NS', 'WIPRO.NS', 'HCLTECH.NS', 'ADANIENT.NS', 'TATASTEEL.NS', 'NTPC.NS'] },
+  bse: { label: 'India · BSE', ccy: 'INR', list: ['RELIANCE.BO', 'TCS.BO', 'HDFCBANK.BO', 'INFY.BO', 'ICICIBANK.BO', 'SBIN.BO', 'BHARTIARTL.BO', 'ITC.BO', 'LT.BO', 'HINDUNILVR.BO', 'AXISBANK.BO', 'MARUTI.BO', 'SUNPHARMA.BO', 'WIPRO.BO'] },
+  eu:  { label: 'Europe', ccy: 'EUR', list: ['SAP.DE', 'SIE.DE', 'ALV.DE', 'DTE.DE', 'BAS.DE', 'BMW.DE', 'ASML.AS', 'MC.PA', 'OR.PA', 'AIR.PA', 'IBE.MC', 'SAN.MC', 'ENEL.MI', 'ISP.MI'] },
+  uae: { label: 'UAE · Dubai', ccy: 'AED', list: ['EMAAR.AE', 'DIB.AE', 'EMIRATESNBD.AE', 'DEWA.AE', 'SALIK.AE', 'TECOM.AE', 'EMAARDEV.AE', 'DU.AE', 'AMR.AE', 'TAALEEM.AE'] },
+  hk:  { label: 'Hong Kong', ccy: 'HKD', list: ['0700.HK', '9988.HK', '0941.HK', '1299.HK', '0005.HK', '3690.HK', '0388.HK', '1810.HK', '2318.HK', '0883.HK', '1398.HK', '0939.HK', '2628.HK', '9618.HK'] },
+};
+
 /* Curated universes for the non-equity asset classes. Each entry: y = Yahoo
    symbol (used for charts/quotes), s = display ticker, n = friendly name.
    ETFs, commodities, indices and FX all flow through the same Yahoo chart
@@ -287,7 +298,11 @@ const api = {
     if (!r) throw new Error('no data');
     return { symbol: q.symbol, currency: (r.meta && r.meta.currency) || 'USD', ...alignedFromYahoo(r), meta: r.meta || {} };
   },
-  async 'stock/board'() { return cached('sb', 15000, () => buildBoard(DEFAULT_STOCKS, 'stock')); },
+  async 'stock/board'(q) {
+    const mk = (q && STOCK_MARKETS[q.market]) ? q.market : 'us';
+    return cached('sb:' + mk, 15000, () => buildBoard(STOCK_MARKETS[mk].list, 'stock'));
+  },
+  async 'stock/markets'() { return Object.entries(STOCK_MARKETS).map(([id, m]) => ({ id, label: m.label, ccy: m.ccy })); },
   async 'etf/board'() { return cached('etfb', 15000, () => buildBoard(UNIV.etf, 'etf')); },
   async 'commodity/board'() { return cached('comb', 15000, () => buildBoard(UNIV.commodity, 'commodity')); },
   async 'index/board'() { return cached('idxb', 15000, () => buildBoard(UNIV.index, 'index')); },
