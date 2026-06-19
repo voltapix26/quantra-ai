@@ -312,7 +312,7 @@ async function buildBoard(list, type) {
       }
       const cr = meta.currentTradingPeriod && meta.currentTradingPeriod.regular;
       return { type, id: sym, symbol: (it && it.s) || meta.symbol || sym, name: (it && it.n) || meta.shortName || sym,
-        price, currency: ccy, change24h, changeAbs, asOf, tp: cr ? [cr.start, cr.end] : null,
+        price, currency: ccy, change24h, changeAbs, asOf, tp: cr ? [cr.start, cr.end, cr.gmtoffset != null ? cr.gmtoffset : (meta.gmtoffset || 0)] : null,
         marketCap: meta.marketCap || null, volume: meta.regularMarketVolume || null, spark: closes.slice(-30) };
     } catch { return null; }
   }));
@@ -558,7 +558,7 @@ const api = {
       base = { price, change: (price != null && prev) ? +(((price - prev) / prev) * 100).toFixed(2) : null,
         changeAbs: (price != null && prev) ? +(price - prev).toFixed(4) : null,
         currency: m.currency || 'USD', asOf: m.regularMarketTime ? m.regularMarketTime * 1000 : null,
-        tp: cr ? [cr.start, cr.end] : null };
+        tp: cr ? [cr.start, cr.end, cr.gmtoffset != null ? cr.gmtoffset : (m.gmtoffset || 0)] : null };
     } catch {}
     // Real-time override: Finnhub for US (free, live), Twelve Data for non-US (when keyed).
     const fh = await fhQuote(idv);

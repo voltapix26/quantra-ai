@@ -135,12 +135,9 @@
     return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><path d="${d}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
   }
   function rowDot(it) {
-    let open;
-    if (it.type === 'crypto') open = true;
-    else if (it.type === 'fx') { const d = new Date(), dow = d.getUTCDay(), hr = d.getUTCHours(); open = !((dow === 6) || (dow === 0 && hr < 22) || (dow === 5 && hr >= 22)); }
-    else if (it.tp) { const now = Math.floor(Date.now() / 1000); open = now >= it.tp[0] && now < it.tp[1]; }
-    else return '';
-    return `<span class="mkt-dot ${open ? 'open' : 'closed'}" title="${open ? 'Market open' : 'Market closed'}"></span>`;
+    const st = mktState(it.type, it.tp);
+    if (!st) return '';
+    return `<span class="mkt-dot ${st.open ? 'open' : 'closed'}" title="${st.open ? 'Market open' : 'Market closed'}"></span>`;
   }
   // Re-evaluate open/closed for every board dot + the detail badge against the clock,
   // so they flip live the moment a session opens or closes (no full reload needed).
@@ -149,16 +146,11 @@
     if (list) board.forEach((b) => {
       const dot = list.querySelector('.trow[data-id="' + (b.id || '').replace(/"/g, '') + '"] .mkt-dot');
       if (!dot) return;
-      let open;
-      if (b.type === 'crypto') open = true;
-      else if (b.type === 'fx') { const d = new Date(), dow = d.getUTCDay(), hr = d.getUTCHours(); open = !((dow === 6) || (dow === 0 && hr < 22) || (dow === 5 && hr >= 22)); }
-      else if (b.tp) { const now = Math.floor(Date.now() / 1000); open = now >= b.tp[0] && now < b.tp[1]; }
-      else return;
-      dot.className = 'mkt-dot ' + (open ? 'open' : 'closed'); dot.title = open ? 'Market open' : 'Market closed';
+      const st = mktState(b.type, b.tp);
+      if (!st) return;
+      dot.className = 'mkt-dot ' + (st.open ? 'open' : 'closed'); dot.title = st.open ? 'Market open' : 'Market closed';
     });
-    if (current && state && state.history) {
-      renderDetailBadge();
-    }
+    if (current && state && state.history) renderDetailBadge();
   }
   function rowHTML(it) {
     const up = (it.change24h || 0) >= 0, chg = it.change24h == null ? '—' : `${up ? '+' : ''}${it.change24h.toFixed(2)}%`;
@@ -253,43 +245,36 @@
     if (replay.on) drawReplay(); else if (current && state) { redrawChart(); drawPanes(state.history); }
   }
   // Is the asset's exchange open right now? Uses Yahoo's per-exchange session window.
-  function marketStatus(type, meta) {
-    if (type === 'crypto') return { label: 'Open · 24/7', cls: 'open' };
-    const now = Math.floor(Date.now() / 1000);
-    if (type === 'fx') {
-      const d = new Date(), dow = d.getUTCDay(), hr = d.getUTCHours();
-      const closed = (dow === 6) || (dow === 0 && hr < 22) || (dow === 5 && hr >= 22);
-      return closed ? { label: 'Closed', cls: 'closed' } : { label: 'Open · 24/5', cls: 'open' };
-    }
-    const cp = meta && meta.currentTradingPeriod;
-    if (!cp || !cp.regular) return null;
-    if (now >= cp.regular.start && now < cp.regular.end) return { label: 'Market open', cls: 'open' };
-    if (cp.pre && now >= cp.pre.start && now < cp.pre.end) return { label: 'Pre-market', cls: 'pre' };
-    if (cp.post && now >= cp.post.start && now < cp.post.end) return { label: 'After-hours', cls: 'pre' };
-    return { label: 'Market closed', cls: 'closed' };
+  // tp from Yahoo meta → [sessionStart, sessionEnd, gmtoffset]. Yahoo's range=1d window
+  // can be a day stale, so we use the session TIME-OF-DAY against today, not the literal date.
+  function tpFromMeta(meta) {
+    const cr = meta && meta.currentTradingPeriod && meta.currentTradingPeriod.regular;
+    if (!cr) return null;
+    return [cr.start, cr.end, cr.gmtoffset != null ? cr.gmtoffset : (meta.gmtoffset || 0)];
   }
-  // "closes in 3h 5m" / "opens in 2h 14m" for the selected asset.
-  function mktCountdown(type, meta) {
-    if (type === 'crypto' || type === 'fx') return '';
-    const cp = meta && meta.currentTradingPeriod && meta.currentTradingPeriod.regular;
-    if (!cp) return '';
-    const now = Date.now() / 1000;
-    const fmt = (secs) => { secs = Math.max(0, Math.round(secs)); const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60); return h >= 24 ? Math.round(h / 24) + 'd ' + (h % 24) + 'h' : h > 0 ? h + 'h ' + m + 'm' : m + 'm'; };
-    if (now < cp.start) return 'opens in ' + fmt(cp.start - now);
-    if (now < cp.end) return 'closes in ' + fmt(cp.end - now);
-    // after the close: estimate the next session open (same time, next weekday — holidays aside)
-    let next = cp.start; while (next <= now) next += 86400;
-    let dow = new Date(next * 1000).getUTCDay();
-    while (dow === 6 || dow === 0) { next += 86400; dow = new Date(next * 1000).getUTCDay(); }
-    return 'opens in ' + fmt(next - now);
+  // Robust open/closed + countdown, computed in the exchange's local time-of-day so it's
+  // immune to Yahoo's stale dates. Returns { open, label, cls, cd }.
+  function mktState(type, tp) {
+    if (type === 'crypto') return { open: true, label: 'Open · 24/7', cls: 'open', cd: '' };
+    if (type === 'fx') { const d = new Date(), dw = d.getUTCDay(), h = d.getUTCHours(); const open = !((dw === 6) || (dw === 0 && h < 22) || (dw === 5 && h >= 22)); return { open, label: open ? 'Open · 24/5' : 'Closed', cls: open ? 'open' : 'closed', cd: '' }; }
+    if (!tp || tp.length < 2) return null;
+    const DAY = 86400, off = tp[2] || 0, mod = (a, n) => ((a % n) + n) % n;
+    const startTod = mod(tp[0] + off, DAY), endTod = mod(tp[1] + off, DAY);
+    const localNow = Date.now() / 1000 + off, dow = new Date(localNow * 1000).getUTCDay(), weekday = dow >= 1 && dow <= 5;
+    const localToday = Math.floor(localNow / DAY) * DAY, todStart = localToday + startTod, todEnd = localToday + endTod;
+    const fmt = (s) => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h >= 24 ? Math.round(h / 24) + 'd ' + (h % 24) + 'h' : h > 0 ? h + 'h ' + m + 'm' : m + 'm'; };
+    if (weekday && localNow >= todStart && localNow < todEnd) return { open: true, label: 'Market open', cls: 'open', cd: 'closes in ' + fmt(todEnd - localNow) };
+    if (weekday && localNow < todStart) return { open: false, label: 'Market closed', cls: 'closed', cd: 'opens in ' + fmt(todStart - localNow) };
+    let next = todStart + DAY, nd = new Date(next * 1000).getUTCDay();
+    while (nd === 0 || nd === 6) { next += DAY; nd = new Date(next * 1000).getUTCDay(); }
+    return { open: false, label: 'Market closed', cls: 'closed', cd: 'opens in ' + fmt(next - localNow) };
   }
   function renderDetailBadge() {
     const mk = $('dMkt'); if (!mk || !current) return;
-    const meta = state && state.history && state.history.meta;
-    const st = marketStatus(current.type, meta);
+    const tp = (board.find((b) => b.id === current.id) || {}).tp || tpFromMeta(state && state.history && state.history.meta);
+    const st = mktState(current.type, tp);
     if (!st) { mk.hidden = true; return; }
-    const cd = mktCountdown(current.type, meta);
-    mk.textContent = st.label + (cd ? ' · ' + cd : '');
+    mk.textContent = st.label + (st.cd ? ' · ' + st.cd : '');
     mk.className = 'dmkt ' + st.cls; mk.hidden = false;
   }
   // Heikin Ashi: smoothed OHLC that filters noise (a TradingView staple).
