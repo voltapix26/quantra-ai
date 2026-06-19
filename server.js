@@ -982,6 +982,18 @@ async function authRoute(req, res, u) {
         if (Array.isArray(body.screens)) d.screens = body.screens.slice(0, 50);
         if (Array.isArray(body.portfolio)) d.portfolio = body.portfolio.slice(0, 200);
         if (Array.isArray(body.layouts)) d.layouts = body.layouts.slice(0, 20);
+        if (body.paper && typeof body.paper === 'object') {
+          const pp = body.paper;
+          d.paper = {
+            cash: Number(pp.cash) || 0,
+            realized: Number(pp.realized) || 0,
+            startCash: Number(pp.startCash) || 100000,
+            startedAt: Number(pp.startedAt) || Date.now(),
+            positions: Array.isArray(pp.positions) ? pp.positions.slice(0, 100) : [],
+            trades: Array.isArray(pp.trades) ? pp.trades.slice(-200) : [],
+            journal: String(pp.journal || '').slice(0, 4000),
+          };
+        }
         if (Array.isArray(body.alerts)) d.alerts = body.alerts.slice(0, 100).map((a) => ({
           id: String(a.id || '').slice(0, 40),
           assetId: String(a.assetId || a.symbol || '').slice(0, 40),
