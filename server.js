@@ -50,6 +50,17 @@ function tdSymbol(yh) {
   const ex = TD_EXCH[yh.slice(i + 1)];
   return ex ? { symbol: yh.slice(0, i), exchange: ex } : { symbol: yh };
 }
+// Real-time US quote from Finnhub (free tier covers US stocks/ETFs only). Excludes
+// exchange-suffixed, futures (=), index (^), FX (=X). Returns null → fall back.
+const fhEligible = (s) => FINNHUB_KEY && !/[.\^=]/.test(String(s));
+async function fhQuote(sym) {
+  if (!fhEligible(sym)) return null;
+  try {
+    const d = await cached(`fhq:${sym}`, 20000, () => getJSON(`${FINNHUB}/quote?symbol=${encodeURIComponent(sym)}&token=${FINNHUB_KEY}`));
+    if (!d || d.c === 0 || d.c == null) return null;
+    return { price: d.c, prev: d.pc, change: isFinite(+d.d) ? +d.d : null, changePct: isFinite(+d.dp) ? +d.dp : null, asOf: d.t ? d.t * 1000 : null };
+  } catch { return null; }
+}
 // Real-time-ish quote from Twelve Data (returns null → caller falls back to Yahoo).
 async function tdQuote(yh) {
   if (!TWELVEDATA_KEY) return null;
@@ -284,9 +295,12 @@ async function buildBoard(list, type) {
       let price = last, ccy = meta.currency || 'USD';
       let changeAbs = prev ? +(last - prev).toFixed(4) : 0, change24h = prev ? ((last - prev) / prev) * 100 : 0;
       let asOf = meta.regularMarketTime ? meta.regularMarketTime * 1000 : null;
-      // International symbols (have an exchange suffix) lag most on Yahoo's free feed —
-      // override with Twelve Data's fresher quote when a key is set (falls back silently).
-      if (TWELVEDATA_KEY && String(sym).includes('.')) {
+      // Real-time override: Finnhub for US stocks/ETFs (free, live), Twelve Data for
+      // exchange-suffixed international symbols (when keyed). Both fall back silently.
+      if (fhEligible(sym)) {
+        const fh = await fhQuote(sym);
+        if (fh && fh.price != null) { price = fh.price; if (fh.changePct != null) change24h = fh.changePct; if (fh.change != null) changeAbs = fh.change; if (fh.asOf) asOf = fh.asOf; }
+      } else if (TWELVEDATA_KEY && String(sym).includes('.')) {
         const td = await tdQuote(sym);
         if (td && td.price != null) {
           price = td.price;
@@ -409,7 +423,7 @@ const api = {
       raw = await boards[cls]().catch(() => []);
     }
     const items = raw
-      .map((it) => ({ id: it.id, symbol: it.symbol, name: it.name, type: it.type, price: it.price, change: it.change24h, marketCap: it.marketCap || null, currency: it.currency || 'USD' }))
+      .map((it) => ({ id: it.id, symbol: it.symbol, name: it.name, type: it.type, price: it.price, change: it.change24h, marketCap: it.marketCap || null, currency: it.currency || 'USD', tp: it.tp || null }))
       .filter((x) => x.change != null && isFinite(x.change) && x.price != null);
     const up = items.filter((x) => x.change > 0).length, down = items.filter((x) => x.change < 0).length;
     const avg = items.length ? items.reduce((s, x) => s + x.change, 0) / items.length : 0;
@@ -533,21 +547,31 @@ const api = {
       try { const d = await getJSON(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(String(q.symbol || idv).toLowerCase())}-${encodeURIComponent(String(idv).toLowerCase())}?quotes=USD`); const u = d && d.quotes && d.quotes.USD; if (u && u.price != null) return { ok: true, price: u.price, change: u.percent_change_24h != null ? +u.percent_change_24h.toFixed(2) : null, currency: 'USD' }; } catch {}
       return { ok: false };
     }
-    // Twelve Data first (fresher for non-US/Gulf/Asia), Yahoo fallback.
-    const td = await tdQuote(idv);
-    if (td && td.price != null) {
-      return { ok: true, price: td.price, change: td.changePct != null ? +td.changePct.toFixed(2) : null, changeAbs: td.change, currency: td.currency || 'USD', asOf: td.asOf || null, source: 'twelvedata' };
-    }
+    // Yahoo base gives the prior close, currency and the exchange session window (tp).
+    let base = null;
     try {
-      const d = await cached(`px:y:${idv}`, 30000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(idv)}?range=1d&interval=1d`));
-      const r = d.chart.result[0], closes = (r.indicators.quote[0].close || []).filter((v) => v != null);
-      const price = (r.meta && r.meta.regularMarketPrice != null) ? r.meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
-      const prev = r.meta && r.meta.chartPreviousClose;
-      const change = (price != null && prev) ? +(((price - prev) / prev) * 100).toFixed(2) : null;
-      const changeAbs = (price != null && prev) ? +(price - prev).toFixed(4) : null;
-      const asOf = r.meta && r.meta.regularMarketTime ? r.meta.regularMarketTime * 1000 : null;
-      return { ok: true, price, change, changeAbs, currency: (r.meta && r.meta.currency) || 'USD', asOf, source: 'yahoo' };
-    } catch { return { ok: false }; }
+      const d = await cached(`px:y:${idv}`, 15000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(idv)}?range=1d&interval=1d`));
+      const r = d.chart.result[0], m = r.meta || {}, closes = (r.indicators.quote[0].close || []).filter((v) => v != null);
+      const price = (m.regularMarketPrice != null) ? m.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
+      const prev = m.chartPreviousClose;
+      const cr = m.currentTradingPeriod && m.currentTradingPeriod.regular;
+      base = { price, change: (price != null && prev) ? +(((price - prev) / prev) * 100).toFixed(2) : null,
+        changeAbs: (price != null && prev) ? +(price - prev).toFixed(4) : null,
+        currency: m.currency || 'USD', asOf: m.regularMarketTime ? m.regularMarketTime * 1000 : null,
+        tp: cr ? [cr.start, cr.end] : null };
+    } catch {}
+    // Real-time override: Finnhub for US (free, live), Twelve Data for non-US (when keyed).
+    const fh = await fhQuote(idv);
+    const td = fh ? null : await tdQuote(idv);
+    const rt = fh || td;
+    if (rt && rt.price != null) {
+      return { ok: true, price: rt.price, change: rt.changePct != null ? +rt.changePct.toFixed(2) : (base ? base.change : null),
+        changeAbs: rt.change != null ? rt.change : (base ? base.changeAbs : null),
+        currency: (rt.currency) || (base ? base.currency : 'USD'), asOf: rt.asOf || (base ? base.asOf : null),
+        tp: base ? base.tp : null, source: fh ? 'finnhub' : 'twelvedata' };
+    }
+    if (base && base.price != null) return { ok: true, ...base, source: 'yahoo' };
+    return { ok: false };
   },
 
   /* ---- screener.in-style fundamentals (Yahoo quoteSummary) ---- */

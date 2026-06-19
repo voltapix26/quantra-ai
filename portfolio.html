@@ -34,6 +34,8 @@
     table.pf-t td{padding:.6rem .8rem;border-bottom:1px solid var(--line);color:var(--muted);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
     table.pf-t tr:last-child td{border-bottom:0}
     .pf-name b{color:var(--text);font-family:'Space Grotesk'}.pf-name small{display:block;color:var(--muted-2);font-size:.72rem}
+    .mvdot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
+    .mvdot.open{background:var(--mint)}.mvdot.closed{background:#5A6680}
     .pf-cls{font-size:.66rem;font-weight:600;padding:.1em .4em;border-radius:5px;color:var(--cyan);background:rgba(34,211,238,.12)}
     .pf-del{background:none;border:0;color:var(--muted-2);cursor:pointer;font-size:.9rem}.pf-del:hover{color:var(--rose)}
     .pf-empty{padding:2.4rem 1rem;text-align:center;color:var(--muted)}
@@ -97,6 +99,7 @@
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const fmt = (n, c) => (n == null || isNaN(n)) ? '—' : (c === 'USD' || !c ? '$' : '') + Number(n).toLocaleString('en-US', { maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : Math.abs(n) >= 1 ? 2 : 6 }) + (c && c !== 'USD' ? ' ' + c : '');
     const pctS = (n) => (n == null || isNaN(n)) ? '—' : (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+    function mktOpen(type, tp) { if (type === 'crypto') return true; if (type === 'fx') { const d = new Date(), dw = d.getUTCDay(), h = d.getUTCHours(); return !((dw === 6) || (dw === 0 && h < 22) || (dw === 5 && h >= 22)); } if (tp) { const n = Math.floor(Date.now() / 1000); return n >= tp[0] && n < tp[1]; } return null; }
 
     async function api(path, opts) {
       const headers = Object.assign({ 'Content-Type': 'application/json' }, opts && opts.headers);
@@ -150,7 +153,7 @@
         return;
       }
       $('pfTable').innerHTML = '<tr><th>Asset</th><th>Qty</th><th>Avg cost</th><th>Price</th><th>Value</th><th>P&amp;L</th><th>P&amp;L %</th><th>Alloc</th><th></th></tr>' +
-        holdings.map((h, i) => `<tr data-i="${i}"><td class="pf-name"><b>${esc(h.symbol)}</b> <span class="pf-cls">${esc(h.type)}</span><small>${esc(h.name)}</small></td>
+        holdings.map((h, i) => `<tr data-i="${i}"><td class="pf-name"><b><span class="mvdot" data-dot></span>${esc(h.symbol)}</b> <span class="pf-cls">${esc(h.type)}</span><small>${esc(h.name)}</small></td>
           <td>${h.qty}</td><td>${fmt(h.cost)}</td><td class="px">…</td><td class="val">…</td><td class="pl">…</td><td class="plp">…</td><td class="alloc">…</td>
           <td><button class="pf-del" data-del="${i}" aria-label="remove">✕</button></td></tr>`).join('');
       $('pfTable').querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => removeHolding(+b.dataset.del)));
@@ -170,6 +173,7 @@
         const plc = pl == null ? '' : pl >= 0 ? 'up' : 'down';
         row.querySelector('.pl').innerHTML = `<span class="${plc}">${pl == null ? '—' : (pl >= 0 ? '+' : '') + fmt(pl, cur)}</span>`;
         row.querySelector('.plp').innerHTML = `<span class="${plc}">${pctS(plp)}</span>`;
+        const dot = row.querySelector('[data-dot]'); if (dot) { const op = mktOpen(h.type, pr.tp); dot.className = 'mvdot' + (op == null ? '' : op ? ' open' : ' closed'); if (op != null) dot.title = op ? 'Market open' : 'Market closed'; }
       });
       // allocation (of priced holdings)
       holdings.forEach((h, i) => {

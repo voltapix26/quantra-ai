@@ -31,6 +31,8 @@
     .mv-row{display:flex;align-items:center;gap:.6rem;padding:.42rem .8rem;cursor:pointer;border-radius:8px}
     .mv-row:hover{background:rgba(255,255,255,.04)}
     .mv-row__sym{font-family:'Space Grotesk';font-weight:700;min-width:60px}
+    .mvdot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
+    .mvdot.open{background:var(--mint)}.mvdot.closed{background:#5A6680}
     .mv-row__name{color:var(--muted-2);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
     .mv-row__px{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.82rem}
     .mv-row__chg{font-variant-numeric:tabular-nums;font-weight:600;min-width:62px;text-align:right}
@@ -113,8 +115,16 @@
         sel.addEventListener('change', () => { dscMarket = sel.value; load(); });
       }
     }
+    function mktDot(it) {
+      let open;
+      if (it.type === 'crypto') open = true;
+      else if (it.type === 'fx') { const d = new Date(), dw = d.getUTCDay(), h = d.getUTCHours(); open = !((dw === 6) || (dw === 0 && h < 22) || (dw === 5 && h >= 22)); }
+      else if (it.tp) { const n = Math.floor(Date.now() / 1000); open = n >= it.tp[0] && n < it.tp[1]; }
+      else return '';
+      return `<span class="mvdot ${open ? 'open' : 'closed'}" title="${open ? 'Market open' : 'Market closed'}"></span>`;
+    }
     function moverRow(it) {
-      return `<a class="mv-row" href="${link(it)}"><span class="mv-row__sym">${esc(it.symbol)}</span><span class="mv-row__name">${esc(it.name || '')}</span><span class="mv-row__px">${money(it.price, it.currency)}</span><span class="mv-row__chg ${it.change >= 0 ? 'up' : 'down'}">${sChg(it.change)}</span></a>`;
+      return `<a class="mv-row" href="${link(it)}"><span class="mv-row__sym">${mktDot(it)}${esc(it.symbol)}</span><span class="mv-row__name">${esc(it.name || '')}</span><span class="mv-row__px">${money(it.price, it.currency)}</span><span class="mv-row__chg ${it.change >= 0 ? 'up' : 'down'}">${sChg(it.change)}</span></a>`;
     }
     function render(d) {
       const b = d.breadth, tot = Math.max(1, d.count);
