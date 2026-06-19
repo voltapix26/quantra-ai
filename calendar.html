@@ -103,7 +103,13 @@
       return `<a class="cal-item" href="index.html?type=stock&id=${encodeURIComponent(e.symbol)}&symbol=${encodeURIComponent(e.symbol)}&name=${encodeURIComponent(e.symbol)}"><span class="cal-item__sym">${esc(e.symbol)}</span><span class="cal-item__name">Q${e.quarter || ''} ${e.year || ''} ${tag}</span><span class="cal-item__meta">${eps}${rev}</span></a>`;
     };
     const ipoItem = (e) => `<div class="cal-item"><span class="cal-item__sym">${esc(e.symbol || '—')}</span><span class="cal-item__name">${esc(e.name || '')} · ${esc(e.exchange || '')}</span><span class="cal-item__meta">${e.price ? '<b>$' + esc(e.price) + '</b>' : ''}${e.numberOfShares ? ' · ' + (e.numberOfShares / 1e6).toFixed(1) + 'M sh' : ''}</span></div>`;
-    const econItem = (e) => `<div class="cal-item"><span class="cal-item__sym" style="min-width:46px">${esc(e.country || 'US')}</span><span class="cal-item__name">${esc(e.event || '')}</span><span class="cal-item__meta">${e.estimate != null ? 'est <b>' + esc(e.estimate) + '</b>' : ''}${e.prev != null ? ' · prev ' + esc(e.prev) : ''}</span></div>`;
+    const econItem = (e) => {
+      const imp = e.impact ? `<span class="cal-tag ${e.impact === 'High' ? 'bmo' : 'amc'}">${esc(e.impact)}</span>` : '';
+      const actual = e.actual != null && e.actual !== '' ? `act <b>${esc(e.actual)}</b> · ` : '';
+      const est = e.estimate != null && e.estimate !== '' ? `est ${esc(e.estimate)}` : '';
+      const prev = e.prev != null && e.prev !== '' ? ` · prev ${esc(e.prev)}` : '';
+      return `<div class="cal-item"><span class="cal-item__sym" style="min-width:42px">${esc(e.country || 'US')}</span><span class="cal-item__name">${esc(e.event || '')} ${imp}</span><span class="cal-item__meta">${actual}${est}${prev}</span></div>`;
+    };
 
     function renderDays(events, itemFn, empty) {
       if (!events.length) { $('calBody').innerHTML = `<div class="cal-state">${empty}</div>`; return; }

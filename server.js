@@ -39,6 +39,8 @@ const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 const AI_MODEL = process.env.QUANTRA_AI_MODEL || '';
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || ''; // free tier: real-time US stock quotes + news
 const COINGECKO_KEY = process.env.COINGECKO_KEY || ''; // free "demo" key — raises limits + works from cloud IPs
+const FMP_KEY = process.env.FMP_API_KEY || '';         // Financial Modeling Prep — economic calendar (free tier)
+const MARKETAUX_KEY = process.env.MARKETAUX_API_KEY || ''; // marketaux — premium multi-source news (free tier)
 const cgHeaders = () => (COINGECKO_KEY ? { 'x-cg-demo-api-key': COINGECKO_KEY } : {});
 // Super-admins (oversight only — emails/metadata + audit log, NEVER passwords).
 // Set SUPER_ADMINS="a@x.com,b@y.com". Empty = nobody has admin access (secure default).
@@ -343,16 +345,49 @@ const api = {
     } catch { return { ok: false, reason: 'fetch', events: [] }; }
   },
 
-  /* ---- economic calendar (Finnhub — premium; degrades gracefully) ---- */
+  /* ---- economic calendar — FMP (real macro feed) → Finnhub → graceful fallback ---- */
   async 'calendar/economic'() {
-    if (!FINNHUB_KEY) return { ok: false, premium: false, reason: 'no-key', events: [] };
+    const from = new Date().toISOString().slice(0, 10);
+    const to = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    // 1) Financial Modeling Prep — proper macro calendar with impact + estimate/prev/actual
+    if (FMP_KEY) {
+      try {
+        const d = await cached(`econ:fmp:${from}`, 3600000, () => getJSON(`https://financialmodelingprep.com/api/v3/economic_calendar?from=${from}&to=${to}&apikey=${FMP_KEY}`));
+        if (Array.isArray(d) && d.length) {
+          const evs = d.filter((e) => (e.country === 'US' || e.country === 'United States') && (e.impact === 'High' || e.impact === 'Medium'))
+            .map((e) => ({ date: String(e.date || '').slice(0, 10), time: e.date, country: 'US', event: e.event, estimate: e.estimate, prev: e.previous, actual: e.actual, impact: e.impact }))
+            .slice(0, 80);
+          if (evs.length) return { ok: true, source: 'fmp', count: evs.length, events: evs };
+        }
+      } catch {}
+    }
+    // 2) Finnhub (premium on most plans — used if your key has access)
+    if (FINNHUB_KEY) {
+      try {
+        const d = await cached('econ', 3600000, () => getJSON(`${FINNHUB}/calendar/economic?token=${FINNHUB_KEY}`));
+        if (d && !d.error && d.economicCalendar) {
+          const evs = d.economicCalendar.filter((e) => (!e.country || e.country === 'US') && (e.time || '').slice(0, 10) >= from)
+            .map((e) => ({ date: (e.time || '').slice(0, 10), time: e.time, country: e.country || 'US', event: e.event, estimate: e.estimate, prev: e.prev, actual: e.actual, impact: e.impact })).slice(0, 80);
+          if (evs.length) return { ok: true, source: 'finnhub', count: evs.length, events: evs };
+        }
+      } catch {}
+    }
+    return { ok: false, premium: true, events: [] };
+  },
+
+  /* ---- premium multi-source news (marketaux) with source attribution ---- */
+  async 'news/premium'(q) {
+    if (!MARKETAUX_KEY) return { ok: false, reason: 'no-key', news: [] };
+    const sym = q.symbol ? `&symbols=${encodeURIComponent(String(q.symbol).toUpperCase())}` : '';
     try {
-      const d = await cached('econ', 3600000, () => getJSON(`${FINNHUB}/calendar/economic?token=${FINNHUB_KEY}`));
-      if (!d || d.error || !d.economicCalendar) return { ok: false, premium: true, events: [] };
-      const from = new Date().toISOString().slice(0, 10);
-      const evs = d.economicCalendar.filter((e) => (!e.country || e.country === 'US') && (e.time || '').slice(0, 10) >= from).slice(0, 80);
-      return { ok: true, count: evs.length, events: evs };
-    } catch { return { ok: false, premium: true, events: [] }; }
+      const d = await cached(`mx:${q.symbol || 'general'}`, 600000, () => getJSON(`https://api.marketaux.com/v1/news/all?language=en&filter_entities=true&limit=12${sym}&api_token=${MARKETAUX_KEY}`));
+      const news = (d.data || []).map((n) => ({
+        title: n.title, url: n.url, source: n.source, publisher: n.source, time: n.published_at,
+        snippet: n.description || n.snippet || '',
+        sentiment: (n.entities && n.entities[0] && typeof n.entities[0].sentiment_score === 'number') ? +n.entities[0].sentiment_score.toFixed(2) : null,
+      }));
+      return { ok: true, count: news.length, news };
+    } catch { return { ok: false, reason: 'fetch', news: [] }; }
   },
 
   /* ---- personalized AI daily brief (watchlist digest) ---- */
@@ -1081,7 +1116,7 @@ async function authRoute(req, res, u) {
       return send(res, 200, {
         today: td, days, topPages,
         users: { total: users.length, verified, paid }, signups,
-        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, cryptoStream: true, uptimeSec: Math.round(process.uptime()), node: process.version },
+        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, push: PUSH_ENABLED, cryptoStream: true, uptimeSec: Math.round(process.uptime()), node: process.version },
       });
     }
     if (p === '/api/org' && m === 'GET') {

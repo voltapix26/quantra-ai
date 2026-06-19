@@ -18,14 +18,20 @@
   const esc = (s) => (s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   function card(n) {
+    const src = n.source || n.publisher || '';
+    const badge = src ? `<span class="ncard__src">${esc(src)}</span>` : '';
+    const sent = (typeof n.sentiment === 'number')
+      ? `<span class="ncard__sent ${n.sentiment > 0.05 ? 'pos' : n.sentiment < -0.05 ? 'neg' : ''}">${n.sentiment > 0.05 ? '▲' : n.sentiment < -0.05 ? '▼' : '•'} ${n.sentiment.toFixed(2)}</span>` : '';
     const tickers = (n.tickers || []).slice(0, 4).map((t) => `<span>${esc(t)}</span>`).join('');
     const thumb = n.thumb ? `<div class="ncard__thumb" style="background-image:url('${esc(n.thumb)}')"></div>` : '';
-    return `<a class="ncard" href="${esc(n.link)}" target="_blank" rel="noopener noreferrer">
+    const link = n.link || n.url || '#';
+    return `<a class="ncard" href="${esc(link)}" target="_blank" rel="noopener noreferrer">
       ${thumb}
       <div class="ncard__body">
         <div class="ncard__title">${esc(n.title)}</div>
+        ${n.snippet ? `<div class="ncard__snip">${esc(String(n.snippet).slice(0, 150))}</div>` : ''}
         <div class="ncard__tickers">${tickers}</div>
-        <div class="ncard__meta"><span>${esc(n.publisher || '')}</span><span>${timeAgo(n.time)}</span></div>
+        <div class="ncard__meta"><span>${badge}${sent}</span><span>${timeAgo(n.time)}</span></div>
       </div></a>`;
   }
 
@@ -39,7 +45,10 @@
     grid.innerHTML = '<div class="news-empty">Loading latest headlines…</div>';
     if (!onServer) { grid.innerHTML = '<div class="news-empty">News needs the live server.<br>Run <code>node server.js</code>, then open <b>localhost:5280/news.html</b></div>'; return; }
     try {
-      const news = await (await fetch(`${API}/stock/news?symbol=${encodeURIComponent(symbol)}`)).json();
+      let news = [];
+      // premium multi-source first (Bloomberg/Reuters/CNBC via marketaux, when a key is set)
+      try { const p = await (await fetch(`${API}/news/premium?symbol=${encodeURIComponent(symbol)}`)).json(); if (p && p.ok && p.news && p.news.length) news = p.news; } catch {}
+      if (!news.length) news = await (await fetch(`${API}/stock/news?symbol=${encodeURIComponent(symbol)}`)).json();
       if (!news.length) { grid.innerHTML = `<div class="news-empty">No recent headlines found for ${esc(symbol)}.</div>`; return; }
       grid.innerHTML = news.map(card).join('');
     } catch (e) {
