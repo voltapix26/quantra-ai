@@ -44,11 +44,32 @@ const cgHeaders = () => (COINGECKO_KEY ? { 'x-cg-demo-api-key': COINGECKO_KEY } 
 // Set SUPER_ADMINS="a@x.com,b@y.com". Empty = nobody has admin access (secure default).
 const SUPER_ADMINS = new Set((process.env.SUPER_ADMINS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
 const isSuperAdmin = (email) => SUPER_ADMINS.has(String(email || '').toLowerCase());
+
+// Web Push (PWA notifications) — optional; enabled only when VAPID keys are set.
+let webpush = null, PUSH_ENABLED = false;
+const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '', VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
+try {
+  if (VAPID_PUBLIC && VAPID_PRIVATE) {
+    webpush = require('web-push');
+    webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@quantra.ai', VAPID_PUBLIC, VAPID_PRIVATE);
+    PUSH_ENABLED = true;
+  }
+} catch (e) { console.warn('[push] web-push unavailable:', e.message); }
+async function sendPush(subs, payload) {
+  if (!PUSH_ENABLED || !subs || !subs.length) return [];
+  const dead = [];
+  await Promise.all(subs.map(async (s) => {
+    try { await webpush.sendNotification(s, JSON.stringify(payload)); }
+    catch (e) { if (e.statusCode === 404 || e.statusCode === 410) dead.push(s.endpoint); }
+  }));
+  return dead;   // endpoints that are gone — caller prunes them
+}
 let Anthropic = null;
 try { Anthropic = require('@anthropic-ai/sdk'); } catch { /* SDK not installed — AI feature disabled */ }
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json' };
+  '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json; charset=utf-8' };
 
 /* ---- TTL cache ---- */
 const cache = new Map();
@@ -644,10 +665,15 @@ async function fireAlert(entry, price) {
   const al = (d.alerts || []).find((y) => y.id === aId);
   if (!al || al.status !== 'active') { alertIdx = alertIdx.filter((y) => !(y.userId === userId && y.alert.id === aId)); return; }
   al.status = 'triggered'; al.triggeredAt = Date.now(); al.triggeredPrice = price;
-  try { await store.putUserData(userId, d); } catch {}
   alertIdx = alertIdx.filter((y) => !(y.userId === userId && y.alert.id === aId));
   const cond = alertCondText(al);
   const pretty = '$' + Number(price).toLocaleString('en-US', { maximumFractionDigits: price >= 1000 ? 0 : price >= 1 ? 2 : 6 });
+  // push to the user's devices (and prune dead subscriptions) before persisting
+  if (PUSH_ENABLED && Array.isArray(d.pushSubs) && d.pushSubs.length) {
+    const dead = await sendPush(d.pushSubs, { title: `🔔 ${al.symbol} alert`, body: `${al.symbol} ${cond}. Now ${pretty}.`, url: APP_URL });
+    if (dead.length) d.pushSubs = d.pushSubs.filter((x) => !dead.includes(x.endpoint));
+  }
+  try { await store.putUserData(userId, d); } catch {}
   sendMail(email, `🔔 ${al.symbol} ${cond}`,
     shell(`${al.symbol} alert triggered`, `<p style="color:#93A0B8">Your Quantra alert fired — <b style="color:#E7ECF5">${al.symbol}</b> ${cond}.</p><p style="color:#E7ECF5;font-size:20px;margin:14px 0"><b>Now: ${pretty}</b></p>${btn(APP_URL, 'Open Quantra AI')}`),
     `Quantra alert: ${al.symbol} ${cond}. Now ${pretty}.`).catch(() => {});
@@ -1025,6 +1051,32 @@ async function authRoute(req, res, u) {
       if (tooMany(res, 'ask:' + clientIp(req), 40, 3600000)) return;   // 40 questions / hour / IP
       return send(res, 200, await api['ai/ask'](Object.fromEntries(u.searchParams.entries()), body));
     }
+    if (p === '/api/push/config' && m === 'GET') return send(res, 200, { enabled: PUSH_ENABLED, publicKey: VAPID_PUBLIC });
+    if (p === '/api/push/subscribe' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const sub = body.subscription;
+      if (!sub || !sub.endpoint) return send(res, 400, { error: 'Bad subscription.' });
+      const d = await store.getUserData(s.user.id);
+      d.pushSubs = (d.pushSubs || []).filter((x) => x.endpoint !== sub.endpoint);
+      d.pushSubs.unshift(sub); if (d.pushSubs.length > 10) d.pushSubs = d.pushSubs.slice(0, 10);
+      await store.putUserData(s.user.id, d);
+      return send(res, 200, { ok: true });
+    }
+    if (p === '/api/push/unsubscribe' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const d = await store.getUserData(s.user.id);
+      d.pushSubs = (d.pushSubs || []).filter((x) => x.endpoint !== (body.endpoint || ''));
+      await store.putUserData(s.user.id, d);
+      return send(res, 200, { ok: true });
+    }
+    if (p === '/api/push/test' && m === 'POST') {   // send a test push to this user's devices
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      if (!PUSH_ENABLED) return send(res, 200, { ok: false, reason: 'disabled' });
+      const d = await store.getUserData(s.user.id);
+      const dead = await sendPush(d.pushSubs || [], { title: '🔔 Quantra test', body: 'Push notifications are working on this device.', url: APP_URL });
+      if (dead.length) { d.pushSubs = (d.pushSubs || []).filter((x) => !dead.includes(x.endpoint)); await store.putUserData(s.user.id, d); }
+      return send(res, 200, { ok: true, sent: (d.pushSubs || []).length });
+    }
     if (p === '/api/billing/checkout' && m === 'POST') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       if (!stripe) return send(res, 200, { ok: false, reason: 'billing-disabled' });
@@ -1250,7 +1302,7 @@ store.ready().then(() => {
       await trackDevSeed(); return send(res, 200, { ok: true });
     }
     if (u.pathname === '/api/billing/webhook') return billingWebhook(req, res);
-    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/billing/')) {
+    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname.startsWith('/api/billing/')) {
       return authRoute(req, res, u);
     }
     if (u.pathname.startsWith('/api/')) {

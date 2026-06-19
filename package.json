@@ -10,8 +10,8 @@
     "node": ">=22"
   },
   "dependencies": {
-    "pg": "^8.21.0",
     "@anthropic-ai/sdk": "^0.104.2",
+    "pg": "^8.21.0",
     "stripe": "^22.2.1"
   },
   "optionalDependencies": {
@@ -20,6 +20,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-icons": "^5.6.0",
-    "sharp": "^0.35.1"
+    "sharp": "^0.35.1",
+    "web-push": "^3.6.7"
   }
 }

@@ -764,7 +764,7 @@
     const card = $('alertsCard'); if (!card) return;
     card.hidden = false;
     if ($('alFor')) $('alFor').textContent = item.symbol;
-    renderAlertsCard();
+    renderAlertsCard(); renderPwaButtons();
   }
   function createAlert() {
     if (!current) return R && R.toast && R.toast('Select an asset first.');
@@ -792,6 +792,32 @@
       <span class="al-row__status ${a.status}">${a.status === 'triggered' ? '✓ fired' : 'active'}</span>
       <button class="al-row__del" data-al="${a.id}" aria-label="delete alert">✕</button></div>`).join('');
     list.querySelectorAll('[data-al]').forEach((b) => b.addEventListener('click', () => deleteAlert(b.dataset.al)));
+  }
+  // PWA install + per-device push controls, shown inside the alerts card
+  async function renderPwaButtons() {
+    const el = $('alertsPwa'); if (!el || !window.QuantraPWA) return;
+    const cfg = await window.QuantraPWA.pushConfig().catch(() => ({ enabled: false }));
+    const st = await window.QuantraPWA.pushState().catch(() => 'unsupported');
+    const parts = [];
+    if (window.QuantraPWA.hasInstall()) parts.push('<button class="btn btn--ghost btn--sm" id="pwaInstall">📲 Install app</button>');
+    if (cfg.enabled) {
+      if (!signedIn()) parts.push('<span class="alerts-empty">Sign in to push alerts to this device.</span>');
+      else if (st === 'on') parts.push('<button class="btn btn--ghost btn--sm" id="pwaPush" data-on="1">🔔 Push on · send test</button>');
+      else if (st === 'denied') parts.push('<span class="alerts-empty">Push blocked in browser settings.</span>');
+      else if (st !== 'unsupported') parts.push('<button class="btn btn--ghost btn--sm" id="pwaPush">🔔 Enable push on this device</button>');
+    }
+    el.innerHTML = parts.join('');
+    const ib = $('pwaInstall'); if (ib) ib.addEventListener('click', () => window.QuantraPWA.promptInstall());
+    const pb = $('pwaPush'); if (pb) pb.addEventListener('click', async () => {
+      if (pb.dataset.on) {
+        try { const t = localStorage.getItem('quantra.sid') || ''; const r = await fetch(`${API}/push/test`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t } }).then((x) => x.json()); R && R.toast && R.toast(r && r.ok ? 'Test push sent 🔔' : 'Could not send test.'); } catch { R && R.toast && R.toast('Could not send test.'); }
+      } else {
+        pb.disabled = true;
+        const r = await window.QuantraPWA.enablePush();
+        R && R.toast && R.toast(r.ok ? 'Push enabled on this device 🔔' : r.reason === 'denied' ? 'Notification permission denied.' : r.reason === 'unsupported' ? 'Push not supported on this browser.' : r.reason === 'signin' ? 'Sign in first.' : 'Push unavailable.');
+        renderPwaButtons();
+      }
+    });
   }
 
   /* ---------------- live seconds (tick) chart ---------------- */
@@ -1211,6 +1237,7 @@
   setInterval(refreshBoardPrices, 25000);   // keep non-crypto board prices current
   if ($('askqSend')) $('askqSend').addEventListener('click', () => askSend());
   if ($('askqInput')) $('askqInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); askSend(); } });
+  document.addEventListener('quantra:installable', () => renderPwaButtons());
   if ($('alCreate')) $('alCreate').addEventListener('click', createAlert);
   if ($('alValue')) $('alValue').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); createAlert(); } });
   // pull server-side alert state (picks up triggers fired while away) on load, on sync, and every 60s
