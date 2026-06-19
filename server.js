@@ -175,13 +175,27 @@ const UNIV = {
     { y: 'CT=F', s: 'COTTON', n: 'Cotton' }, { y: 'LE=F', s: 'CATTLE', n: 'Live Cattle' },
   ],
   index: [
-    { y: '^GSPC', s: 'S&P 500', n: 'S&P 500 Index' }, { y: '^DJI', s: 'DOW', n: 'Dow Jones Industrial' },
-    { y: '^IXIC', s: 'NASDAQ', n: 'Nasdaq Composite' }, { y: '^RUT', s: 'RUSSELL', n: 'Russell 2000' },
-    { y: '^VIX', s: 'VIX', n: 'Volatility Index' }, { y: '^FTSE', s: 'FTSE', n: 'FTSE 100 (UK)' },
-    { y: '^GDAXI', s: 'DAX', n: 'DAX (Germany)' }, { y: '^FCHI', s: 'CAC40', n: 'CAC 40 (France)' },
+    // Americas
+    { y: '^GSPC', s: 'S&P 500', n: 'S&P 500 (US)' }, { y: '^DJI', s: 'DOW', n: 'Dow Jones (US)' },
+    { y: '^IXIC', s: 'NASDAQ', n: 'Nasdaq Composite (US)' }, { y: '^RUT', s: 'RUSSELL', n: 'Russell 2000 (US)' },
+    { y: '^VIX', s: 'VIX', n: 'Volatility Index (US)' }, { y: '^GSPTSE', s: 'TSX', n: 'S&P/TSX (Canada)' },
+    { y: '^BVSP', s: 'BOVESPA', n: 'Ibovespa (Brazil)' }, { y: '^MXX', s: 'IPC', n: 'S&P/BMV IPC (Mexico)' },
+    // Europe
+    { y: '^FTSE', s: 'FTSE', n: 'FTSE 100 (UK)' }, { y: '^GDAXI', s: 'DAX', n: 'DAX (Germany)' },
+    { y: '^FCHI', s: 'CAC40', n: 'CAC 40 (France)' }, { y: '^STOXX50E', s: 'STOXX50', n: 'Euro Stoxx 50' },
+    { y: '^IBEX', s: 'IBEX', n: 'IBEX 35 (Spain)' }, { y: 'FTSEMIB.MI', s: 'FTSEMIB', n: 'FTSE MIB (Italy)' },
+    { y: '^AEX', s: 'AEX', n: 'AEX (Netherlands)' }, { y: '^SSMI', s: 'SMI', n: 'SMI (Switzerland)' },
+    { y: '^OMX', s: 'OMX30', n: 'OMX Stockholm 30 (Sweden)' },
+    // Asia-Pacific
     { y: '^N225', s: 'NIKKEI', n: 'Nikkei 225 (Japan)' }, { y: '^HSI', s: 'HSI', n: 'Hang Seng (HK)' },
     { y: '^NSEI', s: 'NIFTY', n: 'Nifty 50 (India)' }, { y: '^BSESN', s: 'SENSEX', n: 'BSE Sensex (India)' },
-    { y: '^STOXX50E', s: 'STOXX50', n: 'Euro Stoxx 50' }, { y: '^AXJO', s: 'ASX200', n: 'ASX 200 (Australia)' },
+    { y: '^NSEBANK', s: 'BANKNIFTY', n: 'Nifty Bank (India)' }, { y: '000001.SS', s: 'SSE', n: 'SSE Composite (China)' },
+    { y: '399001.SZ', s: 'SZSE', n: 'Shenzhen Component (China)' }, { y: '^KS11', s: 'KOSPI', n: 'KOSPI (Korea)' },
+    { y: '^TWII', s: 'TWSE', n: 'Taiwan Weighted (Taiwan)' }, { y: '^STI', s: 'STI', n: 'Straits Times (Singapore)' },
+    { y: '^AXJO', s: 'ASX200', n: 'ASX 200 (Australia)' }, { y: '^JKSE', s: 'IDX', n: 'IDX Composite (Indonesia)' },
+    { y: '^KLSE', s: 'KLCI', n: 'FTSE Bursa KLCI (Malaysia)' },
+    // Middle East & Africa
+    { y: '^TASI.SR', s: 'TASI', n: 'Tadawul All Share (Saudi)' }, { y: '^J203.JO', s: 'JALSH', n: 'JSE All Share (S. Africa)' },
   ],
   fx: [
     { y: 'EURUSD=X', s: 'EUR/USD', n: 'Euro / US Dollar' }, { y: 'GBPUSD=X', s: 'GBP/USD', n: 'Pound / US Dollar' },

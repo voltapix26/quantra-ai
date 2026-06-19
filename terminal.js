@@ -37,7 +37,9 @@
     return (amt / f) * fxRate(selCur) / fxRate(b);
   };
   const curSym = () => CUR_SYM[selCur] || selCur + ' ';
+  let idxMode = false;   // true while viewing an index → show raw points (no FX, indices aren't a currency)
   function money(amt, base) {
+    if (idxMode) { if (amt == null || isNaN(amt)) return '—'; const a = Math.abs(amt), d = a >= 1000 ? 2 : a >= 1 ? 2 : 4; return Number(amt).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: d }); }
     const v = conv(amt, base); if (v == null) return '—';
     const a = Math.abs(v), d = a >= 1000 ? 0 : a >= 1 ? 2 : a >= 0.01 ? 4 : 6;
     return curSym() + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: d });
@@ -141,6 +143,7 @@
   }
   function renderBoard() {
     const list = $('list'), empty = $('empty');
+    idxMode = (assetClass === 'index');   // indices show raw points, not FX-converted
     if (!board.length) { empty.textContent = 'No data.'; return; }
     list.innerHTML = board.map(rowHTML).join('');
     list.querySelectorAll('.trow').forEach((r) => r.addEventListener('click', () => select({ id: r.dataset.id, type: r.dataset.type, symbol: r.dataset.symbol, name: r.dataset.name })));
@@ -1031,6 +1034,7 @@
   /* ---------------- select + analyze ---------------- */
   async function select(item) {
     current = item;
+    idxMode = (item.type === 'index');   // show index detail in points, not FX-converted
     stopLive(); stopTick();
     if (replay.on) { stopReplay(); replay.on = false; const rc = $('replayCtl'); if (rc) rc.hidden = true; const rtg = $('replayToggle'); if (rtg) { rtg.classList.remove('is-on'); rtg.textContent = '⏮ Replay'; } }
     let interval = $('intervalSel').value, range = $('rangeSel').value;
