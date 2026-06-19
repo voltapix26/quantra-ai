@@ -287,6 +287,52 @@ const api = {
       items: items.slice().sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0)),
     };
   },
+
+  /* ---- earnings calendar (Finnhub, free tier) ---- */
+  async 'calendar/earnings'(q) {
+    if (!FINNHUB_KEY) return { ok: false, reason: 'no-key', events: [] };
+    const from = new Date().toISOString().slice(0, 10);
+    const to = new Date(Date.now() + 35 * 864e5).toISOString().slice(0, 10);
+    let data;
+    try { data = await cached(`earn:${from}`, 3600000, () => getJSON(`${FINNHUB}/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_KEY}`)); }
+    catch { return { ok: false, reason: 'fetch', events: [] }; }
+    let list = (data.earningsCalendar || []).filter((e) => e.date >= from);
+    const scope = q.scope || 'watch';
+    if (scope === 'all') {
+      list = list.filter((e) => e.revenueEstimate || e.epsEstimate)
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (b.revenueEstimate || 0) - (a.revenueEstimate || 0)))
+        .slice(0, 120);
+    } else {
+      const syms = new Set(String(q.syms || '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).concat(DEFAULT_STOCKS));
+      list = list.filter((e) => syms.has(String(e.symbol).toUpperCase()));
+    }
+    list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    return { ok: true, from, to, count: list.length, events: list.map((e) => ({ symbol: e.symbol, date: e.date, hour: e.hour || '', epsEstimate: e.epsEstimate, revenueEstimate: e.revenueEstimate, quarter: e.quarter, year: e.year })) };
+  },
+
+  /* ---- IPO calendar (Finnhub, free tier) ---- */
+  async 'calendar/ipo'() {
+    if (!FINNHUB_KEY) return { ok: false, reason: 'no-key', events: [] };
+    const from = new Date().toISOString().slice(0, 10);
+    const to = new Date(Date.now() + 45 * 864e5).toISOString().slice(0, 10);
+    try {
+      const d = await cached(`ipo:${from}`, 3600000, () => getJSON(`${FINNHUB}/calendar/ipo?from=${from}&to=${to}&token=${FINNHUB_KEY}`));
+      const list = (d.ipoCalendar || []).filter((x) => x.date >= from).sort((a, b) => (a.date < b.date ? -1 : 1));
+      return { ok: true, count: list.length, events: list };
+    } catch { return { ok: false, reason: 'fetch', events: [] }; }
+  },
+
+  /* ---- economic calendar (Finnhub — premium; degrades gracefully) ---- */
+  async 'calendar/economic'() {
+    if (!FINNHUB_KEY) return { ok: false, premium: false, reason: 'no-key', events: [] };
+    try {
+      const d = await cached('econ', 3600000, () => getJSON(`${FINNHUB}/calendar/economic?token=${FINNHUB_KEY}`));
+      if (!d || d.error || !d.economicCalendar) return { ok: false, premium: true, events: [] };
+      const from = new Date().toISOString().slice(0, 10);
+      const evs = d.economicCalendar.filter((e) => (!e.country || e.country === 'US') && (e.time || '').slice(0, 10) >= from).slice(0, 80);
+      return { ok: true, count: evs.length, events: evs };
+    } catch { return { ok: false, premium: true, events: [] }; }
+  },
   // Universal current price for any held asset (portfolio tracker).
   async 'price'(q) {
     const idv = q.id || q.symbol; if (!idv) return { ok: false };

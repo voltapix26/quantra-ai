@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Calendar</title>
+  <meta name="description" content="Upcoming earnings, IPOs and key economic events — a forward calendar across the markets you follow." />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=20" />
+  <style>
+    .cal{max-width:920px;margin:0 auto;padding:1.3rem 0 4rem}
+    .cal h1{font-size:1.9rem;margin-bottom:.2rem}
+    .cal-lead{color:var(--muted);margin-bottom:1.1rem}
+    .cal-tabs{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1rem}
+    .cal-tab{background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:.4em .95em;font-size:.85rem;cursor:pointer;font-family:inherit;transition:all .15s}
+    .cal-tab:hover{color:var(--text);border-color:var(--line-2)}
+    .cal-tab.is-active{background:linear-gradient(135deg,var(--mint),var(--cyan));color:#06231d;border-color:transparent;font-weight:600}
+    .cal-scope{display:flex;gap:.4rem;margin-bottom:1rem;flex-wrap:wrap}
+    .cal-scope button{background:rgba(255,255,255,.04);border:1px solid var(--line-2);color:var(--muted);border-radius:8px;padding:.32em .8em;font-size:.78rem;cursor:pointer;font-family:inherit}
+    .cal-scope button.on{border-color:var(--mint);color:var(--text);background:rgba(52,211,153,.08)}
+    .cal-day{margin-bottom:1.1rem}
+    .cal-day__h{font-family:'Space Grotesk';font-weight:700;font-size:.92rem;color:var(--cyan);padding:.3rem 0;border-bottom:1px solid var(--line);margin-bottom:.5rem;display:flex;justify-content:space-between}
+    .cal-day__h small{color:var(--muted-2);font-weight:400}
+    .cal-item{display:flex;align-items:center;gap:.7rem;padding:.5rem .7rem;background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:.4rem;cursor:pointer;text-decoration:none;color:inherit}
+    .cal-item:hover{border-color:var(--line-2)}
+    .cal-item__sym{font-family:'Space Grotesk';font-weight:700;min-width:64px;color:var(--text)}
+    .cal-item__name{flex:1;color:var(--muted-2);font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cal-item__meta{font-size:.8rem;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+    .cal-item__meta b{color:var(--text)}
+    .cal-tag{font-size:.64rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:.16em .45em;border-radius:5px;color:var(--indigo,#818CF8);background:rgba(129,140,248,.14)}
+    .cal-tag.bmo{color:var(--amber);background:rgba(251,191,36,.14)}.cal-tag.amc{color:var(--cyan);background:rgba(34,211,238,.12)}
+    .cal-state{padding:2.2rem;text-align:center;color:var(--muted)}
+    .cal-note{background:rgba(129,140,248,.07);border:1px solid rgba(129,140,248,.2);border-radius:12px;padding:1rem 1.1rem;color:var(--muted);font-size:.88rem;margin-bottom:1rem}
+    .cal-foot{font-size:.74rem;color:var(--muted-2);margin-top:1rem}
+  </style>
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand"><span class="brand__mark">
+        <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true"><defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs><path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/><path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="82" cy="16" r="6" fill="#34D399"/></svg>
+      </span><span class="brand__name">Quantra<span class="brand__ai">AI</span></span></a>
+      <span class="bar__tag">Calendar</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links">
+        <a href="index.html">Terminal</a>
+        <a href="discover.html">Discover</a>
+        <a href="calendar.html" class="is-active">Calendar</a>
+        <a href="screener.html">Screener</a>
+        <a href="portfolio.html">Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container cal">
+    <h1>Market calendar</h1>
+    <p class="cal-lead">What's coming up — earnings, IPOs and key economic events for the next few weeks.</p>
+
+    <div class="cal-tabs" id="calTabs"></div>
+    <div class="cal-scope" id="calScope" hidden></div>
+    <div id="calBody"><div class="cal-state">Loading…</div></div>
+    <p class="cal-foot">Estimates and dates from free live feeds (Finnhub) and may shift. Educational — not investment advice.</p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const onServer = location.protocol === 'http:' || location.protocol === 'https:';
+    const TABS = [['earnings','📊 Earnings'],['ipo','🆕 IPOs'],['economic','🏛 Economic']];
+    let tab = 'earnings', scope = 'watch';
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const fmtDay = (iso) => { const d = new Date(iso + 'T00:00:00'); return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }); };
+    const daysAway = (iso) => { const d = Math.round((new Date(iso + 'T00:00:00') - new Date(new Date().toDateString())) / 864e5); return d <= 0 ? 'today' : d === 1 ? 'tomorrow' : 'in ' + d + ' days'; };
+    const bn = (n) => n == null ? null : n >= 1e9 ? '$' + (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + (n / 1e6).toFixed(0) + 'M' : '$' + Number(n).toLocaleString();
+    function groupByDate(events) {
+      const m = new Map();
+      for (const e of events) { const k = e.date || (e.time || '').slice(0, 10); if (!k) continue; if (!m.has(k)) m.set(k, []); m.get(k).push(e); }
+      return [...m.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    }
+    function watchSyms() {
+      try { return (JSON.parse(localStorage.getItem('quantra.watch') || '[]')).filter((w) => w.type === 'stock' || w.type === 'etf').map((w) => w.symbol); } catch { return []; }
+    }
+    function renderTabs() {
+      $('calTabs').innerHTML = TABS.map(([k, l]) => `<button class="cal-tab ${k === tab ? 'is-active' : ''}" data-t="${k}">${l}</button>`).join('');
+      $('calTabs').querySelectorAll('.cal-tab').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.t; renderTabs(); load(); }));
+      const sc = $('calScope');
+      if (tab === 'earnings') {
+        sc.hidden = false;
+        const opts = [['watch','My watchlist'],['popular','Popular'],['all','All upcoming']];
+        sc.innerHTML = opts.map(([k, l]) => `<button class="${k === scope ? 'on' : ''}" data-s="${k}">${l}</button>`).join('');
+        sc.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { scope = b.dataset.s; renderTabs(); load(); }));
+      } else sc.hidden = true;
+    }
+    const earnItem = (e) => {
+      const tag = e.hour === 'bmo' ? '<span class="cal-tag bmo">pre-market</span>' : e.hour === 'amc' ? '<span class="cal-tag amc">after-close</span>' : '';
+      const eps = e.epsEstimate != null ? `<b>${Number(e.epsEstimate).toFixed(2)}</b> EPS est` : '';
+      const rev = e.revenueEstimate ? ` · ${bn(e.revenueEstimate)} rev` : '';
+      return `<a class="cal-item" href="index.html?type=stock&id=${encodeURIComponent(e.symbol)}&symbol=${encodeURIComponent(e.symbol)}&name=${encodeURIComponent(e.symbol)}"><span class="cal-item__sym">${esc(e.symbol)}</span><span class="cal-item__name">Q${e.quarter || ''} ${e.year || ''} ${tag}</span><span class="cal-item__meta">${eps}${rev}</span></a>`;
+    };
+    const ipoItem = (e) => `<div class="cal-item"><span class="cal-item__sym">${esc(e.symbol || '—')}</span><span class="cal-item__name">${esc(e.name || '')} · ${esc(e.exchange || '')}</span><span class="cal-item__meta">${e.price ? '<b>$' + esc(e.price) + '</b>' : ''}${e.numberOfShares ? ' · ' + (e.numberOfShares / 1e6).toFixed(1) + 'M sh' : ''}</span></div>`;
+    const econItem = (e) => `<div class="cal-item"><span class="cal-item__sym" style="min-width:46px">${esc(e.country || 'US')}</span><span class="cal-item__name">${esc(e.event || '')}</span><span class="cal-item__meta">${e.estimate != null ? 'est <b>' + esc(e.estimate) + '</b>' : ''}${e.prev != null ? ' · prev ' + esc(e.prev) : ''}</span></div>`;
+
+    function renderDays(events, itemFn, empty) {
+      if (!events.length) { $('calBody').innerHTML = `<div class="cal-state">${empty}</div>`; return; }
+      $('calBody').innerHTML = groupByDate(events).map(([date, list]) =>
+        `<div class="cal-day"><div class="cal-day__h"><span>${fmtDay(date)}</span><small>${daysAway(date)}</small></div>${list.map(itemFn).join('')}</div>`).join('');
+    }
+    const ECON_REF = ['CPI inflation','FOMC rate decision','Non-farm payrolls (jobs)','GDP','Core PCE','Retail sales','Unemployment rate','ISM Manufacturing PMI'];
+    async function load() {
+      if (!onServer) { $('calBody').innerHTML = '<div class="cal-state">Run the live server to see the calendar.</div>'; return; }
+      $('calBody').innerHTML = '<div class="cal-state">Loading…</div>';
+      try {
+        if (tab === 'earnings') {
+          const syms = scope === 'watch' ? watchSyms() : [];
+          const sc = scope === 'all' ? 'all' : 'watch';
+          const d = await (await fetch(`/api/calendar/earnings?scope=${sc}&syms=${encodeURIComponent(syms.join(','))}`)).json();
+          if (!d.ok) { $('calBody').innerHTML = `<div class="cal-note">Earnings calendar needs a Finnhub key on the server. ${d.reason === 'no-key' ? 'Add <code>FINNHUB_API_KEY</code> to enable it.' : 'Try again shortly.'}</div>`; return; }
+          renderDays(d.events, earnItem, scope === 'watch' ? 'No upcoming earnings for your watchlist stocks in the next 5 weeks. Try “Popular” or “All upcoming”.' : 'No upcoming earnings found.');
+        } else if (tab === 'ipo') {
+          const d = await (await fetch('/api/calendar/ipo')).json();
+          if (!d.ok) { $('calBody').innerHTML = '<div class="cal-note">IPO calendar needs a Finnhub key on the server.</div>'; return; }
+          renderDays(d.events, ipoItem, 'No IPOs scheduled in the next several weeks.');
+        } else {
+          const d = await (await fetch('/api/calendar/economic')).json();
+          if (d.ok && d.events.length) { renderDays(d.events, econItem, 'No economic events found.'); return; }
+          $('calBody').innerHTML = `<div class="cal-note"><b>Live macro dates need a premium data feed.</b> The free tier doesn't include the economic calendar. High-impact US releases worth watching each month:</div>` +
+            '<div class="cal-day">' + ECON_REF.map((n) => `<div class="cal-item"><span class="cal-item__sym" style="min-width:46px">US</span><span class="cal-item__name">${n}</span><span class="cal-item__meta">monthly</span></div>`).join('') + '</div>';
+        }
+      } catch { $('calBody').innerHTML = '<div class="cal-state">Could not load the calendar right now.</div>'; }
+    }
+    renderTabs(); load();
+  </script>
+</body>
+</html>
