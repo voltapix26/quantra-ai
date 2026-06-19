@@ -374,13 +374,21 @@
     for (const d of (drawings[k] || [])) {
       if (d.type === 'hline') { const yy = y(d.a.price); out += `<line x1="${PAD}" x2="${W - PAD}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#22D3EE" stroke-width="1.3" stroke-dasharray="6 3" opacity=".85"/>`; }
       else if (d.type === 'trend' && d.b) { const x1 = PAD + d.a.xf * (W - 2 * PAD), x2 = PAD + d.b.xf * (W - 2 * PAD); out += `<line x1="${x1.toFixed(1)}" y1="${y(d.a.price).toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y(d.b.price).toFixed(1)}" stroke="#818CF8" stroke-width="1.6" opacity=".9"/>`; }
+      else if (d.type === 'fib' && d.b) {
+        const xL = PAD + Math.min(d.a.xf, d.b.xf) * (W - 2 * PAD);
+        for (const L of [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]) {
+          const yy = y(d.b.price + (d.a.price - d.b.price) * L), edge = (L === 0 || L === 1);
+          out += `<line x1="${xL.toFixed(1)}" x2="${W - PAD}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#FBBF24" stroke-width="${edge ? 1.3 : 0.9}" ${edge ? '' : 'stroke-dasharray="4 3"'} opacity="${edge ? 0.9 : 0.55}"/>`;
+          out += `<text x="${(xL + 3).toFixed(1)}" y="${(yy - 2).toFixed(1)}" fill="#FBBF24" font-size="8" opacity=".85">${(L * 100).toFixed(1)}%</text>`;
+        }
+      }
     }
-    if (activeTool === 'trend' && pendingPt && pendingPt.k === k) { const x1 = PAD + pendingPt.xf * (W - 2 * PAD); out += `<circle cx="${x1.toFixed(1)}" cy="${y(pendingPt.price).toFixed(1)}" r="3" fill="#818CF8"/>`; }
+    if ((activeTool === 'trend' || activeTool === 'fib') && pendingPt && pendingPt.k === k) { const x1 = PAD + pendingPt.xf * (W - 2 * PAD); out += `<circle cx="${x1.toFixed(1)}" cy="${y(pendingPt.price).toFixed(1)}" r="3" fill="#818CF8"/>`; }
     for (const a of alerts) { if (a.k === k && a.on) { const yy = y(a.price); out += `<line x1="${PAD}" x2="${W - PAD}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#FBBF24" stroke-width="1.1" stroke-dasharray="2 3" opacity=".8"/>`; } }
     return out;
   }
   function redrawChart() { if (current && state) drawChart(state.history, state.analysis && state.analysis.forecast); }
-  function setTool(t) { activeTool = t; pendingPt = null; const tr = $('toolTrend'), hl = $('toolHline'); if (tr) tr.classList.toggle('is-on', t === 'trend'); if (hl) hl.classList.toggle('is-on', t === 'hline'); const c = $('chart'); if (c) c.style.cursor = t ? 'crosshair' : ''; }
+  function setTool(t) { activeTool = t; pendingPt = null; const tr = $('toolTrend'), hl = $('toolHline'), fb = $('toolFib'); if (tr) tr.classList.toggle('is-on', t === 'trend'); if (hl) hl.classList.toggle('is-on', t === 'hline'); if (fb) fb.classList.toggle('is-on', t === 'fib'); const c = $('chart'); if (c) c.style.cursor = t ? 'crosshair' : ''; }
   function chartPoint(e) {
     const svg = $('chart'), rect = svg.getBoundingClientRect();
     let df = (((e.clientX - rect.left) / rect.width) * W - PAD) / (W - PAD * 2); df = Math.max(0, Math.min(1, df));
@@ -392,9 +400,9 @@
     const pt = chartPoint(e); if (pt.price == null) return;
     const k = akey(current);
     if (activeTool === 'hline') { (drawings[k] = drawings[k] || []).push({ type: 'hline', a: { price: pt.price } }); saveDraw(); setTool(null); redrawChart(); }
-    else if (activeTool === 'trend') {
+    else if (activeTool === 'trend' || activeTool === 'fib') {   // two-click tools
       if (!pendingPt) { pendingPt = { k, xf: pt.xf, price: pt.price }; redrawChart(); }
-      else { (drawings[k] = drawings[k] || []).push({ type: 'trend', a: { xf: pendingPt.xf, price: pendingPt.price }, b: { xf: pt.xf, price: pt.price } }); pendingPt = null; saveDraw(); setTool(null); redrawChart(); }
+      else { (drawings[k] = drawings[k] || []).push({ type: activeTool, a: { xf: pendingPt.xf, price: pendingPt.price }, b: { xf: pt.xf, price: pt.price } }); pendingPt = null; saveDraw(); setTool(null); redrawChart(); }
     }
   }
   function clearDrawings() { if (current) { drawings[akey(current)] = []; saveDraw(); redrawChart(); } }
@@ -976,6 +984,7 @@
   // drawing tools + alerts wiring
   { const tT = $('toolTrend'), tH = $('toolHline'), tC = $('toolClear'), aA = $('alertAdd'), aP = $('alertPrice'), chartEl = $('chart');
     if (tT) tT.addEventListener('click', () => setTool(activeTool === 'trend' ? null : 'trend'));
+    const tF = $('toolFib'); if (tF) tF.addEventListener('click', () => setTool(activeTool === 'fib' ? null : 'fib'));
     if (tH) tH.addEventListener('click', () => setTool(activeTool === 'hline' ? null : 'hline'));
     if (tC) tC.addEventListener('click', clearDrawings);
     if (aA) aA.addEventListener('click', addAlert);
