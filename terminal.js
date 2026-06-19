@@ -622,10 +622,61 @@
     const rows = fc.horizons.map((h) => {
       const d = projDateFor(lastIso, h.bars, interval, isCrypto);
       const proj = p0 * (1 + h.move), lo = p0 * (1 + h.lo), hi = p0 * (1 + h.hi), up = h.move >= 0;
-      return `<tr><td>${fmtD(d)}<small>+${h.bars} ${interval === '1wk' ? 'wk' : interval === '60m' ? 'h' : interval === '1m' ? 'm' : 'sessions'}</small></td><td class="proj-px">${money(proj, curBase)}</td><td class="proj-rng">${money(lo, curBase)} – ${money(hi, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${(h.move * 100).toFixed(1)}%</td></tr>`;
+      const st = projStatus(hist, d.toISOString().slice(0, 10), p0, proj, lo, hi);
+      return `<tr><td>${fmtD(d)}<small>+${h.bars} ${interval === '1wk' ? 'wk' : interval === '60m' ? 'h' : interval === '1m' ? 'm' : 'sessions'}</small></td><td class="proj-px">${money(proj, curBase)}</td><td class="proj-rng">${money(lo, curBase)} – ${money(hi, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${(h.move * 100).toFixed(1)}%</td><td>${st}</td></tr>`;
     }).join('');
-    $('projTable').innerHTML = '<tr><th>Date</th><th>Projected (P50)</th><th>Range (P10–P90)</th><th>Δ vs now</th></tr>' + rows;
+    $('projTable').innerHTML = '<tr><th>Date</th><th>Projected (P50)</th><th>Range (P10–P90)</th><th>Δ vs now</th><th>Status</th></tr>' + rows;
     $('projAsof').textContent = 'Anchored to ' + fmtD(new Date(lastIso || Date.now())) + ' · ' + Math.round((fc.probUp || 0) * 100) + '% modelled chance of finishing higher. Monte-Carlo projection — probabilistic, not a guarantee.';
+    card.hidden = false;
+    logProjection(item, fc, hist, interval, isCrypto, lastIso);
+    renderProjScorecard(item, hist);
+  }
+  // actual close at or just after a date (from the loaded history)
+  function actualAt(hist, dateStr) {
+    if (!hist || !hist.dates) return null;
+    for (let i = 0; i < hist.dates.length; i++) if (hist.dates[i].slice(0, 10) >= dateStr) return hist.closes[i];
+    return null;   // target still in the future / beyond loaded data
+  }
+  // verdict for one projection checkpoint vs the realised price. The P10–P90 band
+  // is volatility-scaled by the Monte-Carlo sigma, so this stays fair on calm
+  // indices and wild crypto alike.
+  function projVerdict(p0, lo, hi, proj, actual) {
+    if (actual == null) return null;
+    if (actual >= lo && actual <= hi) return { c: 'up', t: '✓ in range' };
+    return ((proj >= p0) === (actual >= p0)) ? { c: 'neut', t: (actual >= p0 ? '↗' : '↘') + ' direction' } : { c: 'down', t: '✗ missed' };
+  }
+  function projStatus(hist, dateStr, p0, proj, lo, hi) {
+    const a = actualAt(hist, dateStr);
+    if (a == null) return '<span class="proj-pending">⏳ pending</span>';
+    const v = projVerdict(p0, lo, hi, proj, a);
+    return `<span class="proj-d ${v.c === 'up' ? 'up' : v.c === 'down' ? 'down' : ''}">${v.t}</span>`;
+  }
+  function logProjection(item, fc, hist, interval, isCrypto, lastIso) {
+    if (interval === 'sec' || !fc.horizons) return;
+    const k = akey(item), made = (lastIso || new Date().toISOString()).slice(0, 10), id = made + ':' + interval;
+    let log = {}; try { log = JSON.parse(localStorage.getItem('quantra.projlog') || '{}'); } catch {}
+    log[k] = log[k] || [];
+    if (!log[k].some((e) => e.id === id)) {
+      log[k].push({ id, made, interval, p0: fc.p0, checks: fc.horizons.map((h) => ({ date: projDateFor(lastIso, h.bars, interval, isCrypto).toISOString().slice(0, 10), p50: fc.p0 * (1 + h.move), lo: fc.p0 * (1 + h.lo), hi: fc.p0 * (1 + h.hi) })) });
+      if (log[k].length > 16) log[k] = log[k].slice(-16);
+      try { localStorage.setItem('quantra.projlog', JSON.stringify(log)); } catch {}
+    }
+  }
+  function renderProjScorecard(item, hist) {
+    const card = $('projScore'); if (!card) return;
+    let log = {}; try { log = JSON.parse(localStorage.getItem('quantra.projlog') || '{}'); } catch {}
+    const out = [];
+    for (const e of (log[akey(item)] || [])) for (const c of e.checks) {
+      const actual = actualAt(hist, c.date); if (actual == null) continue;
+      const v = projVerdict(e.p0, c.lo, c.hi, c.p50, actual);
+      out.push({ made: e.made, date: c.date, p50: c.p50, lo: c.lo, hi: c.hi, actual, v });
+    }
+    if (!out.length) { card.hidden = true; return; }
+    out.sort((a, b) => (a.date < b.date ? 1 : -1));
+    const inRange = out.filter((r) => r.v.t.includes('range')).length, dirOk = out.filter((r) => r.v.c !== 'down').length;
+    $('projScoreTable').innerHTML = '<tr><th>Made</th><th>Target</th><th>Projected</th><th>Actual</th><th>Result</th></tr>' +
+      out.slice(0, 8).map((r) => `<tr><td><small>${r.made}</small></td><td>${r.date}</td><td class="proj-px">${money(r.p50, curBase)}</td><td class="proj-px">${money(r.actual, curBase)}</td><td class="proj-d ${r.v.c === 'up' ? 'up' : r.v.c === 'down' ? 'down' : ''}">${r.v.t}</td></tr>`).join('');
+    $('projScoreSum').textContent = `${inRange}/${out.length} landed inside the P10–P90 band · ${dirOk}/${out.length} got the direction right`;
     card.hidden = false;
   }
 
@@ -878,6 +929,22 @@
     const c = row && row.querySelector('.trow__price'); if (c) c.textContent = money(it.price, it.currency);
     checkAlerts(it.type, it.symbol, it.price);
   }
+  // Non-crypto boards (stocks/ETFs/commodities/indices/FX) have no WS stream — poll
+  // periodically so their prices stay current with the live market.
+  async function refreshBoardPrices() {
+    if (!onServer || !board.length || assetClass === 'crypto') return;
+    let fresh; try { fresh = await loadBoard(assetClass); } catch { return; }
+    const byId = new Map(fresh.map((f) => [f.id, f]));
+    const list = $('list');
+    board.forEach((b) => {
+      const f = byId.get(b.id); if (!f || f.price == null) return;
+      b.price = f.price; b.change24h = f.change24h; updateRowPrice(b);
+      const row = list && list.querySelector('.trow[data-id="' + b.id + '"]');
+      const cg = row && row.querySelector('.trow__chg');
+      if (cg && f.change24h != null) { const up = f.change24h >= 0; cg.textContent = (up ? '+' : '') + f.change24h.toFixed(2) + '%'; cg.className = 'trow__chg ' + (up ? 'up' : 'down'); }
+    });
+    if (current && !tickMode) { const f = byId.get(current.id); if (f && f.price != null) setDetailPrice(f.price); }
+  }
   // Crypto: one Coinbase public WS (ticker channel) for the whole board + the
   // selected coin. Sub-second per-trade updates, and US-accessible (unlike Binance).
   const coinProd = (sym) => (sym || '').toUpperCase() + '-USD';
@@ -1025,6 +1092,7 @@
   loadFX().then(() => { if (board.length) renderBoard(); if (current) select(current); });
   // start live streams once we know which sources are available (covers any load ordering)
   loadLiveConfig().then(() => { if (assetClass === 'crypto' && board.length) startArr(); if (current) startLive(current); });
+  setInterval(refreshBoardPrices, 25000);   // keep non-crypto board prices current
 
   // deep-link from the screener: index.html?type=&id=&symbol=&name=
   const P = new URLSearchParams(location.search);

@@ -335,6 +335,7 @@ button{font-family:inherit}
 .proj-rng{color:var(--muted-2)}
 .proj-d.up{color:var(--mint);font-weight:600}
 .proj-d.down{color:var(--rose);font-weight:600}
+.proj-pending{color:var(--muted-2);font-size:.74rem}
 @media (max-width:600px){.proj-table{font-size:.8rem}.proj-table th,.proj-table td{padding:.4rem .4rem}}
 
 .disclaimer{text-align:center;color:var(--muted-2);font-size:.76rem;margin-top:.4rem}

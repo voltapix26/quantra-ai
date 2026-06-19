@@ -163,7 +163,9 @@ async function buildBoard(list, type) {
       const d = await getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(sym)}?range=1mo&interval=1d`);
       const r = d.chart.result[0];
       const closes = (r.indicators.quote[0].close || []).filter((v) => v != null);
-      const last = closes[closes.length - 1], prev = r.meta.chartPreviousClose || closes[closes.length - 2] || last;
+      // Prefer the live market price over the last *daily* close (which lags intraday).
+      const last = (r.meta && r.meta.regularMarketPrice != null) ? r.meta.regularMarketPrice : closes[closes.length - 1];
+      const prev = (r.meta && r.meta.chartPreviousClose != null) ? r.meta.chartPreviousClose : (closes[closes.length - 2] || last);
       return { type, id: sym, symbol: (it && it.s) || r.meta.symbol || sym, name: (it && it.n) || r.meta.shortName || sym,
         price: last, currency: r.meta.currency || 'USD', change24h: prev ? ((last - prev) / prev) * 100 : 0,
         marketCap: r.meta.marketCap || null, volume: r.meta.regularMarketVolume || null, spark: closes.slice(-30) };
@@ -251,11 +253,11 @@ const api = {
     if (!r) throw new Error('no data');
     return { symbol: q.symbol, currency: (r.meta && r.meta.currency) || 'USD', ...alignedFromYahoo(r), meta: r.meta || {} };
   },
-  async 'stock/board'() { return cached('sb', 60000, () => buildBoard(DEFAULT_STOCKS, 'stock')); },
-  async 'etf/board'() { return cached('etfb', 60000, () => buildBoard(UNIV.etf, 'etf')); },
-  async 'commodity/board'() { return cached('comb', 60000, () => buildBoard(UNIV.commodity, 'commodity')); },
-  async 'index/board'() { return cached('idxb', 60000, () => buildBoard(UNIV.index, 'index')); },
-  async 'fx/board'() { return cached('fxb', 60000, () => buildBoard(UNIV.fx, 'fx')); },
+  async 'stock/board'() { return cached('sb', 20000, () => buildBoard(DEFAULT_STOCKS, 'stock')); },
+  async 'etf/board'() { return cached('etfb', 20000, () => buildBoard(UNIV.etf, 'etf')); },
+  async 'commodity/board'() { return cached('comb', 20000, () => buildBoard(UNIV.commodity, 'commodity')); },
+  async 'index/board'() { return cached('idxb', 20000, () => buildBoard(UNIV.index, 'index')); },
+  async 'fx/board'() { return cached('fxb', 20000, () => buildBoard(UNIV.fx, 'fx')); },
   // Universal current price for any held asset (portfolio tracker).
   async 'price'(q) {
     const idv = q.id || q.symbol; if (!idv) return { ok: false };
