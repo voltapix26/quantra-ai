@@ -157,7 +157,7 @@
       dot.className = 'mkt-dot ' + (open ? 'open' : 'closed'); dot.title = open ? 'Market open' : 'Market closed';
     });
     if (current && state && state.history) {
-      const mk = $('dMkt'); if (mk) { const st = marketStatus(current.type, state.history.meta); if (st) { mk.textContent = st.label; mk.className = 'dmkt ' + st.cls; mk.hidden = false; } }
+      renderDetailBadge();
     }
   }
   function rowHTML(it) {
@@ -267,6 +267,30 @@
     if (cp.pre && now >= cp.pre.start && now < cp.pre.end) return { label: 'Pre-market', cls: 'pre' };
     if (cp.post && now >= cp.post.start && now < cp.post.end) return { label: 'After-hours', cls: 'pre' };
     return { label: 'Market closed', cls: 'closed' };
+  }
+  // "closes in 3h 5m" / "opens in 2h 14m" for the selected asset.
+  function mktCountdown(type, meta) {
+    if (type === 'crypto' || type === 'fx') return '';
+    const cp = meta && meta.currentTradingPeriod && meta.currentTradingPeriod.regular;
+    if (!cp) return '';
+    const now = Date.now() / 1000;
+    const fmt = (secs) => { secs = Math.max(0, Math.round(secs)); const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60); return h >= 24 ? Math.round(h / 24) + 'd ' + (h % 24) + 'h' : h > 0 ? h + 'h ' + m + 'm' : m + 'm'; };
+    if (now < cp.start) return 'opens in ' + fmt(cp.start - now);
+    if (now < cp.end) return 'closes in ' + fmt(cp.end - now);
+    // after the close: estimate the next session open (same time, next weekday — holidays aside)
+    let next = cp.start; while (next <= now) next += 86400;
+    let dow = new Date(next * 1000).getUTCDay();
+    while (dow === 6 || dow === 0) { next += 86400; dow = new Date(next * 1000).getUTCDay(); }
+    return 'opens in ' + fmt(next - now);
+  }
+  function renderDetailBadge() {
+    const mk = $('dMkt'); if (!mk || !current) return;
+    const meta = state && state.history && state.history.meta;
+    const st = marketStatus(current.type, meta);
+    if (!st) { mk.hidden = true; return; }
+    const cd = mktCountdown(current.type, meta);
+    mk.textContent = st.label + (cd ? ' · ' + cd : '');
+    mk.className = 'dmkt ' + st.cls; mk.hidden = false;
   }
   // Heikin Ashi: smoothed OHLC that filters noise (a TradingView staple).
   function heikinAshi(o) {
@@ -1252,7 +1276,7 @@
       const SUBS = { crypto: 'Cryptocurrency · 24/7 market', stock: 'Equity / stock', etf: 'Exchange-traded fund', commodity: 'Commodity / futures', index: 'Market index', fx: 'Foreign exchange pair' };
       $('dSub').textContent = SUBS[item.type] || '—';   // always set (fundamentals may refine it for stocks)
       // Market open/closed badge (per-exchange session window from Yahoo).
-      { const mk = $('dMkt'); if (mk) { const st = marketStatus(item.type, hist && hist.meta); if (st) { mk.textContent = st.label; mk.className = 'dmkt ' + st.cls; mk.hidden = false; } else mk.hidden = true; } }
+      renderDetailBadge();
       // Data-freshness line: free feeds (esp. non-US/Gulf/Asian exchanges) can lag the
       // live market, so show exactly when this price is from instead of looking "wrong".
       { const af = $('dAsOf'); const mt = hist && hist.meta && hist.meta.regularMarketTime; const tz = hist && hist.meta && hist.meta.exchangeTimezoneName;
