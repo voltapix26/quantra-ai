@@ -354,6 +354,30 @@ const api = {
       return { ok: true, count: evs.length, events: evs };
     } catch { return { ok: false, premium: true, events: [] }; }
   },
+
+  /* ---- personalized AI daily brief (watchlist digest) ---- */
+  async 'brief'(q, body) {
+    const items = (body && Array.isArray(body.items) ? body.items : []).filter((it) => it && it.symbol).slice(0, 40);
+    const rows = await Promise.all(items.map(async (it) => {
+      try { const pr = await api['price']({ id: it.id || it.symbol, symbol: it.symbol, type: it.type }); return { type: it.type, id: it.id, symbol: it.symbol, name: it.name || it.symbol, price: pr.ok ? pr.price : null, change: pr.ok ? pr.change : null, currency: (pr && pr.currency) || 'USD' }; }
+      catch { return { type: it.type, id: it.id, symbol: it.symbol, name: it.name || it.symbol, price: null, change: null }; }
+    }));
+    const priced = rows.filter((r) => r.change != null).sort((a, b) => (b.change || 0) - (a.change || 0));
+    const up = priced.filter((r) => r.change > 0).length, down = priced.filter((r) => r.change < 0).length;
+    const avg = priced.length ? +(priced.reduce((s, r) => s + r.change, 0) / priced.length).toFixed(2) : 0;
+    let market = null;
+    try { const dd = await api['discover']({ class: 'all' }); market = dd.breadth; } catch {}
+    let earnings = [];
+    try {
+      const stockSyms = items.filter((i) => i.type === 'stock' || i.type === 'etf').map((i) => i.symbol);
+      if (stockSyms.length) { const e = await api['calendar/earnings']({ scope: 'watch', syms: stockSyms.join(',') }); earnings = (e.events || []).slice(0, 8).map((x) => ({ symbol: x.symbol, date: x.date })); }
+    } catch {}
+    const topGainers = priced.slice(0, 3).map((x) => ({ symbol: x.symbol, change: x.change }));
+    const topLosers = priced.slice(-3).reverse().map((x) => ({ symbol: x.symbol, change: x.change }));
+    const date = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const narrative = await briefNarrative({ date, count: priced.length, up, down, avg, topGainers, topLosers, market, earnings });
+    return { ok: true, date, count: priced.length, up, down, avg, rows: priced, topGainers, topLosers, market, earnings, text: narrative.text, source: narrative.source };
+  },
   // Universal current price for any held asset (portfolio tracker).
   async 'price'(q) {
     const idv = q.id || q.symbol; if (!idv) return { ok: false };
@@ -622,6 +646,34 @@ function localAnswer(question, c) {
   }
   p.push('(Educational, not advice.)');
   return { ok: true, source: 'quantra', text: p.join(' ') };
+}
+
+// Local (no-LLM) personalized daily brief from the aggregated watchlist data.
+function localBrief(d) {
+  const p = [];
+  p.push(`Here's your ${d.date} brief.`);
+  if (!d.count) { p.push('Add assets to your watchlist to get a personalized read on what moved and what\'s coming up.'); p.push('Educational summary — not investment advice.'); return p.join(' '); }
+  const tone = d.avg > 0.3 ? 'mostly green' : d.avg < -0.3 ? 'mostly red' : 'mixed';
+  p.push(`Your ${d.count} watched asset(s) are ${tone} today — ${d.up} up, ${d.down} down, ${d.avg >= 0 ? '+' : ''}${d.avg}% on average.`);
+  if (d.topGainers && d.topGainers.length) p.push(`Leading: ${d.topGainers.map((x) => `${x.symbol} ${x.change >= 0 ? '+' : ''}${x.change.toFixed(1)}%`).join(', ')}.`);
+  const losers = (d.topLosers || []).filter((x) => x.change < 0);
+  if (losers.length) p.push(`Lagging: ${losers.map((x) => `${x.symbol} ${x.change.toFixed(1)}%`).join(', ')}.`);
+  if (d.market) p.push(`Broader market: ${d.market.up} advancing vs ${d.market.down} declining (${d.market.avg >= 0 ? '+' : ''}${d.market.avg}% avg) — a ${d.market.avg >= 0 ? 'risk-on' : 'risk-off'} tone.`);
+  if (d.earnings && d.earnings.length) p.push(`On your calendar: ${d.earnings.slice(0, 3).map((x) => x.symbol).join(', ')} report soon (next: ${d.earnings[0].symbol} on ${d.earnings[0].date}).`);
+  p.push('Educational summary — not investment advice.');
+  return p.join(' ');
+}
+async function briefNarrative(d) {
+  if (ANTHROPIC_KEY && Anthropic && AI_MODEL) {
+    try {
+      const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
+      const sys = 'You are Quantra AI writing a short, personalized market brief for a user, based ONLY on the supplied data (their watchlist moves, broader-market breadth, upcoming earnings). 4-6 warm but factual sentences with concrete numbers. No buy/sell advice, no markdown, no price targets.';
+      const msg = await client.messages.create({ model: AI_MODEL, max_tokens: 420, system: sys, messages: [{ role: 'user', content: 'Brief data:\n' + JSON.stringify(d) }] });
+      const t = (msg.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+      if (t) return { text: t, source: 'ai' };
+    } catch {}
+  }
+  return { text: localBrief(d), source: 'quantra' };
 }
 
 /* ============================================================
@@ -1051,6 +1103,10 @@ async function authRoute(req, res, u) {
       if (tooMany(res, 'ask:' + clientIp(req), 40, 3600000)) return;   // 40 questions / hour / IP
       return send(res, 200, await api['ai/ask'](Object.fromEntries(u.searchParams.entries()), body));
     }
+    if (p === '/api/brief' && m === 'POST') {
+      if (tooMany(res, 'brief:' + clientIp(req), 20, 3600000)) return;   // 20 briefs / hour / IP
+      return send(res, 200, await api['brief'](Object.fromEntries(u.searchParams.entries()), body));
+    }
     if (p === '/api/push/config' && m === 'GET') return send(res, 200, { enabled: PUSH_ENABLED, publicKey: VAPID_PUBLIC });
     if (p === '/api/push/subscribe' && m === 'POST') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
@@ -1302,7 +1358,7 @@ store.ready().then(() => {
       await trackDevSeed(); return send(res, 200, { ok: true });
     }
     if (u.pathname === '/api/billing/webhook') return billingWebhook(req, res);
-    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname.startsWith('/api/billing/')) {
+    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname === '/api/brief' || u.pathname.startsWith('/api/billing/')) {
       return authRoute(req, res, u);
     }
     if (u.pathname.startsWith('/api/')) {
