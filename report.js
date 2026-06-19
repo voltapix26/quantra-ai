@@ -95,14 +95,14 @@ window.QuantraReport = (function () {
     }
     const fc = a.forecast;
     if (fc) {
-      rows.push([], [`— 30-session projection (illustrative, ${C}) —`],
+      rows.push([], [`— 30-session projection (80% band, ${C}) —`],
         ['Expected drift', dnum(fc.expReturn * 100, 1) + '%'],
         ['Projected mid', moneyStr(st, fc.mid[fc.mid.length - 1], pb)],
         ['Projected low', moneyStr(st, fc.lo[fc.lo.length - 1], pb)],
         ['Projected high', moneyStr(st, fc.hi[fc.hi.length - 1], pb)],
         ['Annualised volatility', dnum(fc.annualVol * 100, 0) + '%']);
     }
-    rows.push([], ['Disclaimer', 'Educational only. Not investment advice — no signals, no automatic orders.']);
+    rows.push([], ['Disclaimer', 'Not investment advice. Probabilistic model output — markets are uncertain.']);
     return rows;
   }
 
@@ -212,7 +212,7 @@ window.QuantraReport = (function () {
 
     // forecast
     if (fc) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(231, 236, 245); doc.text('Future prediction (illustrative)', M, y);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(231, 236, 245); doc.text('Future prediction · 80% band', M, y);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(200, 208, 222); y += 16;
       const sign = fc.expReturn >= 0 ? '+' : '';
       [`Horizon: 30 sessions`, `Expected drift: ${sign}${(fc.expReturn * 100).toFixed(1)}%`,
@@ -239,7 +239,7 @@ window.QuantraReport = (function () {
 
     // disclaimer
     doc.setFontSize(8); doc.setTextColor(107, 120, 144);
-    doc.text(doc.splitTextToSize('Disclaimer: Quantra AI is for educational purposes only. It does not provide signals, automatic orders or investment advice. Projections are illustrative model output, not a guarantee of future performance.', w - M * 2), M, Math.min(y + 14, 800));
+    doc.text(doc.splitTextToSize('Disclaimer: Quantra AI provides market analysis and probabilistic forecasts, not investment advice. Projections are model output (P10–P90 band), not a guarantee of future performance.', w - M * 2), M, Math.min(y + 14, 800));
 
     doc.save(`Quantra_${st.symbol}_report.pdf`);
     toast('PDF report downloaded');

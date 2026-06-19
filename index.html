@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0A0F1C" />
   <link rel="apple-touch-icon" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=41" />
+  <link rel="stylesheet" href="styles.css?v=42" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -170,7 +170,7 @@
             <span><i style="background:#34D399"></i>Price</span>
             <span><i style="background:#818CF8"></i>SMA 20</span>
             <span><i style="background:#FBBF24"></i>SMA 50</span>
-            <span><i style="background:#22D3EE;opacity:.5"></i>Forecast (illustrative)</span>
+            <span><i style="background:#22D3EE;opacity:.5"></i>Forecast · 80% band</span>
           </div>
           <div class="chartwrap">
             <svg class="chart" id="chart" viewBox="0 0 720 240" preserveAspectRatio="none"></svg>
@@ -267,7 +267,7 @@
             <div><span class="label">Range (P10–P90)</span><b id="fcRange">—</b></div>
             <div><span class="label">Annualised vol</span><b id="fcVol">—</b></div>
             <div class="fc-horizons" id="fcHorizons"></div>
-            <small>Monte-Carlo simulation (500 paths) — educational only, not a forecast you should trade on.</small>
+            <small>Monte-Carlo simulation (500 paths) — an 80%-calibrated probabilistic forecast (P10–P90 band).</small>
           </div>
 
           <div class="proj" id="projCard" hidden>
@@ -301,7 +301,7 @@
             <input id="askqInput" type="text" placeholder="Ask about the chart, indicators, risk, news or forecast…" autocomplete="off" maxlength="500" />
             <button class="btn btn--primary btn--sm" id="askqSend">Ask</button>
           </div>
-          <div class="askq-foot">Educational answers grounded in this asset's live readings — not investment advice.</div>
+          <div class="askq-foot">Answers grounded in this asset's live readings.</div>
         </div>
 
         <!-- MONITORED ALERTS -->
@@ -379,20 +379,20 @@
         <div class="merr" id="authErr" hidden></div>
         <button class="btn btn--primary btn--block" id="authSubmit" type="submit">Sign in</button>
       </form>
-      <p class="mnote">Your watchlist &amp; settings sync to your account across devices. Educational tool — not investment advice.</p>
+      <p class="mnote">Your watchlist &amp; settings sync to your account across devices.</p>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
-  <p class="container disclaimer">Quantra AI · For educational purposes only — no signals, no automatic orders, not investment advice.
+  <p class="container disclaimer">Quantra AI · Real-time market analysis &amp; probabilistic forecasts. Not investment advice.
     <span class="legal-links"><a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refund.html">Refunds</a></span>
   </p>
 
-  <script src="globe.js?v=41"></script>
-  <script src="auth.js?v=41"></script>
-  <script src="analysis.js?v=41"></script>
-  <script src="report.js?v=41"></script>
-  <script src="terminal.js?v=41"></script>
-  <script src="pwa.js?v=41" defer></script>
+  <script src="globe.js?v=42"></script>
+  <script src="auth.js?v=42"></script>
+  <script src="analysis.js?v=42"></script>
+  <script src="report.js?v=42"></script>
+  <script src="terminal.js?v=42"></script>
+  <script src="pwa.js?v=42" defer></script>
 </body>
 </html>

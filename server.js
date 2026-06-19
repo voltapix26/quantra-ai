@@ -438,7 +438,7 @@ const api = {
   },
   async 'stock/board'(q) {
     const mk = (q && STOCK_MARKETS[q.market]) ? q.market : 'us';
-    return cached('sb:' + mk, 15000, () => buildBoard(STOCK_MARKETS[mk].list, 'stock'));
+    return cached('sb:' + mk, 12000, () => buildBoard(STOCK_MARKETS[mk].list, 'stock'));
   },
   async 'stock/markets'() { return Object.entries(STOCK_MARKETS).map(([id, m]) => ({ id, label: m.label, ccy: m.ccy })); },
   async 'etf/board'() { return cached('etfb', 15000, () => buildBoard(UNIV.etf, 'etf')); },
@@ -696,11 +696,11 @@ const api = {
     const data = body || {};
     const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
     const sys = 'You are Quantra AI, a markets analyst. From the supplied pre-computed indicators, fundamentals and latest news, return a JSON object with: ' +
-      '"read" (4-6 sentence educational analysis in plain language that weaves together the technical signals, fundamentals, the latest-news sentiment — noting whether the supplied headlines support or contradict the technical picture — the walk-forward accuracy and the forecast into one coherent view; no markdown, no headers), ' +
+      '"read" (4-6 sentence professional analysis in plain language that weaves together the technical signals, fundamentals, the latest-news sentiment — noting whether the supplied headlines support or contradict the technical picture — the walk-forward accuracy and the forecast into one coherent view; no markdown, no headers), ' +
       '"stance" (one of "bullish","neutral","bearish"), ' +
       '"newsImpact" (a number from -1 to 1: how much ONLY the latest news shifts the near-term outlook — negative = bearish news, 0 = neutral/no material news, positive = bullish news), and ' +
       '"newsRationale" (one short sentence naming the main news driver). ' +
-      'Be candid about uncertainty. Educational only — never give buy/sell advice, actionable price targets or signals.';
+      'Be candid about uncertainty. Do not give explicit buy/sell signals, actionable price targets or guarantees.';
     const schema = { type: 'object', additionalProperties: false, required: ['read', 'stance', 'newsImpact'],
       properties: { read: { type: 'string' }, stance: { type: 'string', enum: ['bullish', 'neutral', 'bearish'] }, newsImpact: { type: 'number' }, newsRationale: { type: 'string' } } };
     const userMsg = 'Analyse this asset and return the JSON:\n\n' + JSON.stringify(data, null, 1);
@@ -719,7 +719,7 @@ const api = {
       try {
         const msg2 = await client.messages.create({
           model: AI_MODEL, max_tokens: 700,
-          system: 'You are Quantra AI. Write a concise 4-6 sentence educational read weaving technical signals, fundamentals, latest-news sentiment, accuracy and the forecast into one view. No advice, no markdown.',
+          system: 'You are Quantra AI. Write a concise 4-6 sentence professional read weaving technical signals, fundamentals, latest-news sentiment, accuracy and the forecast into one view. No advice, no markdown.',
           messages: [{ role: 'user', content: userMsg }],
         });
         const t2 = (msg2.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
@@ -736,7 +736,7 @@ const api = {
     if (ANTHROPIC_KEY && Anthropic && AI_MODEL) {
       try {
         const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
-        const sys = 'You are Quantra AI, a markets analyst chatting with a user about a specific asset. Answer in 2-5 plain sentences, grounded ONLY in the supplied live context (price, indicators, forecast, news, fundamentals) plus general market education. If the question needs data you were not given (e.g. another asset not in context), say so briefly. Be candid about uncertainty. Educational only — never give buy/sell advice, actionable price targets, or trade signals. No markdown.';
+        const sys = 'You are Quantra AI, a markets analyst chatting with a user about a specific asset. Answer in 2-5 plain sentences, grounded ONLY in the supplied live context (price, indicators, forecast, news, fundamentals) plus general market knowledge. If the question needs data you were not given (e.g. another asset not in context), say so briefly. Be candid about uncertainty. Do not give explicit buy/sell signals, actionable price targets, or guarantees. No markdown.';
         const userMsg = 'Live context for ' + (ctx.symbol || 'the asset') + ':\n' + JSON.stringify(ctx, null, 1) + '\n\nUser question: ' + question;
         const msg = await client.messages.create({ model: AI_MODEL, max_tokens: 500, system: sys, messages: [{ role: 'user', content: userMsg }] });
         const text = (msg.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
@@ -798,7 +798,7 @@ const api = {
   },
 };
 
-/* Local "Quantra AI" read — composes an educational narrative from the
+/* Local "Quantra AI" read — composes a professional narrative from the
    pre-computed analysis WITHOUT any external LLM, so every user always sees a
    Quantra AI verdict. Paid plans get the richer live-news LLM read on top. */
 function localReason(d) {
@@ -824,7 +824,7 @@ function localReason(d) {
   if (d.walkForward && d.walkForward.oosAccuracy != null) p.push(`Walk-forward testing shows ~${Math.round(d.walkForward.oosAccuracy * 100)}% out-of-sample directional accuracy, so treat this as a probabilistic lean, not a certainty.`);
   if (fu && fu.peTrailing != null) p.push(`Fundamentally it trades on a ${num(fu.peTrailing, 1)}× trailing P/E${fu.revenueGrowth != null ? ` with ${(fu.revenueGrowth * 100).toFixed(0)}% revenue growth` : ''}${fu.roe != null ? ` and ${(fu.roe * 100).toFixed(0)}% ROE` : ''}.`);
   if (rationale) p.push(rationale);
-  p.push('Educational only — not investment advice.');
+  p.push('Not investment advice.');
   return { ok: true, source: 'quantra', text: p.join(' '), stance, newsImpact: impact, rationale };
 }
 
@@ -864,7 +864,7 @@ function localAnswer(question, c) {
     if (fc.probUp != null) p.push(`Near-term up-odds ~${Math.round(fc.probUp * 100)}%.`);
     p.push('Ask me about the indicators, risk, news, fundamentals, or the forecast.');
   }
-  p.push('(Educational, not advice.)');
+  p.push('(Not advice.)');
   return { ok: true, source: 'quantra', text: p.join(' ') };
 }
 
@@ -872,7 +872,7 @@ function localAnswer(question, c) {
 function localBrief(d) {
   const p = [];
   p.push(`Here's your ${d.date} brief.`);
-  if (!d.count) { p.push('Add assets to your watchlist to get a personalized read on what moved and what\'s coming up.'); p.push('Educational summary — not investment advice.'); return p.join(' '); }
+  if (!d.count) { p.push('Add assets to your watchlist to get a personalized read on what moved and what\'s coming up.'); p.push('Not investment advice.'); return p.join(' '); }
   const tone = d.avg > 0.3 ? 'mostly green' : d.avg < -0.3 ? 'mostly red' : 'mixed';
   p.push(`Your ${d.count} watched asset(s) are ${tone} today — ${d.up} up, ${d.down} down, ${d.avg >= 0 ? '+' : ''}${d.avg}% on average.`);
   if (d.topGainers && d.topGainers.length) p.push(`Leading: ${d.topGainers.map((x) => `${x.symbol} ${x.change >= 0 ? '+' : ''}${x.change.toFixed(1)}%`).join(', ')}.`);
@@ -880,7 +880,7 @@ function localBrief(d) {
   if (losers.length) p.push(`Lagging: ${losers.map((x) => `${x.symbol} ${x.change.toFixed(1)}%`).join(', ')}.`);
   if (d.market) p.push(`Broader market: ${d.market.up} advancing vs ${d.market.down} declining (${d.market.avg >= 0 ? '+' : ''}${d.market.avg}% avg) — a ${d.market.avg >= 0 ? 'risk-on' : 'risk-off'} tone.`);
   if (d.earnings && d.earnings.length) p.push(`On your calendar: ${d.earnings.slice(0, 3).map((x) => x.symbol).join(', ')} report soon (next: ${d.earnings[0].symbol} on ${d.earnings[0].date}).`);
-  p.push('Educational summary — not investment advice.');
+  p.push('Not investment advice.');
   return p.join(' ');
 }
 async function briefNarrative(d) {

@@ -1488,7 +1488,7 @@
         if (q && q.ok && q.price && current && current.id === item.id) { item.price = q.price; setDetailPrice(q.price); updateRowPrice(item); liveTag(true, 'LIVE · Finnhub'); }
       } catch {}
     };
-    tick(); quoteTimer = setInterval(tick, 2500);   // real-time US quote, snappier
+    tick(); quoteTimer = setInterval(tick, 2000);   // real-time US quote, snappier
   }
   function stopQuote() { if (quoteTimer) { clearInterval(quoteTimer); quoteTimer = null; } }
   // Live seconds for stocks/ETFs: poll Finnhub real-time quote ~1s and feed the tick chart.
@@ -1623,7 +1623,7 @@
   loadFX().then(() => { if (board.length) renderBoard(); if (current) select(current); });
   // start live streams once we know which sources are available (covers any load ordering)
   loadLiveConfig().then(() => { if (assetClass === 'crypto' && board.length) startArr(); if (current) startLive(current); });
-  setInterval(refreshBoardPrices, 10000);   // keep non-crypto board prices current
+  setInterval(refreshBoardPrices, 8000);   // keep non-crypto board prices current
   setInterval(tickMarketStatus, 20000);     // flip open/closed dots live at session boundaries
   if ($('askqSend')) $('askqSend').addEventListener('click', () => askSend());
   if ($('askqInput')) $('askqInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); askSend(); } });
