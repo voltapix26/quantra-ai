@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=13" />
+  <link rel="stylesheet" href="styles.css?v=14" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -128,7 +128,9 @@
             <label>Chart
               <select id="chartTypeSel">
                 <option value="line">Line</option>
+                <option value="area">Area</option>
                 <option value="candle">Candles</option>
+                <option value="heikin">Heikin Ashi</option>
               </select>
             </label>
             <label>Compare
@@ -149,6 +151,20 @@
             <svg class="chart" id="chart" viewBox="0 0 720 240" preserveAspectRatio="none"></svg>
             <div class="chart-tip" id="chartTip"></div>
           </div>
+
+          <div class="studies" id="studies">
+            <span class="studies__label">Studies</span>
+            <label class="study-tog"><input type="checkbox" id="togRsi" checked /> RSI</label>
+            <label class="study-tog"><input type="checkbox" id="togMacd" checked /> MACD</label>
+            <label class="study-tog"><input type="checkbox" id="togVol" checked /> Volume</label>
+          </div>
+          <div class="panes" id="panes">
+            <div class="pane" id="paneRsi"><span class="pane__lbl">RSI 14</span><svg class="pane__svg" id="svgRsi" viewBox="0 0 720 64" preserveAspectRatio="none"></svg></div>
+            <div class="pane" id="paneMacd"><span class="pane__lbl">MACD 12·26·9</span><svg class="pane__svg" id="svgMacd" viewBox="0 0 720 64" preserveAspectRatio="none"></svg></div>
+            <div class="pane" id="paneVol"><span class="pane__lbl">Volume</span><svg class="pane__svg" id="svgVol" viewBox="0 0 720 54" preserveAspectRatio="none"></svg></div>
+          </div>
+
+          <div class="patterns" id="patterns" hidden></div>
 
           <span class="label">AI verdict — technical + fundamental <span class="ai-badge" id="aiBadge" hidden></span></span>
           <div class="verdict"><p id="dText">—</p></div>
@@ -250,10 +266,10 @@
     <span class="legal-links"><a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refund.html">Refunds</a></span>
   </p>
 
-  <script src="globe.js?v=13"></script>
-  <script src="auth.js?v=13"></script>
-  <script src="analysis.js?v=13"></script>
-  <script src="report.js?v=13"></script>
-  <script src="terminal.js?v=13"></script>
+  <script src="globe.js?v=14"></script>
+  <script src="auth.js?v=14"></script>
+  <script src="analysis.js?v=14"></script>
+  <script src="report.js?v=14"></script>
+  <script src="terminal.js?v=14"></script>
 </body>
 </html>

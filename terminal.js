@@ -174,11 +174,24 @@
     const ohlc = candleHist || hist;
     const hasOHLC = ohlc && ohlc.opens && ohlc.highs && ohlc.lows && ohlc.opens.length === ohlc.closes.length
       && ohlc.highs.some((h, i) => h > ohlc.lows[i]);   // real OHLC (not degenerate)
-    if (chartType === 'candle' && hasOHLC) return drawCandles(ohlc, fc);
-    return drawLine(hist, fc);
+    if ((chartType === 'candle' || chartType === 'heikin') && hasOHLC) return drawCandles(chartType === 'heikin' ? heikinAshi(ohlc) : ohlc, fc);
+    return drawLine(hist, fc, chartType === 'area');
   }
+  // Heikin Ashi: smoothed OHLC that filters noise (a TradingView staple).
+  function heikinAshi(o) {
+    const O = o.opens, H = o.highs, L = o.lows, C = o.closes, ho = [], hh = [], hl = [], hc = [];
+    for (let i = 0; i < C.length; i++) {
+      const close = (O[i] + H[i] + L[i] + C[i]) / 4;
+      const open = i === 0 ? (O[i] + C[i]) / 2 : (ho[i - 1] + hc[i - 1]) / 2;
+      ho.push(open); hc.push(close); hh.push(Math.max(H[i], open, close)); hl.push(Math.min(L[i], open, close));
+    }
+    return Object.assign({}, o, { opens: ho, highs: hh, lows: hl, closes: hc });
+  }
+  // EMA array + MACD series (for the MACD pane).
+  function emaArr(arr, n) { const k = 2 / (n + 1); const out = []; let prev; for (let i = 0; i < arr.length; i++) { prev = i === 0 ? arr[i] : arr[i] * k + prev * (1 - k); out.push(prev); } return out; }
+  function macdSeries(closes) { const f = emaArr(closes, 12), s = emaArr(closes, 26); const macd = closes.map((_, i) => f[i] - s[i]); const signal = emaArr(macd, 9); return { macd, signal, hist: macd.map((v, i) => v - signal[i]) }; }
 
-  function drawLine(hist, fc) {
+  function drawLine(hist, fc, areaOnly) {
     const svg = $('chart');
     const closes = hist.closes, s = Q.series(closes);
     const dates = hist.dates || [];
@@ -196,8 +209,8 @@
 
     const priceLine = histSlice.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
     const area = `${priceLine} L ${x(histSlice.length - 1).toFixed(1)} ${H - PAD} L ${PAD} ${H - PAD} Z`;
-    const sma20Line = lineFrom(s.sma20.slice(start));
-    const sma50Line = lineFrom(s.sma50.slice(start));
+    const sma20Line = areaOnly ? '' : lineFrom(s.sma20.slice(start));
+    const sma50Line = areaOnly ? '' : lineFrom(s.sma50.slice(start));
 
     let fcBand = '', fcLine = '';
     if (fc) {
@@ -258,6 +271,90 @@
       <line id="xhair" y1="${PAD}" y2="${H - PAD}" stroke="rgba(231,236,245,.45)" stroke-width="1" stroke-dasharray="3 3" style="display:none" vector-effect="non-scaling-stroke"/>
       <circle id="xdot" r="3.6" fill="#E7ECF5" stroke="#0A0F1C" stroke-width="1" style="display:none"/>`;
     chartState = { total, histLen: c.length, vals: c, dates: d, fcMid, yAt: y, xAt: x };
+  }
+
+  /* ---------------- indicator sub-panes (RSI · MACD · Volume) ---------------- */
+  function togglePane(id, on) { const el = $(id); if (el) el.classList.toggle('is-off', !on); }
+  function drawPanes(hist) {
+    const show = !tickMode && chartState && hist && hist.closes && hist.closes.length > 2;
+    togglePane('paneRsi', show && $('togRsi').checked);
+    togglePane('paneMacd', show && $('togMacd').checked);
+    togglePane('paneVol', show && $('togVol').checked);
+    if (!show) return;
+    const hl = chartState.histLen, xEnd = chartState.xAt(hl - 1);
+    const px = (j) => PAD + (hl > 1 ? (j / (hl - 1)) * (xEnd - PAD) : 0);
+    if ($('togRsi').checked) renderRsiPane(hist, hl, px, xEnd);
+    if ($('togMacd').checked) renderMacdPane(hist, hl, px, xEnd);
+    if ($('togVol').checked) renderVolPane(hist, hl, px);
+  }
+  function renderRsiPane(hist, hl, px, xEnd) {
+    const svg = $('svgRsi'); if (!svg) return;
+    const PH = 64, rsi = (Q.series(hist.closes).rsi14 || []).slice(-hl);
+    const y = (v) => PH - 5 - (Math.max(0, Math.min(100, v)) / 100) * (PH - 12);
+    const line = rsi.map((v, i) => v == null ? '' : `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ').replace(/L(?=M)/g, '');
+    const lastV = rsi[rsi.length - 1];
+    svg.innerHTML =
+      `<line x1="${PAD}" x2="${xEnd}" y1="${y(70)}" y2="${y(70)}" stroke="rgba(251,113,133,.28)" stroke-width="1" stroke-dasharray="3 3"/>` +
+      `<line x1="${PAD}" x2="${xEnd}" y1="${y(30)}" y2="${y(30)}" stroke="rgba(52,211,153,.28)" stroke-width="1" stroke-dasharray="3 3"/>` +
+      `<path d="${line}" fill="none" stroke="#818CF8" stroke-width="1.5"/>` +
+      (lastV != null ? `<circle cx="${px(rsi.length - 1).toFixed(1)}" cy="${y(lastV).toFixed(1)}" r="2.6" fill="#818CF8"/>` : '');
+  }
+  function renderMacdPane(hist, hl, px, xEnd) {
+    const svg = $('svgMacd'); if (!svg) return;
+    const PH = 64, ms = macdSeries(hist.closes);
+    const m = ms.macd.slice(-hl), sg = ms.signal.slice(-hl), h = ms.hist.slice(-hl);
+    const span = Math.max(0.0001, ...m.concat(sg, h).map((v) => Math.abs(v)));
+    const y = (v) => PH / 2 - (v / span) * (PH / 2 - 5), y0 = y(0);
+    const slot = (xEnd - PAD) / Math.max(1, hl), bw = Math.max(1, slot * 0.6);
+    let bars = '';
+    for (let i = 0; i < h.length; i++) { const yy = y(h[i]); bars += `<rect x="${(px(i) - bw / 2).toFixed(1)}" y="${Math.min(yy, y0).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0.6, Math.abs(yy - y0)).toFixed(1)}" fill="${h[i] >= 0 ? '#34D399' : '#FB7185'}" opacity=".6"/>`; }
+    const mLine = m.map((v, i) => `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+    const sLine = sg.map((v, i) => `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+    svg.innerHTML = `<line x1="${PAD}" x2="${xEnd}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="rgba(255,255,255,.12)" stroke-width="1"/>${bars}<path d="${mLine}" fill="none" stroke="#22D3EE" stroke-width="1.3"/><path d="${sLine}" fill="none" stroke="#FBBF24" stroke-width="1.2"/>`;
+  }
+  function renderVolPane(hist, hl, px) {
+    const svg = $('svgVol'); if (!svg) return;
+    const PH = 54, vols = (hist.volumes || []).slice(-hl), closes = hist.closes.slice(-hl);
+    if (!vols.length || vols.every((v) => !v)) { svg.innerHTML = `<text x="360" y="30" fill="#6B7890" font-size="9" text-anchor="middle">No volume data for this asset</text>`; return; }
+    const max = Math.max(...vols) || 1, y = (v) => PH - 2 - ((v || 0) / max) * (PH - 8);
+    const xEnd = px(hl - 1), slot = (xEnd - PAD) / Math.max(1, hl), bw = Math.max(1, slot * 0.6);
+    let bars = '';
+    for (let i = 0; i < vols.length; i++) { const up = i === 0 ? true : closes[i] >= closes[i - 1], yy = y(vols[i]); bars += `<rect x="${(px(i) - bw / 2).toFixed(1)}" y="${yy.toFixed(1)}" width="${bw.toFixed(1)}" height="${(PH - 2 - yy).toFixed(1)}" fill="${up ? '#34D399' : '#FB7185'}" opacity=".5"/>`; }
+    svg.innerHTML = bars;
+  }
+
+  /* ---------------- candlestick pattern recognition ---------------- */
+  function detectPatterns(o) {
+    if (!o || !o.closes || o.closes.length < 3) return [];
+    const O = o.opens, H = o.highs, L = o.lows, C = o.closes, n = C.length;
+    if (!O || !H || !L || !H.some((h, i) => h > L[i])) return [];   // need real OHLC
+    const body = (i) => Math.abs(C[i] - O[i]), range = (i) => Math.max(1e-9, H[i] - L[i]);
+    const upSh = (i) => H[i] - Math.max(O[i], C[i]), loSh = (i) => Math.min(O[i], C[i]) - L[i], bull = (i) => C[i] >= O[i];
+    const found = [];
+    for (let i = Math.max(1, n - 12); i < n; i++) {
+      const b = body(i), r = range(i);
+      if (b <= r * 0.1) found.push({ i, name: 'Doji', dir: 'neut' });
+      else if (loSh(i) >= 2 * b && upSh(i) <= b * 0.6) found.push({ i, name: bull(i) ? 'Hammer' : 'Hanging Man', dir: bull(i) ? 'bull' : 'bear' });
+      else if (upSh(i) >= 2 * b && loSh(i) <= b * 0.6) found.push({ i, name: bull(i) ? 'Inverted Hammer' : 'Shooting Star', dir: bull(i) ? 'bull' : 'bear' });
+      if (i >= 1 && body(i - 1) > 0) {
+        if (bull(i) && !bull(i - 1) && C[i] >= O[i - 1] && O[i] <= C[i - 1] && b > body(i - 1)) found.push({ i, name: 'Bullish Engulfing', dir: 'bull' });
+        if (!bull(i) && bull(i - 1) && O[i] >= C[i - 1] && C[i] <= O[i - 1] && b > body(i - 1)) found.push({ i, name: 'Bearish Engulfing', dir: 'bear' });
+      }
+    }
+    const seen = new Set(), out = [];
+    for (let k = found.length - 1; k >= 0; k--) { if (!seen.has(found[k].name)) { seen.add(found[k].name); out.push(Object.assign({ ago: n - 1 - found[k].i }, found[k])); } }
+    return out.slice(0, 4);
+  }
+  function renderPatterns(o) {
+    const el = $('patterns'); if (!el) return;
+    const pats = tickMode ? [] : detectPatterns(o);
+    if (!pats.length) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    el.innerHTML = '<span class="studies__label" style="align-self:center">Patterns</span>' + pats.map((p) => {
+      const c = p.dir === 'bull' ? 'bull' : p.dir === 'bear' ? 'bear' : 'neut';
+      const when = p.ago === 0 ? 'latest' : p.ago + ' bars ago';
+      return `<span class="pat pat--${c}">${p.name} <span class="pat__when">${when}</span></span>`;
+    }).join('');
   }
 
   /* ---------------- chart hover tooltip (date + price) ---------------- */
@@ -610,12 +707,14 @@
         tickMode = true; startTickChart();
       } else {
         // candle source: crypto needs real OHLC from Coinbase; others already have it in hist
-        if (chartType === 'candle' && item.type === 'crypto') {
+        if ((chartType === 'candle' || chartType === 'heikin') && item.type === 'crypto') {
           try { candleHist = await getJSON(`${API}/crypto/ohlc?symbol=${encodeURIComponent(item.symbol)}&interval=${interval}`); } catch { candleHist = null; }
         }
         drawChart(hist, res.forecast);
         renderProjections(res.forecast, hist, item);
       }
+      drawPanes(hist);
+      renderPatterns(secMode ? null : (candleHist || hist));
       typeOut($('dText'), res.text);
       renderPeers(peers);
       renderNews(sent, item);
@@ -793,6 +892,7 @@
   $('compareInput').addEventListener('change', () => current && select(current));
   const ctSel = $('chartTypeSel');
   if (ctSel) { ctSel.value = chartType; ctSel.addEventListener('change', () => { chartType = ctSel.value; try { localStorage.setItem('quantra.charttype', chartType); } catch {} if (current) select(current); }); }
+  ['togRsi', 'togMacd', 'togVol'].forEach((id) => { const el = $(id); if (el) el.addEventListener('change', () => { if (state && state.history) drawPanes(state.history); }); });
   setupChartHover();
   fillRanges();
   function gateFeature(flag, msg) {

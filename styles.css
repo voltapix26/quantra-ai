@@ -197,6 +197,24 @@ button{font-family:inherit}
   font-size:.72rem;line-height:1.3;white-space:nowrap;box-shadow:var(--shadow)}
 .chart-tip b{display:block;font-family:'Space Grotesk';font-size:.84rem;font-variant-numeric:tabular-nums;color:var(--text)}
 .chart-tip span{color:var(--muted-2);font-variant-numeric:tabular-nums}
+/* ---- indicator studies / sub-panes (Quantra style) ---- */
+.studies{display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;margin:.1rem 0 .5rem;font-size:.76rem}
+.studies__label{font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted-2)}
+.study-tog{display:inline-flex;align-items:center;gap:.35rem;color:var(--muted);cursor:pointer}
+.study-tog input{accent-color:var(--cyan);cursor:pointer}
+.panes{display:flex;flex-direction:column;gap:.45rem}
+.pane{position:relative;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:10px;padding:2px}
+.pane__lbl{position:absolute;top:5px;left:9px;font-size:.64rem;font-weight:600;letter-spacing:.04em;color:var(--muted-2);z-index:2;pointer-events:none}
+.pane__svg{width:100%;display:block;height:64px}
+#svgVol{height:54px}
+.pane.is-off{display:none}
+/* ---- candlestick pattern badges ---- */
+.patterns{display:flex;flex-wrap:wrap;gap:.4rem;margin:.7rem 0 .1rem}
+.pat{font-size:.72rem;font-weight:600;padding:.2em .65em;border-radius:999px;border:1px solid var(--line-2);display:inline-flex;align-items:center;gap:.35rem}
+.pat--bull{color:var(--mint);background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.3)}
+.pat--bear{color:var(--rose);background:rgba(251,113,133,.1);border-color:rgba(251,113,133,.3)}
+.pat--neut{color:var(--amber);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3)}
+.pat__when{color:var(--muted-2);font-weight:400;font-size:.68rem}
 .legend{display:flex;gap:1.1rem;flex-wrap:wrap;font-size:.76rem;color:var(--muted);margin-bottom:.4rem}
 .legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:.35rem}
 
