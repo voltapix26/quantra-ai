@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0A0F1C" />
   <link rel="apple-touch-icon" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=30" />
+  <link rel="stylesheet" href="styles.css?v=31" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -196,9 +196,17 @@
             <label class="study-tog"><input type="checkbox" id="togMcg" /> McGinley</label>
             <label class="study-tog"><input type="checkbox" id="togEma" /> EMA 21</label>
             <label class="study-tog"><input type="checkbox" id="togSar" /> PSAR</label>
+            <label class="study-tog"><input type="checkbox" id="togVwap" /> VWAP</label>
+            <label class="study-tog"><input type="checkbox" id="togSuper" /> Supertrend</label>
+            <label class="study-tog"><input type="checkbox" id="togIchi" /> Ichimoku</label>
+            <label class="study-tog"><input type="checkbox" id="togKelt" /> Keltner</label>
+            <label class="study-tog"><input type="checkbox" id="togDon" /> Donchian</label>
             <label class="study-tog"><input type="checkbox" id="togRsi" checked /> RSI</label>
             <label class="study-tog"><input type="checkbox" id="togMacd" checked /> MACD</label>
             <label class="study-tog"><input type="checkbox" id="togStoch" /> Stochastic</label>
+            <label class="study-tog"><input type="checkbox" id="togAdx" /> ADX</label>
+            <label class="study-tog"><input type="checkbox" id="togWill" /> Williams %R</label>
+            <label class="study-tog"><input type="checkbox" id="togCci" /> CCI</label>
             <label class="study-tog"><input type="checkbox" id="togVol" checked /> Volume</label>
           </div>
 
@@ -224,6 +232,9 @@
             <div class="pane" id="paneRsi"><span class="pane__lbl">RSI 14</span><svg class="pane__svg" id="svgRsi" viewBox="0 0 720 64" preserveAspectRatio="none"></svg></div>
             <div class="pane" id="paneMacd"><span class="pane__lbl">MACD 12·26·9</span><svg class="pane__svg" id="svgMacd" viewBox="0 0 720 64" preserveAspectRatio="none"></svg></div>
             <div class="pane" id="paneStoch"><span class="pane__lbl">Stochastic 14·3</span><svg class="pane__svg" id="svgStoch" viewBox="0 0 720 64" preserveAspectRatio="none"></svg></div>
+            <div class="pane" id="paneAdx"><span class="pane__lbl">ADX 14</span><svg class="pane__svg" id="svgAdx" viewBox="0 0 720 64" preserveAspectRatio="none"></svg></div>
+            <div class="pane" id="paneWill"><span class="pane__lbl">Williams %R 14</span><svg class="pane__svg" id="svgWill" viewBox="0 0 720 64" preserveAspectRatio="none"></svg></div>
+            <div class="pane" id="paneCci"><span class="pane__lbl">CCI 20</span><svg class="pane__svg" id="svgCci" viewBox="0 0 720 64" preserveAspectRatio="none"></svg></div>
             <div class="pane" id="paneVol"><span class="pane__lbl">Volume</span><svg class="pane__svg" id="svgVol" viewBox="0 0 720 54" preserveAspectRatio="none"></svg></div>
           </div>
 
@@ -375,11 +386,11 @@
     <span class="legal-links"><a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refund.html">Refunds</a></span>
   </p>
 
-  <script src="globe.js?v=30"></script>
-  <script src="auth.js?v=30"></script>
-  <script src="analysis.js?v=30"></script>
-  <script src="report.js?v=30"></script>
-  <script src="terminal.js?v=30"></script>
-  <script src="pwa.js?v=30" defer></script>
+  <script src="globe.js?v=31"></script>
+  <script src="auth.js?v=31"></script>
+  <script src="analysis.js?v=31"></script>
+  <script src="report.js?v=31"></script>
+  <script src="terminal.js?v=31"></script>
+  <script src="pwa.js?v=31" defer></script>
 </body>
 </html>

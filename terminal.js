@@ -186,8 +186,8 @@
   let chartState = null;   // {total, histLen, vals, dates, fcMid, yAt} for hover tooltip
   let chartType = 'line';  // 'line' | 'candle'
   try { const ct = localStorage.getItem('quantra.charttype'); if (ct === 'candle' || ct === 'line') chartType = ct; } catch {}
-  let studyBB = false, studyMcg = false, studyEma = false, studySar = false;   // price-overlay studies
-  try { studyBB = localStorage.getItem('quantra.bb') === '1'; studyMcg = localStorage.getItem('quantra.mcg') === '1'; studyEma = localStorage.getItem('quantra.ema') === '1'; studySar = localStorage.getItem('quantra.sar') === '1'; } catch {}
+  let studyBB = false, studyMcg = false, studyEma = false, studySar = false, studyVwap = false, studyDon = false, studyKelt = false, studyIchi = false, studySuper = false;   // price-overlay studies
+  try { const g = (k) => localStorage.getItem('quantra.' + k) === '1'; studyBB = g('bb'); studyMcg = g('mcg'); studyEma = g('ema'); studySar = g('sar'); studyVwap = g('vwap'); studyDon = g('don'); studyKelt = g('kelt'); studyIchi = g('ichi'); studySuper = g('super'); } catch {}
   let candleHist = null;   // OHLC source for the candle view (crypto: Binance; else: hist)
   let tickMode = false, tickBuf = [], tickTimer = null, tickWinMs = 300000;  // live seconds chart
 
@@ -245,6 +245,36 @@
     out[0] = out[1];
     return out;
   }
+  // --- more studies (verified) ---
+  function atrSeries(H, L, C, n) { const tr = []; for (let i = 0; i < C.length; i++) tr.push(i === 0 ? H[i] - L[i] : Math.max(H[i] - L[i], Math.abs(H[i] - C[i - 1]), Math.abs(L[i] - C[i - 1]))); return emaArr(tr, n); }
+  function donchian(H, L, n) { const up = [], lo = []; for (let i = 0; i < H.length; i++) { if (i < n - 1) { up.push(null); lo.push(null); continue; } let hh = -Infinity, ll = Infinity; for (let j = i - n + 1; j <= i; j++) { if (H[j] > hh) hh = H[j]; if (L[j] < ll) ll = L[j]; } up.push(hh); lo.push(ll); } return { up, lo }; }
+  function keltner(C, H, L) { const e = emaArr(C, 20), a = atrSeries(H, L, C, 10); return { up: C.map((_, i) => e[i] + 2 * a[i]), lo: C.map((_, i) => e[i] - 2 * a[i]) }; }
+  function vwapArr(H, L, C, V) { let pv = 0, vv = 0; const o = []; for (let i = 0; i < C.length; i++) { const tp = (H[i] + L[i] + C[i]) / 3, v = V[i] || 0; pv += tp * v; vv += v; o.push(vv > 0 ? pv / vv : null); } return o; }
+  function ichimoku(H, L) { const mid = (p) => { const o = []; for (let i = 0; i < H.length; i++) { if (i < p - 1) { o.push(null); continue; } let hh = -Infinity, ll = Infinity; for (let j = i - p + 1; j <= i; j++) { if (H[j] > hh) hh = H[j]; if (L[j] < ll) ll = L[j]; } o.push((hh + ll) / 2); } return o; }; const t = mid(9), k = mid(26), b = mid(52); const a = t.map((v, i) => (v != null && k[i] != null) ? (v + k[i]) / 2 : null); return { tenkan: t, kijun: k, spanA: a, spanB: b }; }
+  function supertrend(H, L, C, period, mult) { const n = C.length, atr = atrSeries(H, L, C, period); const up = [], lo = [], st = new Array(n).fill(null), tr = new Array(n).fill(1); for (let i = 0; i < n; i++) { const hl = (H[i] + L[i]) / 2, ub = hl + mult * atr[i], lb = hl - mult * atr[i]; up[i] = (i === 0) ? ub : ((ub < up[i - 1] || C[i - 1] > up[i - 1]) ? ub : up[i - 1]); lo[i] = (i === 0) ? lb : ((lb > lo[i - 1] || C[i - 1] < lo[i - 1]) ? lb : lo[i - 1]); if (i === 0) { tr[i] = 1; st[i] = lo[i]; continue; } if (st[i - 1] === up[i - 1]) tr[i] = C[i] > up[i] ? 1 : -1; else tr[i] = C[i] < lo[i] ? -1 : 1; st[i] = tr[i] === 1 ? lo[i] : up[i]; } return { st, trend: tr }; }
+  function williamsR(H, L, C, n) { const o = []; for (let i = 0; i < C.length; i++) { if (i < n - 1) { o.push(null); continue; } let hh = -Infinity, ll = Infinity; for (let j = i - n + 1; j <= i; j++) { if (H[j] > hh) hh = H[j]; if (L[j] < ll) ll = L[j]; } o.push(hh > ll ? -100 * (hh - C[i]) / (hh - ll) : -50); } return o; }
+  function cciSeries(H, L, C, n) { const o = []; for (let i = 0; i < C.length; i++) { if (i < n - 1) { o.push(null); continue; } const tp = []; for (let j = i - n + 1; j <= i; j++) tp.push((H[j] + L[j] + C[j]) / 3); const sma = tp.reduce((a, b) => a + b, 0) / n; const md = tp.reduce((a, b) => a + Math.abs(b - sma), 0) / n; const cur = (H[i] + L[i] + C[i]) / 3; o.push(md ? (cur - sma) / (0.015 * md) : 0); } return o; }
+  function adxSeries(H, L, C, n) { const tr = [], pdm = [], mdm = []; for (let i = 1; i < C.length; i++) { const up = H[i] - H[i - 1], dn = L[i - 1] - L[i]; pdm.push(up > dn && up > 0 ? up : 0); mdm.push(dn > up && dn > 0 ? dn : 0); tr.push(Math.max(H[i] - L[i], Math.abs(H[i] - C[i - 1]), Math.abs(L[i] - C[i - 1]))); } const atr = emaArr(tr, n), pe = emaArr(pdm, n), me = emaArr(mdm, n), dx = []; for (let i = 0; i < atr.length; i++) { const pdi = 100 * pe[i] / (atr[i] || 1), mdi = 100 * me[i] / (atr[i] || 1); dx.push(100 * Math.abs(pdi - mdi) / ((pdi + mdi) || 1)); } const adx = emaArr(dx, n); return [null].concat(adx.map((v) => Math.max(0, Math.min(100, v)))); }
+
+  // Shared price-overlay SVG used by BOTH the line/area and candle views, so every
+  // study renders on either chart type. Coordinates come from the caller's x()/y().
+  function studyOverlaySVG(closes, highs, lows, volumes, start, x, y, prices) {
+    const lineFrom = (arr) => { let st = false; return arr.map((v, i) => { if (v == null) { st = false; return ''; } const c = st ? 'L' : 'M'; st = true; return `${c}${x(i).toFixed(1)} ${y(v).toFixed(1)}`; }).join(' '); };
+    const band = (up, lo) => { const fwd = [], rev = []; up.forEach((v, i) => { if (v != null && lo[i] != null) fwd.push(`${fwd.length ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`); }); for (let i = lo.length - 1; i >= 0; i--) { if (lo[i] != null && up[i] != null) rev.push(`L${x(i).toFixed(1)} ${y(lo[i]).toFixed(1)}`); } return fwd.length ? fwd.join(' ') + ' ' + rev.join(' ') + ' Z' : ''; };
+    const s = Q.series(closes);
+    const ohlc = highs && lows && highs.length === closes.length && lows.length === closes.length;
+    let o = '';
+    if (studyBB) { const per = 20, up = [], lo = []; for (let i = 0; i < closes.length; i++) { const m = s.sma20[i]; if (i < per - 1 || m == null) { up.push(null); lo.push(null); continue; } let sum = 0; for (let j = i - per + 1; j <= i; j++) sum += (closes[j] - m) ** 2; const sd = Math.sqrt(sum / per); up.push(m + 2 * sd); lo.push(m - 2 * sd); } const u = up.slice(start), l = lo.slice(start); const f = band(u, l); if (f) o += `<path d="${f}" fill="#22D3EE" opacity=".06"/>`; o += `<path d="${lineFrom(u)}" fill="none" stroke="#22D3EE" stroke-width="1.1" opacity=".55" stroke-dasharray="4 3"/><path d="${lineFrom(l)}" fill="none" stroke="#22D3EE" stroke-width="1.1" opacity=".55" stroke-dasharray="4 3"/>`; }
+    if (studyDon && ohlc) { const d = donchian(highs, lows, 20); o += `<path d="${lineFrom(d.up.slice(start))}" fill="none" stroke="#A78BFA" stroke-width="1" opacity=".5"/><path d="${lineFrom(d.lo.slice(start))}" fill="none" stroke="#A78BFA" stroke-width="1" opacity=".5"/>`; }
+    if (studyKelt && ohlc) { const k = keltner(closes, highs, lows); o += `<path d="${lineFrom(k.up.slice(start))}" fill="none" stroke="#F59E0B" stroke-width="1" opacity=".5" stroke-dasharray="3 3"/><path d="${lineFrom(k.lo.slice(start))}" fill="none" stroke="#F59E0B" stroke-width="1" opacity=".5" stroke-dasharray="3 3"/>`; }
+    if (studyIchi && ohlc) { const ic = ichimoku(highs, lows); const f = band(ic.spanA.slice(start), ic.spanB.slice(start)); if (f) o += `<path d="${f}" fill="#818CF8" opacity=".10"/>`; o += `<path d="${lineFrom(ic.tenkan.slice(start))}" fill="none" stroke="#22D3EE" stroke-width="1" opacity=".75"/><path d="${lineFrom(ic.kijun.slice(start))}" fill="none" stroke="#FB7185" stroke-width="1" opacity=".75"/>`; }
+    if (studyVwap && ohlc && volumes && volumes.length === closes.length) { o += `<path d="${lineFrom(vwapArr(highs, lows, closes, volumes).slice(start))}" fill="none" stroke="#FBBF24" stroke-width="1.3" opacity=".8"/>`; }
+    if (studySuper && ohlc) { const su = supertrend(highs, lows, closes, 10, 3).st.slice(start); o += su.map((v, i) => v == null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1.3" fill="${prices[i] >= v ? '#34D399' : '#FB7185'}"/>`).join(''); }
+    if (studyEma) o += `<path d="${lineFrom(emaArr(closes, 21).slice(start))}" fill="none" stroke="#2DD4BF" stroke-width="1.4" opacity=".85" stroke-dasharray="2 2"/>`;
+    if (studyMcg) o += `<path d="${lineFrom(mcginley(closes, 14).slice(start))}" fill="none" stroke="#EC4899" stroke-width="1.6" opacity=".92"/>`;
+    if (studySar && ohlc) { const sar = psar(highs, lows).slice(start); o += sar.map((v, i) => v == null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1.5" fill="${prices[i] >= v ? '#34D399' : '#FB7185'}"/>`).join(''); }
+    return o;
+  }
 
   function drawLine(hist, fc, areaOnly) {
     const svg = $('chart');
@@ -266,33 +296,7 @@
     const area = `${priceLine} L ${x(histSlice.length - 1).toFixed(1)} ${H - PAD} L ${PAD} ${H - PAD} Z`;
     const sma20Line = areaOnly ? '' : lineFrom(s.sma20.slice(start));
     const sma50Line = areaOnly ? '' : lineFrom(s.sma50.slice(start));
-
-    // Bollinger Bands (20, 2σ) overlay
-    let bbUpLine = '', bbLoLine = '', bbFill = '';
-    if (studyBB) {
-      const per = 20, up = [], lo = [];
-      for (let i = 0; i < closes.length; i++) {
-        const m = s.sma20[i];
-        if (i < per - 1 || m == null) { up.push(null); lo.push(null); continue; }
-        let sum = 0; for (let j = i - per + 1; j <= i; j++) sum += (closes[j] - m) ** 2;
-        const sd = Math.sqrt(sum / per); up.push(m + 2 * sd); lo.push(m - 2 * sd);
-      }
-      const upS = up.slice(start), loS = lo.slice(start);
-      bbUpLine = lineFrom(upS); bbLoLine = lineFrom(loS);
-      // fill between bands where both defined
-      const fwd = []; const rev = [];
-      upS.forEach((v, i) => { if (v != null && loS[i] != null) fwd.push(`${fwd.length ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`); });
-      for (let i = loS.length - 1; i >= 0; i--) { if (loS[i] != null && upS[i] != null) rev.push(`L${x(i).toFixed(1)} ${y(loS[i]).toFixed(1)}`); }
-      if (fwd.length) bbFill = fwd.join(' ') + ' ' + rev.join(' ') + ' Z';
-    }
-    // McGinley Dynamic + EMA(21) overlays, Parabolic SAR dots
-    const mcgLine = studyMcg ? lineFrom(mcginley(closes, 14).slice(start)) : '';
-    const emaLine = studyEma ? lineFrom(emaArr(closes, 21).slice(start)) : '';
-    let sarDots = '';
-    if (studySar && hist.highs && hist.lows && hist.highs.length === closes.length) {
-      const sar = psar(hist.highs, hist.lows).slice(start);
-      sarDots = sar.map((v, i) => (v == null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1.5" fill="${histSlice[i] >= v ? '#34D399' : '#FB7185'}"/>`)).join('');
-    }
+    const overlays = studyOverlaySVG(closes, hist.highs, hist.lows, hist.volumes, start, x, y, histSlice);
 
     let fcBand = '', fcLine = '';
     if (fc) {
@@ -305,15 +309,10 @@
     svg.innerHTML = `
       <defs><linearGradient id="pf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34D399" stop-opacity=".22"/><stop offset="1" stop-color="#34D399" stop-opacity="0"/></linearGradient></defs>
       <path d="${area}" fill="url(#pf)"/>
-      ${bbFill ? `<path d="${bbFill}" fill="#22D3EE" opacity=".06"/>` : ''}
-      ${bbUpLine ? `<path d="${bbUpLine}" fill="none" stroke="#22D3EE" stroke-width="1.1" opacity=".55" stroke-dasharray="4 3"/>` : ''}
-      ${bbLoLine ? `<path d="${bbLoLine}" fill="none" stroke="#22D3EE" stroke-width="1.1" opacity=".55" stroke-dasharray="4 3"/>` : ''}
       ${fc ? `<path d="${fcBand}" fill="#22D3EE" opacity=".12"/>` : ''}
       ${sma50Line ? `<path d="${sma50Line}" fill="none" stroke="#FBBF24" stroke-width="1.4" opacity=".85"/>` : ''}
       ${sma20Line ? `<path d="${sma20Line}" fill="none" stroke="#818CF8" stroke-width="1.4" opacity=".9"/>` : ''}
-      ${emaLine ? `<path d="${emaLine}" fill="none" stroke="#2DD4BF" stroke-width="1.4" opacity=".85" stroke-dasharray="2 2"/>` : ''}
-      ${mcgLine ? `<path d="${mcgLine}" fill="none" stroke="#EC4899" stroke-width="1.6" opacity=".92"/>` : ''}
-      ${sarDots}
+      ${overlays}
       <path d="${priceLine}" fill="none" stroke="#34D399" stroke-width="2.1" stroke-linejoin="round"/>
       ${fc ? `<path d="${fcLine}" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-dasharray="5 4"/>` : ''}
       ${overlaySVG(y)}
@@ -344,6 +343,7 @@
     }
     const lineFrom = (arr) => { let st = false; return arr.map((v, i) => { if (v == null) { st = false; return ''; } const cmd = st ? 'L' : 'M'; st = true; return `${cmd}${x(i).toFixed(1)} ${y(v).toFixed(1)}`; }).join(' '); };
     const sma20Line = lineFrom(s.sma20.slice(start)), sma50Line = lineFrom(s.sma50.slice(start));
+    const overlays = studyOverlaySVG(ohlc.closes, ohlc.highs, ohlc.lows, ohlc.volumes, start, x, y, c);
     let fcBand = '', fcLine = '';
     if (fc) {
       const off = c.length;
@@ -355,6 +355,7 @@
       ${fc ? `<path d="${fcBand}" fill="#22D3EE" opacity=".12"/>` : ''}
       ${sma50Line ? `<path d="${sma50Line}" fill="none" stroke="#FBBF24" stroke-width="1.3" opacity=".8"/>` : ''}
       ${sma20Line ? `<path d="${sma20Line}" fill="none" stroke="#818CF8" stroke-width="1.3" opacity=".85"/>` : ''}
+      ${overlays}
       ${candles}
       ${fc ? `<path d="${fcLine}" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-dasharray="5 4"/>` : ''}
       ${overlaySVG(y)}
@@ -371,13 +372,33 @@
     togglePane('paneMacd', show && $('togMacd').checked);
     togglePane('paneVol', show && $('togVol').checked);
     togglePane('paneStoch', show && $('togStoch') && $('togStoch').checked);
+    const tog = (id) => $(id) && $(id).checked;
+    togglePane('paneAdx', show && tog('togAdx'));
+    togglePane('paneWill', show && tog('togWill'));
+    togglePane('paneCci', show && tog('togCci'));
     if (!show) return;
     const hl = chartState.histLen, xEnd = chartState.xAt(hl - 1);
     const px = (j) => PAD + (hl > 1 ? (j / (hl - 1)) * (xEnd - PAD) : 0);
     if ($('togRsi').checked) renderRsiPane(hist, hl, px, xEnd);
     if ($('togMacd').checked) renderMacdPane(hist, hl, px, xEnd);
     if ($('togVol').checked) renderVolPane(hist, hl, px);
-    if ($('togStoch') && $('togStoch').checked) renderStochPane(hist, hl, px, xEnd);
+    if (tog('togStoch')) renderStochPane(hist, hl, px, xEnd);
+    if (tog('togAdx')) renderOscPane('svgAdx', adxSeries(hist.highs || [], hist.lows || [], hist.closes || [], 14), hl, px, xEnd, { lo: 0, hi: 60, levels: [25], col: '#A78BFA', need: hist.highs });
+    if (tog('togWill')) renderOscPane('svgWill', williamsR(hist.highs || [], hist.lows || [], hist.closes || [], 14), hl, px, xEnd, { lo: -100, hi: 0, levels: [-20, -80], col: '#22D3EE', need: hist.highs });
+    if (tog('togCci')) renderOscPane('svgCci', cciSeries(hist.highs || [], hist.lows || [], hist.closes || [], 20), hl, px, xEnd, { lo: -200, hi: 200, levels: [100, -100], col: '#FBBF24', need: hist.highs });
+  }
+  // Generic oscillator pane renderer (ADX, Williams %R, CCI…)
+  function renderOscPane(svgId, series, hl, px, xEnd, opt) {
+    const svg = $(svgId); if (!svg) return;
+    const C = (series || []);
+    if (!opt.need || opt.need.length !== C.length || !opt.need.length) { svg.innerHTML = `<text x="360" y="34" fill="#6B7890" font-size="9" text-anchor="middle">needs OHLC data</text>`; return; }
+    const PH = 64, lo = opt.lo, hi = opt.hi, rng = (hi - lo) || 1;
+    const y = (v) => PH - 5 - ((Math.max(lo, Math.min(hi, v)) - lo) / rng) * (PH - 12);
+    const arr = C.slice(-hl);
+    const line = arr.map((v, i) => v == null ? '' : `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ').replace(/L(?=M)/g, '');
+    const lvls = (opt.levels || []).map((lv) => `<line x1="${PAD}" x2="${xEnd}" y1="${y(lv)}" y2="${y(lv)}" stroke="rgba(231,236,245,.18)" stroke-width="1" stroke-dasharray="3 3"/>`).join('');
+    const last = arr[arr.length - 1];
+    svg.innerHTML = lvls + `<path d="${line}" fill="none" stroke="${opt.col}" stroke-width="1.5"/>` + (last != null ? `<circle cx="${px(arr.length - 1).toFixed(1)}" cy="${y(last).toFixed(1)}" r="2.6" fill="${opt.col}"/>` : '');
   }
   function renderStochPane(hist, hl, px, xEnd) {
     const svg = $('svgStoch'); if (!svg) return;
@@ -977,9 +998,10 @@
   /* ---------------- saved chart layouts ---------------- */
   let layouts = [];
   try { layouts = JSON.parse(localStorage.getItem('quantra.layouts') || '[]'); } catch {}
+  const STUDY_IDS = ['togRsi', 'togMacd', 'togVol', 'togStoch', 'togAdx', 'togWill', 'togCci', 'togBB', 'togMcg', 'togEma', 'togSar', 'togVwap', 'togSuper', 'togIchi', 'togKelt', 'togDon'];
   function curLayout() {
-    return { chartType, interval: $('intervalSel').value, range: $('rangeSel').value, rsi: $('togRsi').checked, macd: $('togMacd').checked, vol: $('togVol').checked, bb: $('togBB').checked,
-      mcg: $('togMcg').checked, ema: $('togEma').checked, sar: $('togSar').checked, stoch: $('togStoch').checked };
+    const studies = {}; STUDY_IDS.forEach((id) => { if ($(id)) studies[id] = $(id).checked; });
+    return { chartType, interval: $('intervalSel').value, range: $('rangeSel').value, studies };
   }
   function persistLayouts() {
     try { localStorage.setItem('quantra.layouts', JSON.stringify(layouts)); } catch {}
@@ -1005,13 +1027,11 @@
     const l = layouts[i]; if (!l) return; const c = l.cfg || {};
     chartType = c.chartType || 'line'; const cts = $('chartTypeSel'); if (cts) cts.value = chartType;
     try { localStorage.setItem('quantra.charttype', chartType); } catch {}
-    $('togRsi').checked = c.rsi !== false; $('togMacd').checked = c.macd !== false; $('togVol').checked = c.vol !== false;
-    if ($('togStoch')) $('togStoch').checked = !!c.stoch;
-    $('togBB').checked = !!c.bb; studyBB = !!c.bb;
-    if ($('togMcg')) { $('togMcg').checked = !!c.mcg; studyMcg = !!c.mcg; }
-    if ($('togEma')) { $('togEma').checked = !!c.ema; studyEma = !!c.ema; }
-    if ($('togSar')) { $('togSar').checked = !!c.sar; studySar = !!c.sar; }
-    try { localStorage.setItem('quantra.bb', studyBB ? '1' : '0'); localStorage.setItem('quantra.mcg', studyMcg ? '1' : '0'); localStorage.setItem('quantra.ema', studyEma ? '1' : '0'); localStorage.setItem('quantra.sar', studySar ? '1' : '0'); } catch {}
+    // new layouts store {studies:{togX:bool}}; old ones store flat keys (back-compat)
+    const st = c.studies || { togRsi: c.rsi !== false, togMacd: c.macd !== false, togVol: c.vol !== false, togStoch: !!c.stoch, togBB: !!c.bb, togMcg: !!c.mcg, togEma: !!c.ema, togSar: !!c.sar };
+    STUDY_IDS.forEach((id) => { if ($(id) && id in st) $(id).checked = !!st[id]; });
+    studyBB = !!st.togBB; studyMcg = !!st.togMcg; studyEma = !!st.togEma; studySar = !!st.togSar; studyVwap = !!st.togVwap; studySuper = !!st.togSuper; studyIchi = !!st.togIchi; studyKelt = !!st.togKelt; studyDon = !!st.togDon;
+    try { [['bb', studyBB], ['mcg', studyMcg], ['ema', studyEma], ['sar', studySar], ['vwap', studyVwap], ['super', studySuper], ['ichi', studyIchi], ['kelt', studyKelt], ['don', studyDon]].forEach(([k, v]) => localStorage.setItem('quantra.' + k, v ? '1' : '0')); } catch {}
     $('intervalSel').value = c.interval || '1d'; fillRanges();
     if (c.range) { const ro = $('rangeSel'); if ([...ro.options].some((o) => o.value === c.range)) ro.value = c.range; }
     if ($('layoutDel')) $('layoutDel').hidden = false;
@@ -1415,11 +1435,12 @@
   $('compareInput').addEventListener('change', () => current && select(current));
   const ctSel = $('chartTypeSel');
   if (ctSel) { ctSel.value = chartType; ctSel.addEventListener('change', () => { chartType = ctSel.value; try { localStorage.setItem('quantra.charttype', chartType); } catch {} if (current) select(current); }); }
-  ['togRsi', 'togMacd', 'togVol', 'togStoch'].forEach((id) => { const el = $(id); if (el) el.addEventListener('change', () => { if (state && state.history) drawPanes(state.history); }); });
+  ['togRsi', 'togMacd', 'togVol', 'togStoch', 'togAdx', 'togWill', 'togCci'].forEach((id) => { const el = $(id); if (el) el.addEventListener('change', () => { if (state && state.history) drawPanes(state.history); }); });
   // price-overlay study toggles: persist + redraw the chart
-  [['togBB', 'bb', (v) => studyBB = v], ['togMcg', 'mcg', (v) => studyMcg = v], ['togEma', 'ema', (v) => studyEma = v], ['togSar', 'sar', (v) => studySar = v]].forEach(([id, key, set]) => {
+  [['togBB', 'bb', studyBB, (v) => studyBB = v], ['togMcg', 'mcg', studyMcg, (v) => studyMcg = v], ['togEma', 'ema', studyEma, (v) => studyEma = v], ['togSar', 'sar', studySar, (v) => studySar = v],
+   ['togVwap', 'vwap', studyVwap, (v) => studyVwap = v], ['togSuper', 'super', studySuper, (v) => studySuper = v], ['togIchi', 'ichi', studyIchi, (v) => studyIchi = v], ['togKelt', 'kelt', studyKelt, (v) => studyKelt = v], ['togDon', 'don', studyDon, (v) => studyDon = v]].forEach(([id, key, init, set]) => {
     const el = $(id); if (!el) return;
-    el.checked = (key === 'bb' ? studyBB : key === 'mcg' ? studyMcg : key === 'ema' ? studyEma : studySar);
+    el.checked = init;
     el.addEventListener('change', () => { set(el.checked); try { localStorage.setItem('quantra.' + key, el.checked ? '1' : '0'); } catch {} if (replay.on) drawReplay(); else redrawChart(); });
   });
   // bar replay wiring
