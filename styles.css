@@ -215,6 +215,22 @@ button{font-family:inherit}
 .pat--bear{color:var(--rose);background:rgba(251,113,133,.1);border-color:rgba(251,113,133,.3)}
 .pat--neut{color:var(--amber);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3)}
 .pat__when{color:var(--muted-2);font-weight:400;font-size:.68rem}
+/* ---- chart tools: drawings + price alerts ---- */
+.chart-tools{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;margin:.5rem 0 .2rem}
+.ct-grp{display:inline-flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+.ct-grp--alert{margin-left:auto}
+.ct-btn{font-size:.76rem;font-weight:600;color:var(--muted);background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:8px;padding:.4em .7em;cursor:pointer;transition:.15s;font-family:inherit}
+.ct-btn:hover{color:var(--text);border-color:var(--cyan)}
+.ct-btn.is-on{color:var(--bg);background:var(--cyan);border-color:var(--cyan)}
+.ct-btn--accent{color:var(--amber);border-color:rgba(251,191,36,.4)}
+.ct-btn--accent:hover{background:rgba(251,191,36,.12);border-color:var(--amber)}
+#alertPrice{width:96px;background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:8px;padding:.4em .6em;color:var(--text);font-size:.78rem;font-family:inherit;font-variant-numeric:tabular-nums}
+#alertPrice:focus{outline:none;border-color:var(--amber)}
+.alert-list{display:inline-flex;gap:.35rem;flex-wrap:wrap}
+.al-chip{display:inline-flex;align-items:center;gap:.3rem;font-size:.74rem;color:var(--amber);background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:999px;padding:.15em .3em .15em .55em}
+.al-chip b{font-family:'Space Grotesk';color:var(--text)}.al-chip small{color:var(--muted-2)}
+.al-chip button{background:none;border:0;color:var(--muted-2);cursor:pointer;font-size:.8rem;line-height:1;padding:0 .2em}
+.al-chip button:hover{color:var(--rose)}
 .legend{display:flex;gap:1.1rem;flex-wrap:wrap;font-size:.76rem;color:var(--muted);margin-bottom:.4rem}
 .legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:.35rem}
 

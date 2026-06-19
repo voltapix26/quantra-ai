@@ -228,10 +228,11 @@
       ${sma20Line ? `<path d="${sma20Line}" fill="none" stroke="#818CF8" stroke-width="1.4" opacity=".9"/>` : ''}
       <path d="${priceLine}" fill="none" stroke="#34D399" stroke-width="2.1" stroke-linejoin="round"/>
       ${fc ? `<path d="${fcLine}" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-dasharray="5 4"/>` : ''}
+      ${overlaySVG(y)}
       <line id="xhair" y1="${PAD}" y2="${H - PAD}" stroke="rgba(231,236,245,.45)" stroke-width="1" stroke-dasharray="3 3" style="display:none" vector-effect="non-scaling-stroke"/>
       <circle id="xdot" r="3.6" fill="#E7ECF5" stroke="#0A0F1C" stroke-width="1" style="display:none"/>`;
 
-    chartState = { total, histLen: histSlice.length, vals: histSlice, dates: histDates, fcMid, yAt: y, xAt: x };
+    chartState = { total, histLen: histSlice.length, vals: histSlice, dates: histDates, fcMid, yAt: y, xAt: x, yInv: (yv) => min + ((H - PAD - yv) / (H - PAD * 2)) * rng };
   }
 
   function drawCandles(ohlc, fc) {
@@ -268,9 +269,10 @@
       ${sma20Line ? `<path d="${sma20Line}" fill="none" stroke="#818CF8" stroke-width="1.3" opacity=".85"/>` : ''}
       ${candles}
       ${fc ? `<path d="${fcLine}" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-dasharray="5 4"/>` : ''}
+      ${overlaySVG(y)}
       <line id="xhair" y1="${PAD}" y2="${H - PAD}" stroke="rgba(231,236,245,.45)" stroke-width="1" stroke-dasharray="3 3" style="display:none" vector-effect="non-scaling-stroke"/>
       <circle id="xdot" r="3.6" fill="#E7ECF5" stroke="#0A0F1C" stroke-width="1" style="display:none"/>`;
-    chartState = { total, histLen: c.length, vals: c, dates: d, fcMid, yAt: y, xAt: x };
+    chartState = { total, histLen: c.length, vals: c, dates: d, fcMid, yAt: y, xAt: x, yInv: (yv) => min + ((H - PAD - yv) / (H - PAD * 2)) * rng };
   }
 
   /* ---------------- indicator sub-panes (RSI · MACD · Volume) ---------------- */
@@ -355,6 +357,82 @@
       const when = p.ago === 0 ? 'latest' : p.ago + ' bars ago';
       return `<span class="pat pat--${c}">${p.name} <span class="pat__when">${when}</span></span>`;
     }).join('');
+  }
+
+  /* ---------------- drawing tools + price alerts ---------------- */
+  const akey = (it) => it ? (it.type + ':' + (it.symbol || it.id)) : '';
+  let drawings = {}, alerts = [], activeTool = null, pendingPt = null;
+  try { drawings = JSON.parse(localStorage.getItem('quantra.draw') || '{}'); } catch {}
+  try { alerts = JSON.parse(localStorage.getItem('quantra.alerts') || '[]'); } catch {}
+  const saveDraw = () => { try { localStorage.setItem('quantra.draw', JSON.stringify(drawings)); } catch {} };
+  const saveAlerts = () => { try { localStorage.setItem('quantra.alerts', JSON.stringify(alerts)); } catch {} };
+  const curPrice = () => (state && state.analysis && state.analysis.price) || ((board.find((b) => b.id === (current && current.id)) || {}).price) || null;
+
+  function overlaySVG(y) {
+    if (!current || tickMode) return '';
+    const k = akey(current); let out = '';
+    for (const d of (drawings[k] || [])) {
+      if (d.type === 'hline') { const yy = y(d.a.price); out += `<line x1="${PAD}" x2="${W - PAD}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#22D3EE" stroke-width="1.3" stroke-dasharray="6 3" opacity=".85"/>`; }
+      else if (d.type === 'trend' && d.b) { const x1 = PAD + d.a.xf * (W - 2 * PAD), x2 = PAD + d.b.xf * (W - 2 * PAD); out += `<line x1="${x1.toFixed(1)}" y1="${y(d.a.price).toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y(d.b.price).toFixed(1)}" stroke="#818CF8" stroke-width="1.6" opacity=".9"/>`; }
+    }
+    if (activeTool === 'trend' && pendingPt && pendingPt.k === k) { const x1 = PAD + pendingPt.xf * (W - 2 * PAD); out += `<circle cx="${x1.toFixed(1)}" cy="${y(pendingPt.price).toFixed(1)}" r="3" fill="#818CF8"/>`; }
+    for (const a of alerts) { if (a.k === k && a.on) { const yy = y(a.price); out += `<line x1="${PAD}" x2="${W - PAD}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#FBBF24" stroke-width="1.1" stroke-dasharray="2 3" opacity=".8"/>`; } }
+    return out;
+  }
+  function redrawChart() { if (current && state) drawChart(state.history, state.analysis && state.analysis.forecast); }
+  function setTool(t) { activeTool = t; pendingPt = null; const tr = $('toolTrend'), hl = $('toolHline'); if (tr) tr.classList.toggle('is-on', t === 'trend'); if (hl) hl.classList.toggle('is-on', t === 'hline'); const c = $('chart'); if (c) c.style.cursor = t ? 'crosshair' : ''; }
+  function chartPoint(e) {
+    const svg = $('chart'), rect = svg.getBoundingClientRect();
+    let df = (((e.clientX - rect.left) / rect.width) * W - PAD) / (W - PAD * 2); df = Math.max(0, Math.min(1, df));
+    const price = (chartState && chartState.yInv) ? chartState.yInv(((e.clientY - rect.top) / rect.height) * H) : null;
+    return { xf: df, price };
+  }
+  function onChartDown(e) {
+    if (!activeTool || !current || !chartState) return;
+    const pt = chartPoint(e); if (pt.price == null) return;
+    const k = akey(current);
+    if (activeTool === 'hline') { (drawings[k] = drawings[k] || []).push({ type: 'hline', a: { price: pt.price } }); saveDraw(); setTool(null); redrawChart(); }
+    else if (activeTool === 'trend') {
+      if (!pendingPt) { pendingPt = { k, xf: pt.xf, price: pt.price }; redrawChart(); }
+      else { (drawings[k] = drawings[k] || []).push({ type: 'trend', a: { xf: pendingPt.xf, price: pendingPt.price }, b: { xf: pt.xf, price: pt.price } }); pendingPt = null; saveDraw(); setTool(null); redrawChart(); }
+    }
+  }
+  function clearDrawings() { if (current) { drawings[akey(current)] = []; saveDraw(); redrawChart(); } }
+
+  function addAlert() {
+    if (!current) return R.toast('Pick an asset first');
+    const price = parseFloat(($('alertPrice').value || '').replace(/[^0-9.]/g, ''));
+    if (!(price > 0)) return R.toast('Enter a valid alert price');
+    const cur = curPrice();
+    const side = (cur != null && price >= cur) ? 'above' : 'below';
+    alerts.push({ id: 'al_' + Date.now().toString(36), k: akey(current), sym: current.symbol, type: current.type, price, side, on: true });
+    saveAlerts(); $('alertPrice').value = '';
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') { try { Notification.requestPermission(); } catch {} }
+    R.toast('Alert set · ' + money(price, curBase) + ' (' + side + ')');
+    renderAlerts(); redrawChart();
+  }
+  function removeAlert(id) { alerts = alerts.filter((a) => a.id !== id); saveAlerts(); renderAlerts(); redrawChart(); }
+  function renderAlerts() {
+    const el = $('alertList'); if (!el) return;
+    const mine = alerts.filter((a) => a.on && current && a.k === akey(current));
+    if (!mine.length) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    el.innerHTML = mine.map((a) => `<span class="al-chip">🔔 <b>${money(a.price, curBase)}</b> <small>${a.side}</small> <button data-al="${a.id}" aria-label="remove alert">✕</button></span>`).join('');
+    el.querySelectorAll('[data-al]').forEach((b) => b.addEventListener('click', () => removeAlert(b.dataset.al)));
+  }
+  function fireAlert(a, price) {
+    const msg = `${a.sym} crossed ${money(a.price, curBase)} (now ${money(price, curBase)})`;
+    try { if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification('Quantra alert', { body: msg, icon: 'assets/brand/quantra-icon.svg' }); } catch {}
+    if (R && R.toast) R.toast('🔔 ' + msg);
+  }
+  function checkAlerts(type, symbol, price) {
+    if (!(price > 0) || !alerts.length) return;
+    const k = type + ':' + symbol; let changed = false;
+    for (const a of alerts) {
+      if (!a.on || a.k !== k) continue;
+      if ((a.side === 'above' && price >= a.price) || (a.side === 'below' && price <= a.price)) { a.on = false; changed = true; fireAlert(a, price); }
+    }
+    if (changed) { saveAlerts(); if (current && k === akey(current)) { renderAlerts(); redrawChart(); } }
   }
 
   /* ---------------- chart hover tooltip (date + price) ---------------- */
@@ -668,8 +746,8 @@
       const chip = $('dChange');
       if (chg != null) { chip.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`; chip.className = 'chip chip--' + (chg >= 0 ? 'up' : 'down'); }
       else { chip.textContent = res.verdict.trend; chip.className = 'chip chip--' + (up ? 'up' : res.verdict.dir === 'down' ? 'down' : 'neutral'); }
-      const SUBS = { crypto: 'Cryptocurrency · 24/7 market', etf: 'Exchange-traded fund', commodity: 'Commodity / futures', index: 'Market index', fx: 'Foreign exchange pair' };
-      if (SUBS[item.type]) $('dSub').textContent = SUBS[item.type];
+      const SUBS = { crypto: 'Cryptocurrency · 24/7 market', stock: 'Equity / stock', etf: 'Exchange-traded fund', commodity: 'Commodity / futures', index: 'Market index', fx: 'Foreign exchange pair' };
+      $('dSub').textContent = SUBS[item.type] || '—';   // always set (fundamentals may refine it for stocks)
 
       setScore(res); updateStar(item);
       $('mTrend').textContent = res.verdict.trend; $('mRR').textContent = res.verdict.rr;
@@ -715,6 +793,7 @@
       }
       drawPanes(hist);
       renderPatterns(secMode ? null : (candleHist || hist));
+      setTool(null); renderAlerts();
       typeOut($('dText'), res.text);
       renderPeers(peers);
       renderNews(sent, item);
@@ -784,11 +863,12 @@
     if (!t) { const h = document.querySelector('.dhead'); if (!h) return; t = document.createElement('span'); t.id = 'liveTag'; t.className = 'live-tag'; h.insertBefore(t, h.children[1] || null); }
     t.hidden = !on; if (on) t.innerHTML = '<span class="live-dot"></span>' + (label || 'LIVE');
   }
-  function setDetailPrice(p) { const dp = $('dPrice'); if (!dp) return; dp.textContent = money(p, curBase); dp.classList.remove('tick'); void dp.offsetWidth; dp.classList.add('tick'); }
+  function setDetailPrice(p) { const dp = $('dPrice'); if (!dp) return; dp.textContent = money(p, curBase); dp.classList.remove('tick'); void dp.offsetWidth; dp.classList.add('tick'); if (current) checkAlerts(current.type, current.symbol, p); }
   function updateRowPrice(it) {
     const list = $('list'); if (!list) return;
     const row = list.querySelector('.trow[data-type="' + it.type + '"][data-symbol="' + it.symbol + '"]');
     const c = row && row.querySelector('.trow__price'); if (c) c.textContent = money(it.price, it.currency);
+    checkAlerts(it.type, it.symbol, it.price);
   }
   // Crypto: one Coinbase public WS (ticker channel) for the whole board + the
   // selected coin. Sub-second per-trade updates, and US-accessible (unlike Binance).
@@ -893,6 +973,14 @@
   const ctSel = $('chartTypeSel');
   if (ctSel) { ctSel.value = chartType; ctSel.addEventListener('change', () => { chartType = ctSel.value; try { localStorage.setItem('quantra.charttype', chartType); } catch {} if (current) select(current); }); }
   ['togRsi', 'togMacd', 'togVol'].forEach((id) => { const el = $(id); if (el) el.addEventListener('change', () => { if (state && state.history) drawPanes(state.history); }); });
+  // drawing tools + alerts wiring
+  { const tT = $('toolTrend'), tH = $('toolHline'), tC = $('toolClear'), aA = $('alertAdd'), aP = $('alertPrice'), chartEl = $('chart');
+    if (tT) tT.addEventListener('click', () => setTool(activeTool === 'trend' ? null : 'trend'));
+    if (tH) tH.addEventListener('click', () => setTool(activeTool === 'hline' ? null : 'hline'));
+    if (tC) tC.addEventListener('click', clearDrawings);
+    if (aA) aA.addEventListener('click', addAlert);
+    if (aP) aP.addEventListener('keydown', (e) => { if (e.key === 'Enter') addAlert(); });
+    if (chartEl) chartEl.addEventListener('pointerdown', onChartDown); }
   setupChartHover();
   fillRanges();
   function gateFeature(flag, msg) {
