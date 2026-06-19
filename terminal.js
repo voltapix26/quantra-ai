@@ -186,8 +186,8 @@
   let chartState = null;   // {total, histLen, vals, dates, fcMid, yAt} for hover tooltip
   let chartType = 'line';  // 'line' | 'candle'
   try { const ct = localStorage.getItem('quantra.charttype'); if (ct === 'candle' || ct === 'line') chartType = ct; } catch {}
-  let studyBB = false;     // Bollinger Bands overlay
-  try { studyBB = localStorage.getItem('quantra.bb') === '1'; } catch {}
+  let studyBB = false, studyMcg = false, studyEma = false, studySar = false;   // price-overlay studies
+  try { studyBB = localStorage.getItem('quantra.bb') === '1'; studyMcg = localStorage.getItem('quantra.mcg') === '1'; studyEma = localStorage.getItem('quantra.ema') === '1'; studySar = localStorage.getItem('quantra.sar') === '1'; } catch {}
   let candleHist = null;   // OHLC source for the candle view (crypto: Binance; else: hist)
   let tickMode = false, tickBuf = [], tickTimer = null, tickWinMs = 300000;  // live seconds chart
 
@@ -211,6 +211,40 @@
   // EMA array + MACD series (for the MACD pane).
   function emaArr(arr, n) { const k = 2 / (n + 1); const out = []; let prev; for (let i = 0; i < arr.length; i++) { prev = i === 0 ? arr[i] : arr[i] * k + prev * (1 - k); out.push(prev); } return out; }
   function macdSeries(closes) { const f = emaArr(closes, 12), s = emaArr(closes, 26); const macd = closes.map((_, i) => f[i] - s[i]); const signal = emaArr(macd, 9); return { macd, signal, hist: macd.map((v, i) => v - signal[i]) }; }
+  // McGinley Dynamic — an adaptive moving average that speeds up/slows down with the
+  // market, hugging price more smoothly than an EMA and reducing whipsaw.
+  function mcginley(closes, n) {
+    const out = new Array(closes.length); let md = closes[0];
+    for (let i = 0; i < closes.length; i++) {
+      const c = closes[i];
+      if (i === 0) md = c;
+      else { const r = c / (md || c); md = md + (c - md) / Math.max(1e-9, n * Math.pow(r, 4)); }
+      out[i] = md;
+    }
+    return out;
+  }
+  // Parabolic SAR (Wilder) — trailing stop-and-reverse dots above/below price.
+  function psar(highs, lows, step, max) {
+    step = step || 0.02; max = max || 0.2;
+    const n = highs.length, out = new Array(n).fill(null);
+    if (n < 2) return out;
+    let bull = highs[1] >= highs[0], af = step, ep = bull ? highs[0] : lows[0], sar = bull ? lows[0] : highs[0];
+    for (let i = 1; i < n; i++) {
+      sar = sar + af * (ep - sar);
+      if (bull) {
+        sar = Math.min(sar, lows[i - 1], i >= 2 ? lows[i - 2] : lows[i - 1]);
+        if (lows[i] < sar) { bull = false; sar = ep; ep = lows[i]; af = step; }
+        else if (highs[i] > ep) { ep = highs[i]; af = Math.min(max, af + step); }
+      } else {
+        sar = Math.max(sar, highs[i - 1], i >= 2 ? highs[i - 2] : highs[i - 1]);
+        if (highs[i] > sar) { bull = true; sar = ep; ep = highs[i]; af = step; }
+        else if (lows[i] < ep) { ep = lows[i]; af = Math.min(max, af + step); }
+      }
+      out[i] = sar;
+    }
+    out[0] = out[1];
+    return out;
+  }
 
   function drawLine(hist, fc, areaOnly) {
     const svg = $('chart');
@@ -251,6 +285,14 @@
       for (let i = loS.length - 1; i >= 0; i--) { if (loS[i] != null && upS[i] != null) rev.push(`L${x(i).toFixed(1)} ${y(loS[i]).toFixed(1)}`); }
       if (fwd.length) bbFill = fwd.join(' ') + ' ' + rev.join(' ') + ' Z';
     }
+    // McGinley Dynamic + EMA(21) overlays, Parabolic SAR dots
+    const mcgLine = studyMcg ? lineFrom(mcginley(closes, 14).slice(start)) : '';
+    const emaLine = studyEma ? lineFrom(emaArr(closes, 21).slice(start)) : '';
+    let sarDots = '';
+    if (studySar && hist.highs && hist.lows && hist.highs.length === closes.length) {
+      const sar = psar(hist.highs, hist.lows).slice(start);
+      sarDots = sar.map((v, i) => (v == null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1.5" fill="${histSlice[i] >= v ? '#34D399' : '#FB7185'}"/>`)).join('');
+    }
 
     let fcBand = '', fcLine = '';
     if (fc) {
@@ -269,6 +311,9 @@
       ${fc ? `<path d="${fcBand}" fill="#22D3EE" opacity=".12"/>` : ''}
       ${sma50Line ? `<path d="${sma50Line}" fill="none" stroke="#FBBF24" stroke-width="1.4" opacity=".85"/>` : ''}
       ${sma20Line ? `<path d="${sma20Line}" fill="none" stroke="#818CF8" stroke-width="1.4" opacity=".9"/>` : ''}
+      ${emaLine ? `<path d="${emaLine}" fill="none" stroke="#2DD4BF" stroke-width="1.4" opacity=".85" stroke-dasharray="2 2"/>` : ''}
+      ${mcgLine ? `<path d="${mcgLine}" fill="none" stroke="#EC4899" stroke-width="1.6" opacity=".92"/>` : ''}
+      ${sarDots}
       <path d="${priceLine}" fill="none" stroke="#34D399" stroke-width="2.1" stroke-linejoin="round"/>
       ${fc ? `<path d="${fcLine}" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-dasharray="5 4"/>` : ''}
       ${overlaySVG(y)}
@@ -325,12 +370,34 @@
     togglePane('paneRsi', show && $('togRsi').checked);
     togglePane('paneMacd', show && $('togMacd').checked);
     togglePane('paneVol', show && $('togVol').checked);
+    togglePane('paneStoch', show && $('togStoch') && $('togStoch').checked);
     if (!show) return;
     const hl = chartState.histLen, xEnd = chartState.xAt(hl - 1);
     const px = (j) => PAD + (hl > 1 ? (j / (hl - 1)) * (xEnd - PAD) : 0);
     if ($('togRsi').checked) renderRsiPane(hist, hl, px, xEnd);
     if ($('togMacd').checked) renderMacdPane(hist, hl, px, xEnd);
     if ($('togVol').checked) renderVolPane(hist, hl, px);
+    if ($('togStoch') && $('togStoch').checked) renderStochPane(hist, hl, px, xEnd);
+  }
+  function renderStochPane(hist, hl, px, xEnd) {
+    const svg = $('svgStoch'); if (!svg) return;
+    const PH = 64, Hi = hist.highs || [], Lo = hist.lows || [], C = hist.closes || [], n = 14;
+    if (Hi.length !== C.length || !Hi.length) { svg.innerHTML = `<text x="360" y="34" fill="#6B7890" font-size="9" text-anchor="middle">Stochastic needs OHLC data</text>`; return; }
+    const k = [];
+    for (let i = 0; i < C.length; i++) {
+      if (i < n - 1) { k.push(null); continue; }
+      let hh = -Infinity, ll = Infinity;
+      for (let j = i - n + 1; j <= i; j++) { if (Hi[j] > hh) hh = Hi[j]; if (Lo[j] < ll) ll = Lo[j]; }
+      k.push(hh > ll ? ((C[i] - ll) / (hh - ll)) * 100 : 50);
+    }
+    const dd = k.map((_, i) => (i < 2 || k[i] == null || k[i - 1] == null || k[i - 2] == null) ? null : (k[i] + k[i - 1] + k[i - 2]) / 3);
+    const kS = k.slice(-hl), dS = dd.slice(-hl);
+    const y = (v) => PH - 5 - (Math.max(0, Math.min(100, v)) / 100) * (PH - 12);
+    const lineOf = (arr, col) => `<path d="${arr.map((v, i) => v == null ? '' : `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ').replace(/L(?=M)/g, '')}" fill="none" stroke="${col}" stroke-width="1.4"/>`;
+    svg.innerHTML =
+      `<line x1="${PAD}" x2="${xEnd}" y1="${y(80)}" y2="${y(80)}" stroke="rgba(251,113,133,.28)" stroke-width="1" stroke-dasharray="3 3"/>` +
+      `<line x1="${PAD}" x2="${xEnd}" y1="${y(20)}" y2="${y(20)}" stroke="rgba(52,211,153,.28)" stroke-width="1" stroke-dasharray="3 3"/>` +
+      lineOf(kS, '#22D3EE') + lineOf(dS, '#FBBF24');
   }
   function renderRsiPane(hist, hl, px, xEnd) {
     const svg = $('svgRsi'); if (!svg) return;
@@ -911,7 +978,8 @@
   let layouts = [];
   try { layouts = JSON.parse(localStorage.getItem('quantra.layouts') || '[]'); } catch {}
   function curLayout() {
-    return { chartType, interval: $('intervalSel').value, range: $('rangeSel').value, rsi: $('togRsi').checked, macd: $('togMacd').checked, vol: $('togVol').checked, bb: $('togBB').checked };
+    return { chartType, interval: $('intervalSel').value, range: $('rangeSel').value, rsi: $('togRsi').checked, macd: $('togMacd').checked, vol: $('togVol').checked, bb: $('togBB').checked,
+      mcg: $('togMcg').checked, ema: $('togEma').checked, sar: $('togSar').checked, stoch: $('togStoch').checked };
   }
   function persistLayouts() {
     try { localStorage.setItem('quantra.layouts', JSON.stringify(layouts)); } catch {}
@@ -938,7 +1006,12 @@
     chartType = c.chartType || 'line'; const cts = $('chartTypeSel'); if (cts) cts.value = chartType;
     try { localStorage.setItem('quantra.charttype', chartType); } catch {}
     $('togRsi').checked = c.rsi !== false; $('togMacd').checked = c.macd !== false; $('togVol').checked = c.vol !== false;
-    $('togBB').checked = !!c.bb; studyBB = !!c.bb; try { localStorage.setItem('quantra.bb', studyBB ? '1' : '0'); } catch {}
+    if ($('togStoch')) $('togStoch').checked = !!c.stoch;
+    $('togBB').checked = !!c.bb; studyBB = !!c.bb;
+    if ($('togMcg')) { $('togMcg').checked = !!c.mcg; studyMcg = !!c.mcg; }
+    if ($('togEma')) { $('togEma').checked = !!c.ema; studyEma = !!c.ema; }
+    if ($('togSar')) { $('togSar').checked = !!c.sar; studySar = !!c.sar; }
+    try { localStorage.setItem('quantra.bb', studyBB ? '1' : '0'); localStorage.setItem('quantra.mcg', studyMcg ? '1' : '0'); localStorage.setItem('quantra.ema', studyEma ? '1' : '0'); localStorage.setItem('quantra.sar', studySar ? '1' : '0'); } catch {}
     $('intervalSel').value = c.interval || '1d'; fillRanges();
     if (c.range) { const ro = $('rangeSel'); if ([...ro.options].some((o) => o.value === c.range)) ro.value = c.range; }
     if ($('layoutDel')) $('layoutDel').hidden = false;
@@ -1342,8 +1415,13 @@
   $('compareInput').addEventListener('change', () => current && select(current));
   const ctSel = $('chartTypeSel');
   if (ctSel) { ctSel.value = chartType; ctSel.addEventListener('change', () => { chartType = ctSel.value; try { localStorage.setItem('quantra.charttype', chartType); } catch {} if (current) select(current); }); }
-  ['togRsi', 'togMacd', 'togVol'].forEach((id) => { const el = $(id); if (el) el.addEventListener('change', () => { if (state && state.history) drawPanes(state.history); }); });
-  { const bb = $('togBB'); if (bb) { bb.checked = studyBB; bb.addEventListener('change', () => { studyBB = bb.checked; try { localStorage.setItem('quantra.bb', studyBB ? '1' : '0'); } catch {} if (replay.on) drawReplay(); else redrawChart(); }); } }
+  ['togRsi', 'togMacd', 'togVol', 'togStoch'].forEach((id) => { const el = $(id); if (el) el.addEventListener('change', () => { if (state && state.history) drawPanes(state.history); }); });
+  // price-overlay study toggles: persist + redraw the chart
+  [['togBB', 'bb', (v) => studyBB = v], ['togMcg', 'mcg', (v) => studyMcg = v], ['togEma', 'ema', (v) => studyEma = v], ['togSar', 'sar', (v) => studySar = v]].forEach(([id, key, set]) => {
+    const el = $(id); if (!el) return;
+    el.checked = (key === 'bb' ? studyBB : key === 'mcg' ? studyMcg : key === 'ema' ? studyEma : studySar);
+    el.addEventListener('change', () => { set(el.checked); try { localStorage.setItem('quantra.' + key, el.checked ? '1' : '0'); } catch {} if (replay.on) drawReplay(); else redrawChart(); });
+  });
   // bar replay wiring
   { const rt = $('replayToggle'); if (rt) rt.addEventListener('click', () => (replay.on ? exitReplay() : enterReplay()));
     const rb = $('rpBack'); if (rb) rb.addEventListener('click', () => stepReplay(-1));
