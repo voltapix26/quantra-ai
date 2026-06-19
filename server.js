@@ -287,11 +287,11 @@ const api = {
     if (!r) throw new Error('no data');
     return { symbol: q.symbol, currency: (r.meta && r.meta.currency) || 'USD', ...alignedFromYahoo(r), meta: r.meta || {} };
   },
-  async 'stock/board'() { return cached('sb', 20000, () => buildBoard(DEFAULT_STOCKS, 'stock')); },
-  async 'etf/board'() { return cached('etfb', 20000, () => buildBoard(UNIV.etf, 'etf')); },
-  async 'commodity/board'() { return cached('comb', 20000, () => buildBoard(UNIV.commodity, 'commodity')); },
-  async 'index/board'() { return cached('idxb', 20000, () => buildBoard(UNIV.index, 'index')); },
-  async 'fx/board'() { return cached('fxb', 20000, () => buildBoard(UNIV.fx, 'fx')); },
+  async 'stock/board'() { return cached('sb', 15000, () => buildBoard(DEFAULT_STOCKS, 'stock')); },
+  async 'etf/board'() { return cached('etfb', 15000, () => buildBoard(UNIV.etf, 'etf')); },
+  async 'commodity/board'() { return cached('comb', 15000, () => buildBoard(UNIV.commodity, 'commodity')); },
+  async 'index/board'() { return cached('idxb', 15000, () => buildBoard(UNIV.index, 'index')); },
+  async 'fx/board'() { return cached('fxb', 15000, () => buildBoard(UNIV.fx, 'fx')); },
 
   /* ---- market discovery: heatmap + movers + breadth ---- */
   async 'discover'(q) {
@@ -1459,6 +1459,13 @@ store.ready().then(() => {
   setInterval(metricsFlush, 120000).unref();              // persist footfall every 2 min
   hydrateAlerts();                                        // rebuild active-alert index from accounts
   setInterval(monitorAlerts, 60000).unref();             // check alert prices every 60s (fires + emails)
+  // Keep-warm: free hosts sleep after ~15 min idle, so the first visit then takes
+  // ~50s to wake. A self-ping every few minutes keeps it hot → the app loads in <1s.
+  const SELF_URL = (process.env.RENDER_EXTERNAL_URL || process.env.APP_URL || '').replace(/\/$/, '');
+  if (/^https:\/\//.test(SELF_URL) && typeof fetch === 'function') {
+    setInterval(() => { fetch(SELF_URL + '/healthz').catch(() => {}); }, 10 * 60 * 1000).unref();
+    console.log('[keepwarm] self-ping every 10m →', SELF_URL);
+  }
   process.on('SIGTERM', () => { metricsFlush().finally(() => process.exit(0)); });
   http.createServer(async (req, res) => {
     const u = new URL(req.url, `http://localhost:${PORT}`);

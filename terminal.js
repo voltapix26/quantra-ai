@@ -1364,7 +1364,7 @@
   loadFX().then(() => { if (board.length) renderBoard(); if (current) select(current); });
   // start live streams once we know which sources are available (covers any load ordering)
   loadLiveConfig().then(() => { if (assetClass === 'crypto' && board.length) startArr(); if (current) startLive(current); });
-  setInterval(refreshBoardPrices, 25000);   // keep non-crypto board prices current
+  setInterval(refreshBoardPrices, 15000);   // keep non-crypto board prices current
   if ($('askqSend')) $('askqSend').addEventListener('click', () => askSend());
   if ($('askqInput')) $('askqInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); askSend(); } });
   document.addEventListener('quantra:installable', () => renderPwaButtons());
