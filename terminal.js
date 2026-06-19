@@ -21,12 +21,21 @@
   let fxRates = { USD: 1 };
   let selCur = 'USD';
   let curBase = 'USD';         // native currency of the selected asset's prices
-  const CUR_SYM = { USD: '$', INR: '₹', AED: 'AED ', EUR: '€', GBP: '£', JPY: '¥', CNY: 'CN¥', CAD: 'C$', AUD: 'A$', SGD: 'S$', HKD: 'HK$', CHF: 'CHF ' };
-  let stockMarket = 'us';      // selected stock exchange (us/nse/bse/eu/uae/hk)
+  const CUR_SYM = { USD: '$', INR: '₹', AED: 'AED ', EUR: '€', GBP: '£', JPY: '¥', CNY: 'CN¥', CAD: 'C$', AUD: 'A$', SGD: 'S$', HKD: 'HK$', CHF: 'CHF ',
+    BRL: 'R$', MXN: 'Mex$', SEK: 'kr ', NOK: 'kr ', DKK: 'kr ', KRW: '₩', TWD: 'NT$', IDR: 'Rp ', THB: '฿', MYR: 'RM ', SAR: 'SR ', ZAR: 'R ', NZD: 'NZ$' };
+  // Some exchanges quote in a minor unit (London = pence GBp, Johannesburg = cents ZAc);
+  // normalise to the major unit so FX conversion is correct.
+  const MINOR = { GBp: ['GBP', 100], ZAc: ['ZAR', 100], ILA: ['ILS', 100] };
+  let stockMarket = 'us';      // selected stock exchange
   let stockMarkets = [{ id: 'us', label: 'United States', ccy: 'USD' }];   // populated from server
   try { const m = localStorage.getItem('quantra.market'); if (m) stockMarket = m; } catch {}
   const fxRate = (c) => fxRates[c] || 1;
-  const conv = (amt, base) => (amt == null || isNaN(amt) ? null : amt * fxRate(selCur) / fxRate(base || 'USD'));
+  const conv = (amt, base) => {
+    if (amt == null || isNaN(amt)) return null;
+    let b = base || 'USD', f = 1;
+    if (MINOR[b]) { f = MINOR[b][1]; b = MINOR[b][0]; }
+    return (amt / f) * fxRate(selCur) / fxRate(b);
+  };
   const curSym = () => CUR_SYM[selCur] || selCur + ' ';
   function money(amt, base) {
     const v = conv(amt, base); if (v == null) return '—';

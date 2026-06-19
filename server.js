@@ -116,12 +116,35 @@ const DEFAULT_STOCKS = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA',
 /* Stocks bifurcated by exchange/market. Each market quotes in its own currency
    (Yahoo's exchange suffix → native ccy), so the UI can follow the exchange. */
 const STOCK_MARKETS = {
-  us:  { label: 'United States', ccy: 'USD', list: DEFAULT_STOCKS },
-  nse: { label: 'India · NSE', ccy: 'INR', list: ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS', 'SBIN.NS', 'BHARTIARTL.NS', 'ITC.NS', 'LT.NS', 'HINDUNILVR.NS', 'AXISBANK.NS', 'BAJFINANCE.NS', 'MARUTI.NS', 'SUNPHARMA.NS', 'KOTAKBANK.NS', 'WIPRO.NS', 'HCLTECH.NS', 'ADANIENT.NS', 'TATASTEEL.NS', 'NTPC.NS'] },
-  bse: { label: 'India · BSE', ccy: 'INR', list: ['RELIANCE.BO', 'TCS.BO', 'HDFCBANK.BO', 'INFY.BO', 'ICICIBANK.BO', 'SBIN.BO', 'BHARTIARTL.BO', 'ITC.BO', 'LT.BO', 'HINDUNILVR.BO', 'AXISBANK.BO', 'MARUTI.BO', 'SUNPHARMA.BO', 'WIPRO.BO'] },
-  eu:  { label: 'Europe', ccy: 'EUR', list: ['SAP.DE', 'SIE.DE', 'ALV.DE', 'DTE.DE', 'BAS.DE', 'BMW.DE', 'ASML.AS', 'MC.PA', 'OR.PA', 'AIR.PA', 'IBE.MC', 'SAN.MC', 'ENEL.MI', 'ISP.MI'] },
-  uae: { label: 'UAE · Dubai', ccy: 'AED', list: ['EMAAR.AE', 'DIB.AE', 'EMIRATESNBD.AE', 'DEWA.AE', 'SALIK.AE', 'TECOM.AE', 'EMAARDEV.AE', 'DU.AE', 'AMR.AE', 'TAALEEM.AE'] },
-  hk:  { label: 'Hong Kong', ccy: 'HKD', list: ['0700.HK', '9988.HK', '0941.HK', '1299.HK', '0005.HK', '3690.HK', '0388.HK', '1810.HK', '2318.HK', '0883.HK', '1398.HK', '0939.HK', '2628.HK', '9618.HK'] },
+  // — Americas —
+  us:     { label: 'United States', ccy: 'USD', list: DEFAULT_STOCKS },
+  canada: { label: 'Canada · TSX', ccy: 'CAD', list: ['RY.TO', 'TD.TO', 'SHOP.TO', 'ENB.TO', 'BMO.TO', 'BNS.TO', 'CNR.TO', 'CP.TO', 'TRI.TO', 'SU.TO', 'BCE.TO', 'MFC.TO'] },
+  brazil: { label: 'Brazil · B3', ccy: 'BRL', list: ['PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'ABEV3.SA', 'B3SA3.SA', 'WEGE3.SA', 'BBAS3.SA', 'ITSA4.SA', 'SUZB3.SA'] },
+  mexico: { label: 'Mexico · BMV', ccy: 'MXN', list: ['AMXL.MX', 'WALMEX.MX', 'GFNORTEO.MX', 'FEMSAUBD.MX', 'GMEXICOB.MX', 'BIMBOA.MX', 'CEMEXCPO.MX', 'KIMBERA.MX'] },
+  // — Europe —
+  eu:     { label: 'Europe · Euro', ccy: 'EUR', list: ['SAP.DE', 'SIE.DE', 'ALV.DE', 'DTE.DE', 'BAS.DE', 'BMW.DE', 'ASML.AS', 'MC.PA', 'OR.PA', 'AIR.PA', 'IBE.MC', 'SAN.MC', 'ENEL.MI', 'ISP.MI'] },
+  uk:     { label: 'United Kingdom · LSE', ccy: 'GBP', list: ['SHEL.L', 'AZN.L', 'HSBA.L', 'ULVR.L', 'BP.L', 'GSK.L', 'RIO.L', 'LLOY.L', 'BARC.L', 'VOD.L', 'DGE.L', 'GLEN.L', 'NG.L', 'REL.L'] },
+  switzerland: { label: 'Switzerland · SIX', ccy: 'CHF', list: ['NESN.SW', 'ROG.SW', 'NOVN.SW', 'UBSG.SW', 'ZURN.SW', 'ABBN.SW', 'CFR.SW', 'SIKA.SW', 'LONN.SW', 'GIVN.SW'] },
+  sweden: { label: 'Sweden · OMX', ccy: 'SEK', list: ['VOLV-B.ST', 'ERIC-B.ST', 'ATCO-A.ST', 'INVE-B.ST', 'HM-B.ST', 'SEB-A.ST', 'SAND.ST', 'ABB.ST'] },
+  norway: { label: 'Norway · OSE', ccy: 'NOK', list: ['EQNR.OL', 'DNB.OL', 'TEL.OL', 'AKRBP.OL', 'MOWI.OL', 'YAR.OL', 'NHY.OL'] },
+  denmark: { label: 'Denmark · OMX', ccy: 'DKK', list: ['NOVO-B.CO', 'MAERSK-B.CO', 'DSV.CO', 'ORSTED.CO', 'CARL-B.CO', 'VWS.CO', 'GMAB.CO'] },
+  // — Asia-Pacific —
+  nse:    { label: 'India · NSE', ccy: 'INR', list: ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS', 'SBIN.NS', 'BHARTIARTL.NS', 'ITC.NS', 'LT.NS', 'HINDUNILVR.NS', 'AXISBANK.NS', 'BAJFINANCE.NS', 'MARUTI.NS', 'SUNPHARMA.NS', 'KOTAKBANK.NS', 'WIPRO.NS', 'HCLTECH.NS', 'ADANIENT.NS', 'TATASTEEL.NS', 'NTPC.NS'] },
+  bse:    { label: 'India · BSE', ccy: 'INR', list: ['RELIANCE.BO', 'TCS.BO', 'HDFCBANK.BO', 'INFY.BO', 'ICICIBANK.BO', 'SBIN.BO', 'BHARTIARTL.BO', 'ITC.BO', 'LT.BO', 'HINDUNILVR.BO', 'AXISBANK.BO', 'MARUTI.BO', 'SUNPHARMA.BO', 'WIPRO.BO'] },
+  china:  { label: 'China · SSE/SZSE', ccy: 'CNY', list: ['600519.SS', '601398.SS', '600036.SS', '601318.SS', '600900.SS', '601988.SS', '600276.SS', '000858.SZ', '300750.SZ', '002594.SZ'] },
+  japan:  { label: 'Japan · TSE', ccy: 'JPY', list: ['7203.T', '6758.T', '9984.T', '8306.T', '6861.T', '9432.T', '6098.T', '8035.T', '9433.T', '7974.T', '4063.T', '6501.T'] },
+  korea:  { label: 'South Korea · KRX', ccy: 'KRW', list: ['005930.KS', '000660.KS', '005380.KS', '051910.KS', '035420.KS', '005490.KS', '068270.KS', '105560.KS'] },
+  taiwan: { label: 'Taiwan · TWSE', ccy: 'TWD', list: ['2330.TW', '2317.TW', '2454.TW', '2412.TW', '2308.TW', '2881.TW', '3008.TW', '2882.TW'] },
+  hk:     { label: 'Hong Kong · HKEX', ccy: 'HKD', list: ['0700.HK', '9988.HK', '0941.HK', '1299.HK', '0005.HK', '3690.HK', '0388.HK', '1810.HK', '2318.HK', '0883.HK', '1398.HK', '0939.HK', '2628.HK', '9618.HK'] },
+  singapore: { label: 'Singapore · SGX', ccy: 'SGD', list: ['D05.SI', 'O39.SI', 'U11.SI', 'Z74.SI', 'C6L.SI', 'C38U.SI', 'BN4.SI', 'S68.SI'] },
+  australia: { label: 'Australia · ASX', ccy: 'AUD', list: ['BHP.AX', 'CBA.AX', 'CSL.AX', 'NAB.AX', 'WBC.AX', 'ANZ.AX', 'WES.AX', 'MQG.AX', 'FMG.AX', 'TLS.AX', 'WOW.AX', 'RIO.AX'] },
+  indonesia: { label: 'Indonesia · IDX', ccy: 'IDR', list: ['BBCA.JK', 'BBRI.JK', 'TLKM.JK', 'BMRI.JK', 'ASII.JK', 'UNVR.JK', 'ICBP.JK'] },
+  thailand: { label: 'Thailand · SET', ccy: 'THB', list: ['PTT.BK', 'AOT.BK', 'CPALL.BK', 'ADVANC.BK', 'SCB.BK', 'KBANK.BK', 'GULF.BK'] },
+  malaysia: { label: 'Malaysia · Bursa', ccy: 'MYR', list: ['1155.KL', '5347.KL', '1023.KL', '6888.KL', '5183.KL', '6033.KL'] },
+  // — Middle East & Africa —
+  uae:    { label: 'UAE · Dubai (DFM)', ccy: 'AED', list: ['EMAAR.AE', 'DIB.AE', 'EMIRATESNBD.AE', 'DEWA.AE', 'SALIK.AE', 'TECOM.AE', 'EMAARDEV.AE', 'DU.AE', 'AMR.AE', 'TAALEEM.AE'] },
+  saudi:  { label: 'Saudi Arabia · Tadawul', ccy: 'SAR', list: ['2222.SR', '1120.SR', '2010.SR', '7010.SR', '1180.SR', '2350.SR', '1211.SR', '2280.SR'] },
+  southafrica: { label: 'South Africa · JSE', ccy: 'ZAR', list: ['NPN.JO', 'FSR.JO', 'SBK.JO', 'MTN.JO', 'AGL.JO', 'SOL.JO', 'CFR.JO', 'CPI.JO'] },
 };
 
 /* Curated universes for the non-equity asset classes. Each entry: y = Yahoo
