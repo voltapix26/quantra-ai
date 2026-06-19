@@ -167,6 +167,8 @@
   let chartState = null;   // {total, histLen, vals, dates, fcMid, yAt} for hover tooltip
   let chartType = 'line';  // 'line' | 'candle'
   try { const ct = localStorage.getItem('quantra.charttype'); if (ct === 'candle' || ct === 'line') chartType = ct; } catch {}
+  let studyBB = false;     // Bollinger Bands overlay
+  try { studyBB = localStorage.getItem('quantra.bb') === '1'; } catch {}
   let candleHist = null;   // OHLC source for the candle view (crypto: Binance; else: hist)
   let tickMode = false, tickBuf = [], tickTimer = null, tickWinMs = 300000;  // live seconds chart
 
@@ -212,6 +214,25 @@
     const sma20Line = areaOnly ? '' : lineFrom(s.sma20.slice(start));
     const sma50Line = areaOnly ? '' : lineFrom(s.sma50.slice(start));
 
+    // Bollinger Bands (20, 2σ) overlay
+    let bbUpLine = '', bbLoLine = '', bbFill = '';
+    if (studyBB) {
+      const per = 20, up = [], lo = [];
+      for (let i = 0; i < closes.length; i++) {
+        const m = s.sma20[i];
+        if (i < per - 1 || m == null) { up.push(null); lo.push(null); continue; }
+        let sum = 0; for (let j = i - per + 1; j <= i; j++) sum += (closes[j] - m) ** 2;
+        const sd = Math.sqrt(sum / per); up.push(m + 2 * sd); lo.push(m - 2 * sd);
+      }
+      const upS = up.slice(start), loS = lo.slice(start);
+      bbUpLine = lineFrom(upS); bbLoLine = lineFrom(loS);
+      // fill between bands where both defined
+      const fwd = []; const rev = [];
+      upS.forEach((v, i) => { if (v != null && loS[i] != null) fwd.push(`${fwd.length ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`); });
+      for (let i = loS.length - 1; i >= 0; i--) { if (loS[i] != null && upS[i] != null) rev.push(`L${x(i).toFixed(1)} ${y(loS[i]).toFixed(1)}`); }
+      if (fwd.length) bbFill = fwd.join(' ') + ' ' + rev.join(' ') + ' Z';
+    }
+
     let fcBand = '', fcLine = '';
     if (fc) {
       const off = histSlice.length;
@@ -223,6 +244,9 @@
     svg.innerHTML = `
       <defs><linearGradient id="pf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34D399" stop-opacity=".22"/><stop offset="1" stop-color="#34D399" stop-opacity="0"/></linearGradient></defs>
       <path d="${area}" fill="url(#pf)"/>
+      ${bbFill ? `<path d="${bbFill}" fill="#22D3EE" opacity=".06"/>` : ''}
+      ${bbUpLine ? `<path d="${bbUpLine}" fill="none" stroke="#22D3EE" stroke-width="1.1" opacity=".55" stroke-dasharray="4 3"/>` : ''}
+      ${bbLoLine ? `<path d="${bbLoLine}" fill="none" stroke="#22D3EE" stroke-width="1.1" opacity=".55" stroke-dasharray="4 3"/>` : ''}
       ${fc ? `<path d="${fcBand}" fill="#22D3EE" opacity=".12"/>` : ''}
       ${sma50Line ? `<path d="${sma50Line}" fill="none" stroke="#FBBF24" stroke-width="1.4" opacity=".85"/>` : ''}
       ${sma20Line ? `<path d="${sma20Line}" fill="none" stroke="#818CF8" stroke-width="1.4" opacity=".9"/>` : ''}
@@ -820,6 +844,98 @@
     });
   }
 
+  /* ---------------- bar replay ---------------- */
+  let replay = { on: false, n: 0, timer: null };
+  function sliceHist(h, n) {
+    const out = {};
+    for (const k of ['closes', 'dates', 'opens', 'highs', 'lows', 'volumes']) if (Array.isArray(h[k])) out[k] = h[k].slice(0, n);
+    return out;
+  }
+  function drawReplay() {
+    if (!state || !state.history || !state.history.closes) return;
+    const total = state.history.closes.length;
+    const n = Math.max(25, Math.min(replay.n, total));
+    const sl = sliceHist(state.history, n);
+    drawLine(sl, null, chartType === 'area');   // clean line + studies so they evolve as you scrub
+    drawPanes(sl);
+    const scrub = $('rpScrub'); if (scrub) scrub.value = String(Math.round((n / total) * 100));
+    const iso = (state.history.dates && state.history.dates[n - 1]) || '';
+    const dl = $('rpDate'); if (dl) dl.textContent = iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : n + '/' + total;
+  }
+  function enterReplay() {
+    if (!state || !state.history || !state.history.closes || state.history.closes.length < 40) return R && R.toast && R.toast('Load a daily/longer chart to replay.');
+    replay.on = true; replay.n = Math.floor(state.history.closes.length * 0.5);
+    $('replayCtl').hidden = false; $('replayToggle').classList.add('is-on'); $('replayToggle').textContent = '⏏ Exit replay';
+    drawReplay();
+  }
+  function exitReplay() {
+    stopReplay(); replay.on = false;
+    $('replayCtl').hidden = true; $('replayToggle').classList.remove('is-on'); $('replayToggle').textContent = '⏮ Replay';
+    if (state && state.history) { redrawChart(); drawPanes(state.history); }
+  }
+  function stepReplay(d) {
+    if (!replay.on) return;
+    const total = state.history.closes.length;
+    replay.n = Math.max(25, Math.min(total, replay.n + d));
+    drawReplay();
+    if (replay.n >= total) stopReplay();
+  }
+  function stopReplay() { if (replay.timer) { clearInterval(replay.timer); replay.timer = null; } const p = $('rpPlay'); if (p) p.textContent = '▶'; }
+  function playReplay() {
+    if (replay.timer) return stopReplay();
+    const p = $('rpPlay'); if (p) p.textContent = '⏸';
+    const speed = parseInt(($('rpSpeed') && $('rpSpeed').value) || '600', 10);
+    replay.timer = setInterval(() => stepReplay(1), speed);
+  }
+
+  /* ---------------- saved chart layouts ---------------- */
+  let layouts = [];
+  try { layouts = JSON.parse(localStorage.getItem('quantra.layouts') || '[]'); } catch {}
+  function curLayout() {
+    return { chartType, interval: $('intervalSel').value, range: $('rangeSel').value, rsi: $('togRsi').checked, macd: $('togMacd').checked, vol: $('togVol').checked, bb: $('togBB').checked };
+  }
+  function persistLayouts() {
+    try { localStorage.setItem('quantra.layouts', JSON.stringify(layouts)); } catch {}
+    if (window.QuantraAuth && window.QuantraAuth.user && window.QuantraAuth.pushData) window.QuantraAuth.pushData({ layouts });
+  }
+  function renderLayoutSel() {
+    const sel = $('layoutSel'); if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Layouts…</option>' + layouts.map((l, i) => `<option value="${i}">${escHtml(l.name)}</option>`).join('');
+    if (cur && layouts[cur]) sel.value = cur;
+    const del = $('layoutDel'); if (del) del.hidden = !sel.value;
+  }
+  function saveLayout() {
+    const name = (prompt('Name this layout:') || '').trim(); if (!name) return;
+    layouts = layouts.filter((l) => l.name !== name); layouts.push({ name, cfg: curLayout() });
+    if (layouts.length > 20) layouts = layouts.slice(-20);
+    persistLayouts(); renderLayoutSel();
+    const sel = $('layoutSel'); if (sel) sel.value = String(layouts.length - 1);
+    if ($('layoutDel')) $('layoutDel').hidden = false;
+    R && R.toast && R.toast('Layout saved: ' + name);
+  }
+  function applyLayout(i) {
+    const l = layouts[i]; if (!l) return; const c = l.cfg || {};
+    chartType = c.chartType || 'line'; const cts = $('chartTypeSel'); if (cts) cts.value = chartType;
+    try { localStorage.setItem('quantra.charttype', chartType); } catch {}
+    $('togRsi').checked = c.rsi !== false; $('togMacd').checked = c.macd !== false; $('togVol').checked = c.vol !== false;
+    $('togBB').checked = !!c.bb; studyBB = !!c.bb; try { localStorage.setItem('quantra.bb', studyBB ? '1' : '0'); } catch {}
+    $('intervalSel').value = c.interval || '1d'; fillRanges();
+    if (c.range) { const ro = $('rangeSel'); if ([...ro.options].some((o) => o.value === c.range)) ro.value = c.range; }
+    if ($('layoutDel')) $('layoutDel').hidden = false;
+    if (current) select(current); else if (state && state.history) { redrawChart(); drawPanes(state.history); }
+  }
+  function deleteLayout() {
+    const sel = $('layoutSel'); const i = sel && sel.value; if (i === '' || i == null) return;
+    const l = layouts[i]; if (!l) return;
+    layouts.splice(i, 1); persistLayouts(); renderLayoutSel();
+    R && R.toast && R.toast('Layout deleted');
+  }
+  async function pullLayouts() {
+    if (typeof meGet !== 'function') return;
+    const d = await meGet(); if (d && Array.isArray(d.layouts)) { layouts = d.layouts; try { localStorage.setItem('quantra.layouts', JSON.stringify(layouts)); } catch {} renderLayoutSel(); }
+  }
+
   /* ---------------- live seconds (tick) chart ---------------- */
   function pushTick(p) {
     if (!(p > 0)) return;
@@ -901,6 +1017,7 @@
   async function select(item) {
     current = item;
     stopLive(); stopTick();
+    if (replay.on) { stopReplay(); replay.on = false; const rc = $('replayCtl'); if (rc) rc.hidden = true; const rtg = $('replayToggle'); if (rtg) { rtg.classList.remove('is-on'); rtg.textContent = '⏮ Replay'; } }
     let interval = $('intervalSel').value, range = $('rangeSel').value;
     let secMode = interval === 'sec';
     if (secMode) {
@@ -1190,6 +1307,19 @@
   const ctSel = $('chartTypeSel');
   if (ctSel) { ctSel.value = chartType; ctSel.addEventListener('change', () => { chartType = ctSel.value; try { localStorage.setItem('quantra.charttype', chartType); } catch {} if (current) select(current); }); }
   ['togRsi', 'togMacd', 'togVol'].forEach((id) => { const el = $(id); if (el) el.addEventListener('change', () => { if (state && state.history) drawPanes(state.history); }); });
+  { const bb = $('togBB'); if (bb) { bb.checked = studyBB; bb.addEventListener('change', () => { studyBB = bb.checked; try { localStorage.setItem('quantra.bb', studyBB ? '1' : '0'); } catch {} if (replay.on) drawReplay(); else redrawChart(); }); } }
+  // bar replay wiring
+  { const rt = $('replayToggle'); if (rt) rt.addEventListener('click', () => (replay.on ? exitReplay() : enterReplay()));
+    const rb = $('rpBack'); if (rb) rb.addEventListener('click', () => stepReplay(-1));
+    const rf = $('rpFwd'); if (rf) rf.addEventListener('click', () => stepReplay(1));
+    const rp = $('rpPlay'); if (rp) rp.addEventListener('click', playReplay);
+    const rs = $('rpScrub'); if (rs) rs.addEventListener('input', () => { if (!replay.on || !state || !state.history) return; replay.n = Math.max(25, Math.round((+rs.value / 100) * state.history.closes.length)); stopReplay(); drawReplay(); });
+    const rsp = $('rpSpeed'); if (rsp) rsp.addEventListener('change', () => { if (replay.timer) { stopReplay(); playReplay(); } }); }
+  // saved layouts wiring
+  { const ls = $('layoutSel'); if (ls) ls.addEventListener('change', () => { if (ls.value !== '') applyLayout(+ls.value); else if ($('layoutDel')) $('layoutDel').hidden = true; });
+    const lsv = $('layoutSave'); if (lsv) lsv.addEventListener('click', saveLayout);
+    const ld = $('layoutDel'); if (ld) ld.addEventListener('click', deleteLayout);
+    renderLayoutSel(); window.addEventListener('quantra:synced', pullLayouts); pullLayouts(); }
   // drawing tools + alerts wiring
   { const tT = $('toolTrend'), tH = $('toolHline'), tC = $('toolClear'), aA = $('alertAdd'), aP = $('alertPrice'), chartEl = $('chart');
     if (tT) tT.addEventListener('click', () => setTool(activeTool === 'trend' ? null : 'trend'));

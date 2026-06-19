@@ -981,6 +981,7 @@ async function authRoute(req, res, u) {
         if (body.prefs && typeof body.prefs === 'object') d.prefs = { ...d.prefs, ...body.prefs };
         if (Array.isArray(body.screens)) d.screens = body.screens.slice(0, 50);
         if (Array.isArray(body.portfolio)) d.portfolio = body.portfolio.slice(0, 200);
+        if (Array.isArray(body.layouts)) d.layouts = body.layouts.slice(0, 20);
         if (Array.isArray(body.alerts)) d.alerts = body.alerts.slice(0, 100).map((a) => ({
           id: String(a.id || '').slice(0, 40),
           assetId: String(a.assetId || a.symbol || '').slice(0, 40),

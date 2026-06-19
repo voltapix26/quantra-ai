@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0A0F1C" />
   <link rel="apple-touch-icon" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=21" />
+  <link rel="stylesheet" href="styles.css?v=22" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -175,9 +175,29 @@
 
           <div class="studies" id="studies">
             <span class="studies__label">Studies</span>
+            <label class="study-tog"><input type="checkbox" id="togBB" /> Bollinger</label>
             <label class="study-tog"><input type="checkbox" id="togRsi" checked /> RSI</label>
             <label class="study-tog"><input type="checkbox" id="togMacd" checked /> MACD</label>
             <label class="study-tog"><input type="checkbox" id="togVol" checked /> Volume</label>
+          </div>
+
+          <div class="chart-x" id="chartX">
+            <span class="ct-grp">
+              <button class="ct-btn" id="replayToggle" title="Replay price history bar by bar">⏮ Replay</button>
+              <span class="rp-ctl" id="replayCtl" hidden>
+                <button class="ct-btn" id="rpBack" title="Step back">◀</button>
+                <button class="ct-btn" id="rpPlay" title="Play / pause">▶</button>
+                <button class="ct-btn" id="rpFwd" title="Step forward">▶|</button>
+                <input type="range" id="rpScrub" min="0" max="100" value="50" aria-label="Replay position" />
+                <select id="rpSpeed" aria-label="Replay speed"><option value="600">1×</option><option value="300">2×</option><option value="150">4×</option><option value="60">8×</option></select>
+                <span class="rp-date" id="rpDate"></span>
+              </span>
+            </span>
+            <span class="ct-grp ct-grp--layout">
+              <select id="layoutSel" aria-label="Saved layouts"><option value="">Layouts…</option></select>
+              <button class="ct-btn" id="layoutSave" title="Save current chart layout">💾 Save</button>
+              <button class="ct-btn" id="layoutDel" title="Delete selected layout" hidden>🗑</button>
+            </span>
           </div>
           <div class="panes" id="panes">
             <div class="pane" id="paneRsi"><span class="pane__lbl">RSI 14</span><svg class="pane__svg" id="svgRsi" viewBox="0 0 720 64" preserveAspectRatio="none"></svg></div>
@@ -333,11 +353,11 @@
     <span class="legal-links"><a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refund.html">Refunds</a></span>
   </p>
 
-  <script src="globe.js?v=21"></script>
-  <script src="auth.js?v=21"></script>
-  <script src="analysis.js?v=21"></script>
-  <script src="report.js?v=21"></script>
-  <script src="terminal.js?v=21"></script>
-  <script src="pwa.js?v=21" defer></script>
+  <script src="globe.js?v=22"></script>
+  <script src="auth.js?v=22"></script>
+  <script src="analysis.js?v=22"></script>
+  <script src="report.js?v=22"></script>
+  <script src="terminal.js?v=22"></script>
+  <script src="pwa.js?v=22" defer></script>
 </body>
 </html>
