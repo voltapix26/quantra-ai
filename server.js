@@ -385,6 +385,24 @@ const api = {
     }
   },
 
+  /* ---- "Ask Quantra": grounded conversational analyst ---- */
+  async 'ai/ask'(q, body) {
+    const ctx = (body && body.context) || {};
+    const question = String((body && body.question) || '').slice(0, 600).trim();
+    if (!question) return { ok: false, reason: 'no-question' };
+    if (ANTHROPIC_KEY && Anthropic && AI_MODEL) {
+      try {
+        const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
+        const sys = 'You are Quantra AI, a markets analyst chatting with a user about a specific asset. Answer in 2-5 plain sentences, grounded ONLY in the supplied live context (price, indicators, forecast, news, fundamentals) plus general market education. If the question needs data you were not given (e.g. another asset not in context), say so briefly. Be candid about uncertainty. Educational only — never give buy/sell advice, actionable price targets, or trade signals. No markdown.';
+        const userMsg = 'Live context for ' + (ctx.symbol || 'the asset') + ':\n' + JSON.stringify(ctx, null, 1) + '\n\nUser question: ' + question;
+        const msg = await client.messages.create({ model: AI_MODEL, max_tokens: 500, system: sys, messages: [{ role: 'user', content: userMsg }] });
+        const text = (msg.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+        if (text) return { ok: true, text, source: 'ai' };
+      } catch (e) { /* fall through to local */ }
+    }
+    return localAnswer(question, ctx);
+  },
+
   /* ---- latest news for a stock ---- */
   async 'stock/news'(q) {
     if (!q.symbol) return [];
@@ -465,6 +483,46 @@ function localReason(d) {
   if (rationale) p.push(rationale);
   p.push('Educational only — not investment advice.');
   return { ok: true, source: 'quantra', text: p.join(' '), stance, newsImpact: impact, rationale };
+}
+
+// Local (no-LLM) answer for "Ask Quantra" — grounded in the supplied live context.
+function localAnswer(question, c) {
+  c = c || {}; const q = String(question || '').toLowerCase();
+  const sym = c.symbol || 'this asset', t = c.technical || {}, fc = c.forecast || {}, nw = c.news || {}, fu = c.fundamentals || {};
+  const stance = c.score >= 56 ? 'bullish' : c.score < 45 ? 'bearish' : 'neutral';
+  const p = [];
+  if (/\b(buy|sell|entry|exit|should i|invest|good time|hold)/.test(q)) {
+    p.push(`I can't give buy/sell advice, but here's the read on ${sym}: the Quantra Score is ${c.score ?? '—'} (${stance}).`);
+    if (fc.probUp != null) p.push(`The model puts near-term odds of a gain near ${Math.round(fc.probUp * 100)}%.`);
+    if (t.rsi != null) p.push(`RSI is ${t.rsi}${t.rsi >= 70 ? ' (overbought — risky to chase)' : t.rsi <= 30 ? ' (oversold)' : ''}.`);
+    p.push('Weigh that against your own risk tolerance and time horizon.');
+  } else if (/\b(rsi|macd|indicator|technical|oversold|overbought|momentum|adx|moving average|sma)/.test(q)) {
+    if (t.rsi != null) p.push(`RSI(14) is ${t.rsi}${t.rsi >= 70 ? ' — overbought' : t.rsi <= 30 ? ' — oversold' : ' — neutral'}.`);
+    if (t.macdHist != null) p.push(`MACD histogram ${t.macdHist} (${t.macdHist >= 0 ? 'bullish' : 'bearish'} momentum).`);
+    if (t.adx != null) p.push(`ADX ${t.adx} → ${t.adx >= 25 ? 'a trending' : 'a rangebound'} market.`);
+    if (t.sma200 != null && c.price != null) p.push(`Price sits ${c.price >= t.sma200 ? 'above' : 'below'} its 200-day average.`);
+    if (p.length === 0) p.push('No technical readings are loaded right now.');
+  } else if (/\b(risk|volatil|downside|safe|drawdown)/.test(q)) {
+    if (fc.annualVol != null) p.push(`${sym} carries roughly ${Math.round(fc.annualVol * 100)}% annualised volatility.`);
+    if (fc.lo != null && fc.hi != null) p.push(`The 30-period projection band spans about ${fc.lo} to ${fc.hi} (P10–P90).`);
+    p.push('Wider band = more uncertainty in both directions.');
+  } else if (/\b(news|why|headline|catalyst|happening|drop|fall|rise|up|down|moving)/.test(q)) {
+    if (nw.label) p.push(`Latest news reads ${nw.label} (${nw.positive || 0} positive / ${nw.negative || 0} negative headlines).`);
+    if (nw.headlines && nw.headlines.length) p.push(`Top headline: "${nw.headlines[0]}".`);
+    if (p.length === 0) p.push('No fresh news is loaded for this asset right now.');
+  } else if (/\b(forecast|projection|target|where|predict|expect|outlook)/.test(q)) {
+    if (fc.expReturn != null) p.push(`The Monte-Carlo central path projects about ${(fc.expReturn * 100).toFixed(1)}% over ~30 periods${fc.probUp != null ? `, with ~${Math.round(fc.probUp * 100)}% odds of a gain` : ''}.`);
+    p.push('It widens with volatility and is probabilistic, not a guarantee.');
+  } else if (/\b(fundamental|valuation|p\/?e|earnings|revenue|margin|roe)/.test(q) && fu.peTrailing != null) {
+    p.push(`${sym} trades on a ${Number(fu.peTrailing).toFixed(1)}× trailing P/E${fu.revenueGrowth != null ? ` with ${(fu.revenueGrowth * 100).toFixed(0)}% revenue growth` : ''}${fu.roe != null ? ` and ${(fu.roe * 100).toFixed(0)}% ROE` : ''}.`);
+  } else {
+    p.push(`${sym} reads ${stance} on the Quantra engine (score ${c.score ?? '—'}, ${c.regime || c.grade || 'mixed regime'}).`);
+    if (t.rsi != null) p.push(`RSI ${t.rsi}, MACD ${t.macdHist != null ? t.macdHist : '—'}.`);
+    if (fc.probUp != null) p.push(`Near-term up-odds ~${Math.round(fc.probUp * 100)}%.`);
+    p.push('Ask me about the indicators, risk, news, fundamentals, or the forecast.');
+  }
+  p.push('(Educational, not advice.)');
+  return { ok: true, source: 'quantra', text: p.join(' ') };
 }
 
 /* ---- static + routing ---- */
@@ -805,6 +863,10 @@ async function authRoute(req, res, u) {
       // Everyone always gets a Quantra AI read (no key / free plan / over cap → local engine).
       return send(res, 200, localReason(body || {}));
     }
+    if (p === '/api/ai/ask' && m === 'POST') {
+      if (tooMany(res, 'ask:' + clientIp(req), 40, 3600000)) return;   // 40 questions / hour / IP
+      return send(res, 200, await api['ai/ask'](Object.fromEntries(u.searchParams.entries()), body));
+    }
     if (p === '/api/billing/checkout' && m === 'POST') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       if (!stripe) return send(res, 200, { ok: false, reason: 'billing-disabled' });
@@ -1028,7 +1090,7 @@ store.ready().then(() => {
       await trackDevSeed(); return send(res, 200, { ok: true });
     }
     if (u.pathname === '/api/billing/webhook') return billingWebhook(req, res);
-    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname === '/api/ai/reason' || u.pathname.startsWith('/api/billing/')) {
+    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/billing/')) {
       return authRoute(req, res, u);
     }
     if (u.pathname.startsWith('/api/')) {

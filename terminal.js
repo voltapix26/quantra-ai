@@ -680,6 +680,58 @@
     card.hidden = false;
   }
 
+  /* ---------------- Ask Quantra (conversational analyst) ---------------- */
+  const ASK_CHIPS = ['Is this a good entry?', 'What do the indicators say?', 'What are the risks?', 'Summarize the news', 'Where might it go?'];
+  let askAssetKey = null;
+  // Compact, grounded snapshot of the current asset for the analyst to reason over.
+  function askContext() {
+    if (!state || !state.analysis) return null;
+    const res = state.analysis, ind = res.indicators || {}, fc = res.forecast || {}, sent = state.news || null, fund = state.fundamentals || null;
+    const lastH = fc.horizons && fc.horizons[fc.horizons.length - 1];
+    const band = (lastH && fc.p0 != null) ? { lo: +(fc.p0 * (1 + lastH.lo)).toFixed(2), hi: +(fc.p0 * (1 + lastH.hi)).toFixed(2) } : {};
+    return {
+      symbol: state.symbol, type: state.type, price: res.price,
+      score: res.quantraScore, grade: res.scoreGrade,
+      regime: res.regime && res.regime.label,
+      verdict: res.verdict && { dir: res.verdict.dir, trend: res.verdict.trend, confidence: res.verdict.confidence, rr: res.verdict.rr, accuracy: res.verdict.accuracy },
+      technical: { rsi: ind.rsi != null ? Math.round(ind.rsi) : null, macdHist: ind.macd ? +ind.macd.hist.toFixed(2) : null, adx: ind.adx != null ? Math.round(ind.adx) : null, sma20: ind.sma20, sma50: ind.sma50, sma200: ind.sma200, support: ind.support, resistance: ind.resistance, atr: ind.atr },
+      forecast: { probUp: fc.probUp != null ? +fc.probUp.toFixed(2) : null, expReturn: fc.expReturn != null ? +fc.expReturn.toFixed(3) : null, annualVol: fc.annualVol != null ? +fc.annualVol.toFixed(3) : null, lo: band.lo, hi: band.hi },
+      walkForward: res.walkForward && { oosAccuracy: +(res.walkForward.oosAccuracy).toFixed(3) },
+      fundamentals: fund && { sector: fund.sector, peTrailing: fund.peTrailing, roe: fund.roe, profitMargin: fund.profitMargin, revenueGrowth: fund.revenueGrowth },
+      news: sent && { label: sent.label, positive: sent.pos, negative: sent.neg, headlines: (sent.scored || []).slice(0, 6).map((n) => n.title) },
+    };
+  }
+  function renderAskChips() {
+    const el = $('askqChips'); if (!el) return;
+    el.innerHTML = ASK_CHIPS.map((c) => `<button class="askq-chip" type="button">${c}</button>`).join('');
+    el.querySelectorAll('.askq-chip').forEach((b) => b.addEventListener('click', () => askSend(b.textContent)));
+  }
+  function setAskAsset(item) {
+    const card = $('askqCard'); if (!card) return;
+    card.hidden = false;
+    if ($('askqSym')) $('askqSym').textContent = item.symbol;
+    if (askAssetKey !== akey(item)) { askAssetKey = akey(item); if ($('askqThread')) $('askqThread').innerHTML = ''; }
+    renderAskChips();
+  }
+  function appendAskMsg(role, text, loading) {
+    const t = $('askqThread'); if (!t) return null;
+    const d = document.createElement('div');
+    d.className = 'askq-msg askq-msg--' + role + (loading ? ' is-loading' : '');
+    d.textContent = text; t.appendChild(d); t.scrollTop = t.scrollHeight; return d;
+  }
+  async function askSend(text) {
+    const inp = $('askqInput'); const q = String(text != null ? text : (inp ? inp.value : '')).trim(); if (!q) return;
+    if (text == null && inp) inp.value = '';
+    if (!state || !state.analysis) { appendAskMsg('ai', 'Pick an asset first so I have live data to analyse.'); return; }
+    appendAskMsg('you', q);
+    const loading = appendAskMsg('ai', 'Quantra is reading the data…', true);
+    try {
+      const r = await fetch(`${API}/ai/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q, context: askContext() }) }).then((x) => x.json());
+      if (loading) { loading.classList.remove('is-loading'); loading.textContent = (r && r.ok && r.text) ? r.text : 'I could not answer that right now — try rephrasing.'; }
+    } catch { if (loading) { loading.classList.remove('is-loading'); loading.textContent = 'Network error — please try again.'; } }
+    const t = $('askqThread'); if (t) t.scrollTop = t.scrollHeight;
+  }
+
   /* ---------------- live seconds (tick) chart ---------------- */
   function pushTick(p) {
     if (!(p > 0)) return;
@@ -857,6 +909,7 @@
       renderPeers(peers);
       renderNews(sent, item);
       state.news = sent;
+      setAskAsset(item);
 
       // upgrade the verdict with the AI reasoning engine when a key is configured
       const badge = $('aiBadge');
@@ -1093,6 +1146,8 @@
   // start live streams once we know which sources are available (covers any load ordering)
   loadLiveConfig().then(() => { if (assetClass === 'crypto' && board.length) startArr(); if (current) startLive(current); });
   setInterval(refreshBoardPrices, 25000);   // keep non-crypto board prices current
+  if ($('askqSend')) $('askqSend').addEventListener('click', () => askSend());
+  if ($('askqInput')) $('askqInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); askSend(); } });
 
   // deep-link from the screener: index.html?type=&id=&symbol=&name=
   const P = new URLSearchParams(location.search);
