@@ -134,10 +134,18 @@
     const d = data.map((v, i) => `${i ? 'L' : 'M'}${(i * step).toFixed(1)} ${(h - ((v - min) / rng) * (h - 4) - 2).toFixed(1)}`).join(' ');
     return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><path d="${d}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
   }
+  function rowDot(it) {
+    let open;
+    if (it.type === 'crypto') open = true;
+    else if (it.type === 'fx') { const d = new Date(), dow = d.getUTCDay(), hr = d.getUTCHours(); open = !((dow === 6) || (dow === 0 && hr < 22) || (dow === 5 && hr >= 22)); }
+    else if (it.tp) { const now = Math.floor(Date.now() / 1000); open = now >= it.tp[0] && now < it.tp[1]; }
+    else return '';
+    return `<span class="mkt-dot ${open ? 'open' : 'closed'}" title="${open ? 'Market open' : 'Market closed'}"></span>`;
+  }
   function rowHTML(it) {
     const up = (it.change24h || 0) >= 0, chg = it.change24h == null ? '—' : `${up ? '+' : ''}${it.change24h.toFixed(2)}%`;
     return `<button class="trow" data-id="${it.id}" data-type="${it.type}" data-symbol="${it.symbol}" data-name="${(it.name || '').replace(/"/g, '')}">
-      <span class="trow__name"><b>${it.symbol}</b><small>${it.name || ''}</small></span>
+      <span class="trow__name"><b>${rowDot(it)}${it.symbol}</b><small>${it.name || ''}</small></span>
       <span class="trow__price">${money(it.price, it.currency)}</span>
       <span class="trow__chg ${up ? 'up' : 'down'}">${chg}</span>
       <span class="trow__spark">${sparkSVG(it.spark, up)}</span></button>`;

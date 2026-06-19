@@ -296,8 +296,9 @@ async function buildBoard(list, type) {
           if (td.asOf) { const t = Date.parse(td.asOf); if (t) asOf = t; }
         }
       }
+      const cr = meta.currentTradingPeriod && meta.currentTradingPeriod.regular;
       return { type, id: sym, symbol: (it && it.s) || meta.symbol || sym, name: (it && it.n) || meta.shortName || sym,
-        price, currency: ccy, change24h, changeAbs, asOf,
+        price, currency: ccy, change24h, changeAbs, asOf, tp: cr ? [cr.start, cr.end] : null,
         marketCap: meta.marketCap || null, volume: meta.regularMarketVolume || null, spark: closes.slice(-30) };
     } catch { return null; }
   }));
