@@ -704,6 +704,12 @@
     };
     svg.addEventListener('pointermove', onMove);
     svg.addEventListener('pointerleave', onLeave);
+    // Touch: tapping/holding the chart should immediately reveal the value at that point
+    // (no hover on mobile), and lifting the finger clears it. Guarded so drawing tools and
+    // desktop mouse-clicks are unaffected.
+    svg.addEventListener('pointerdown', (e) => { if (!activeTool && e.pointerType === 'touch') onMove(e); });
+    svg.addEventListener('pointerup', (e) => { if (e.pointerType === 'touch') onLeave(); });
+    svg.addEventListener('pointercancel', onLeave);
   }
 
   /* ---------------- typewriter ---------------- */

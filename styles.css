@@ -191,7 +191,7 @@ button{font-family:inherit}
 .controls .spacer{margin-left:auto}
 
 .chartwrap{position:relative}
-.chart{width:100%;height:240px;margin:.2rem 0 .6rem;cursor:crosshair}
+.chart{width:100%;height:240px;margin:.2rem 0 .6rem;cursor:crosshair;touch-action:pan-y}
 /* enlarged chart: collapse the board, give the chart full width + height */
 .term.is-enlarged{grid-template-columns:1fr}
 .term.is-enlarged .board{display:none}
