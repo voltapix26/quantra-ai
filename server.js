@@ -877,6 +877,11 @@ function tooMany(res, key, max, win) {
   if (!r.ok) { res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8', 'Retry-After': String(r.retryAfter), 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ error: `Too many attempts. Try again in ${r.retryAfter}s.` })); return true; }
   return false;
 }
+function sanitizeHandle(h, user) {
+  let s = String(h || '').replace(/[^A-Za-z0-9_\- ]/g, '').trim().slice(0, 24);
+  if (!s) s = 'Trader-' + String((user && user.id) || '').replace(/[^a-z0-9]/gi, '').slice(-4).toUpperCase();
+  return s;
+}
 
 async function emailVerify(user) {
   const t = crypto.randomBytes(20).toString('hex');
@@ -1119,6 +1124,45 @@ async function authRoute(req, res, u) {
     if (p === '/api/brief' && m === 'POST') {
       if (tooMany(res, 'brief:' + clientIp(req), 20, 3600000)) return;   // 20 briefs / hour / IP
       return send(res, 200, await api['brief'](Object.fromEntries(u.searchParams.entries()), body));
+    }
+    // ---- community: shared trade ideas + paper-return leaderboard ----
+    if (p === '/api/community/ideas' && m === 'GET') return send(res, 200, { ideas: await store.listIdeas(80) });
+    if (p === '/api/community/ideas' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      if (tooMany(res, 'idea:' + clientIp(req), 15, 3600000)) return;
+      const symbol = String(body.symbol || '').toUpperCase().slice(0, 20);
+      const thesis = String(body.thesis || '').slice(0, 600).trim();
+      if (!symbol || !thesis) return send(res, 400, { error: 'Symbol and thesis are required.' });
+      const dir = ['bullish', 'bearish', 'neutral'].includes(body.direction) ? body.direction : 'neutral';
+      const idea = { id: newId('idea'), ts: Date.now(), authorId: s.user.id, handle: sanitizeHandle(body.handle, s.user), symbol, assetType: String(body.type || '').slice(0, 12), assetId: String(body.id || symbol).slice(0, 40), direction: dir, thesis, target: body.target != null && isFinite(+body.target) ? +body.target : null, horizon: String(body.horizon || '').slice(0, 40), votes: 0, voters: [] };
+      await store.addIdea(idea); audit('idea_post', req, s.user.email, { symbol });
+      return send(res, 200, { ok: true, idea });
+    }
+    if (p === '/api/community/ideas' && m === 'DELETE') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const idea = await store.getIdea(String(u.searchParams.get('id') || body.id || '')); if (!idea) return send(res, 404, { error: 'Not found.' });
+      if (idea.authorId !== s.user.id && !isSuperAdmin(s.user.email)) return send(res, 403, { error: 'Forbidden.' });
+      await store.deleteIdea(idea.id); return send(res, 200, { ok: true });
+    }
+    if (p === '/api/community/vote' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const idea = await store.getIdea(String(body.id || '')); if (!idea) return send(res, 404, { error: 'Not found.' });
+      idea.voters = idea.voters || [];
+      const i = idea.voters.indexOf(s.user.id);
+      if (i >= 0) idea.voters.splice(i, 1); else idea.voters.push(s.user.id);
+      idea.votes = idea.voters.length; await store.updateIdea(idea);
+      return send(res, 200, { ok: true, votes: idea.votes, voted: i < 0 });
+    }
+    if (p === '/api/community/leaderboard' && m === 'GET') {
+      const leaders = (await store.allLeaders()).filter(Boolean).sort((a, b) => (b.return || 0) - (a.return || 0)).slice(0, 100);
+      return send(res, 200, { leaders });
+    }
+    if (p === '/api/community/publish' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const ret = Number(body.return), equity = Number(body.equity), trades = Number(body.trades) || 0;
+      if (!isFinite(ret) || !isFinite(equity)) return send(res, 400, { error: 'Bad data.' });
+      await store.putLeader(s.user.id, { uid: s.user.id, handle: sanitizeHandle(body.handle, s.user), return: +ret.toFixed(2), equity: Math.round(equity), trades, ts: Date.now() });
+      return send(res, 200, { ok: true });
     }
     if (p === '/api/push/config' && m === 'GET') return send(res, 200, { enabled: PUSH_ENABLED, publicKey: VAPID_PUBLIC });
     if (p === '/api/push/subscribe' && m === 'POST') {
@@ -1371,7 +1415,7 @@ store.ready().then(() => {
       await trackDevSeed(); return send(res, 200, { ok: true });
     }
     if (u.pathname === '/api/billing/webhook') return billingWebhook(req, res);
-    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname === '/api/brief' || u.pathname.startsWith('/api/billing/')) {
+    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname === '/api/brief' || u.pathname.startsWith('/api/community/') || u.pathname.startsWith('/api/billing/')) {
       return authRoute(req, res, u);
     }
     if (u.pathname.startsWith('/api/')) {

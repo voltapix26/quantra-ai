@@ -18,8 +18,17 @@ function fileStore() {
   const users = ld(F('users.json'), {}), orgs = ld(F('orgs.json'), {}), sessions = ld(F('sessions.json'), {}), tokens = ld(F('tokens.json'), {}), snaps = ld(F('snapshots.json'), {});
   const audit = ld(F('audit.json'), []);
   const stats = ld(F('stats.json'), {});
+  const ideas = ld(F('ideas.json'), []);
+  const leaders = ld(F('leaders.json'), {});
   return {
     kind: 'file',
+    async addIdea(idea) { ideas.unshift(idea); if (ideas.length > 1000) ideas.length = 1000; sv(F('ideas.json'), ideas); },
+    async listIdeas(limit) { return ideas.slice(0, limit || 100); },
+    async getIdea(id) { return ideas.find((i) => i.id === id) || null; },
+    async updateIdea(idea) { const i = ideas.findIndex((x) => x.id === idea.id); if (i >= 0) { ideas[i] = idea; sv(F('ideas.json'), ideas); } },
+    async deleteIdea(id) { const i = ideas.findIndex((x) => x.id === id); if (i >= 0) { ideas.splice(i, 1); sv(F('ideas.json'), ideas); } },
+    async putLeader(uid, rec) { leaders[uid] = rec; sv(F('leaders.json'), leaders); },
+    async allLeaders() { return Object.values(leaders); },
     async allUsers() { return Object.values(users); },
     async getStats(date) { return stats[date] || null; },
     async putStats(date, rec) { stats[date] = rec; sv(F('stats.json'), stats); },
@@ -63,6 +72,13 @@ function pgStore() {
   const one = (r) => (r.rows[0] ? r.rows[0].data : null);
   return {
     kind: 'postgres',
+    async addIdea(idea) { await q('insert into ideas(id,data) values($1,$2) on conflict(id) do update set data=$2', [idea.id, idea]); },
+    async listIdeas(limit) { const r = await q("select data from ideas order by (data->>'ts')::bigint desc limit $1", [limit || 100]); return r.rows.map((x) => x.data); },
+    async getIdea(id) { return one(await q('select data from ideas where id=$1', [id])); },
+    async updateIdea(idea) { await q('update ideas set data=$2 where id=$1', [idea.id, idea]); },
+    async deleteIdea(id) { await q('delete from ideas where id=$1', [id]); },
+    async putLeader(uid, rec) { await q('insert into leaderboard(uid,data) values($1,$2) on conflict(uid) do update set data=$2', [uid, rec]); },
+    async allLeaders() { const r = await q('select data from leaderboard'); return r.rows.map((x) => x.data); },
     async allUsers() { const r = await q('select data from users'); return r.rows.map((x) => x.data); },
     async getStats(date) { return one(await q('select data from stats where date=$1', [date])); },
     async putStats(date, rec) { await q('insert into stats(date,data) values($1,$2) on conflict(date) do update set data=$2', [date, rec]); },
@@ -81,6 +97,8 @@ function pgStore() {
       await q('CREATE TABLE IF NOT EXISTS userdata(uid text primary key, data jsonb)');
       await q('CREATE TABLE IF NOT EXISTS audit(id bigserial primary key, data jsonb, at timestamptz default now())');
       await q('CREATE TABLE IF NOT EXISTS stats(date text primary key, data jsonb)');
+      await q('CREATE TABLE IF NOT EXISTS ideas(id text primary key, data jsonb)');
+      await q('CREATE TABLE IF NOT EXISTS leaderboard(uid text primary key, data jsonb)');
       await q('CREATE INDEX IF NOT EXISTS users_id_idx ON users(id)');
     },
     async getUserByEmail(e) { return one(await q('select data from users where email=$1', [e])); },

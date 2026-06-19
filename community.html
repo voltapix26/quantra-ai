@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Community</title>
+  <meta name="description" content="Share trade ideas and climb the Quantra paper-trading leaderboard. Learn from the community." />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0A0F1C" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=22" />
+  <style>
+    .cm{max-width:840px;margin:0 auto;padding:1.3rem 0 4rem}
+    .cm h1{font-size:1.9rem;margin-bottom:.15rem}
+    .cm-lead{color:var(--muted);margin-bottom:1.1rem}
+    .cm-tabs{display:flex;gap:.4rem;margin-bottom:1.1rem}
+    .cm-tab{background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:.42em 1em;font-size:.85rem;cursor:pointer;font-family:inherit}
+    .cm-tab.is-active{background:linear-gradient(135deg,var(--mint),var(--cyan));color:#06231d;border-color:transparent;font-weight:600}
+    .cm-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:1rem;margin-bottom:1rem}
+    .cm-post{display:grid;grid-template-columns:120px 1fr;gap:.6rem}
+    @media(max-width:620px){.cm-post{grid-template-columns:1fr}}
+    .cm-post select,.cm-post input,.cm-post textarea{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:8px;padding:.5em .6em;color:var(--text);font-size:.86rem;font-family:inherit}
+    .cm-post textarea{min-height:60px;resize:vertical}
+    .cm-post select:focus,.cm-post input:focus,.cm-post textarea:focus{outline:none;border-color:var(--mint)}
+    .cm-post select option{background:#0E1525;color:#E7ECF5}
+    .cm-post .full{grid-column:1/-1}
+    .cm-postbar{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-top:.6rem;flex-wrap:wrap}
+    .idea{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.9rem 1rem;margin-bottom:.7rem}
+    .idea__top{display:flex;align-items:center;gap:.6rem;margin-bottom:.45rem;flex-wrap:wrap}
+    .idea__sym{font-family:'Space Grotesk';font-weight:700;font-size:1.05rem;color:var(--text)}
+    .idea__dir{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:.16em .5em;border-radius:5px}
+    .idea__dir.bullish{color:var(--mint);background:rgba(52,211,153,.14)}.idea__dir.bearish{color:var(--rose);background:rgba(248,113,113,.14)}.idea__dir.neutral{color:var(--amber);background:rgba(251,191,36,.14)}
+    .idea__who{color:var(--muted-2);font-size:.8rem}.idea__who b{color:var(--cyan)}
+    .idea__when{margin-left:auto;color:var(--muted-2);font-size:.76rem}
+    .idea__thesis{color:var(--muted);font-size:.9rem;line-height:1.55}
+    .idea__meta{display:flex;align-items:center;gap:.7rem;margin-top:.55rem;font-size:.8rem;color:var(--muted-2)}
+    .idea__vote{background:rgba(255,255,255,.04);border:1px solid var(--line-2);color:var(--muted);border-radius:20px;padding:.25em .7em;cursor:pointer;font-family:inherit;font-size:.8rem}
+    .idea__vote.on,.idea__vote:hover{border-color:var(--mint);color:var(--mint)}
+    .idea__open{color:var(--cyan);text-decoration:none}
+    .idea__del{margin-left:auto;background:none;border:0;color:var(--muted-2);cursor:pointer}.idea__del:hover{color:var(--rose)}
+    .lb-row{display:flex;align-items:center;gap:.8rem;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.7rem 1rem;margin-bottom:.5rem}
+    .lb-rank{font-family:'Space Grotesk';font-weight:700;font-size:1.2rem;min-width:38px;color:var(--muted-2)}
+    .lb-rank.top{color:var(--mint)}
+    .lb-handle{flex:1;font-weight:600;color:var(--text)}.lb-handle small{display:block;color:var(--muted-2);font-weight:400;font-size:.74rem}
+    .lb-ret{font-family:'Space Grotesk';font-weight:700;font-size:1.1rem;font-variant-numeric:tabular-nums}
+    .up{color:var(--mint)}.down{color:var(--rose)}
+    .cm-state{padding:2rem;text-align:center;color:var(--muted)}
+    .cm-note{font-size:.74rem;color:var(--muted-2);margin-top:.8rem}
+    .signin-note{background:rgba(129,140,248,.07);border:1px solid rgba(129,140,248,.2);border-radius:10px;padding:.7rem 1rem;color:var(--muted);font-size:.85rem;margin-bottom:1rem}
+  </style>
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand"><span class="brand__mark">
+        <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true"><defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs><path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/><path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="82" cy="16" r="6" fill="#34D399"/></svg>
+      </span><span class="brand__name">Quantra<span class="brand__ai">AI</span></span></a>
+      <span class="bar__tag">Community</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links">
+        <a href="index.html">Terminal</a>
+        <a href="brief.html">Brief</a>
+        <a href="discover.html">Discover</a>
+        <a href="paper.html">Paper</a>
+        <a href="community.html" class="is-active">Community</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container cm">
+    <h1>Community</h1>
+    <p class="cm-lead">Share trade ideas and climb the paper-trading leaderboard.</p>
+
+    <div class="cm-tabs" id="cmTabs"></div>
+    <div id="signinNote"></div>
+    <div id="cmBody"><div class="cm-state">Loading…</div></div>
+    <p class="cm-note">Ideas are user-generated opinions, not advice or signals. Leaderboard ranks simulated paper returns only. Be respectful.</p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const onServer = location.protocol === 'http:' || location.protocol === 'https:';
+    const tok = (() => { try { return localStorage.getItem('quantra.sid') || ''; } catch { return ''; } })();
+    let handle = ''; try { handle = localStorage.getItem('quantra.handle') || ''; } catch {}
+    let tab = 'ideas';
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const ago = (ts) => { const d = (Date.now() - ts) / 1000; if (d < 60) return 'just now'; if (d < 3600) return Math.floor(d/60)+'m ago'; if (d < 86400) return Math.floor(d/3600)+'h ago'; return Math.floor(d/86400)+'d ago'; };
+    const fmt = (n) => '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+    async function api(path, opts) {
+      const headers = Object.assign({ 'Content-Type': 'application/json' }, opts && opts.headers);
+      if (tok) headers.Authorization = 'Bearer ' + tok;
+      const r = await fetch('/api' + path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+      const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || ('http ' + r.status)); return j;
+    }
+    function ensureHandle() {
+      if (handle) return handle;
+      const h = (prompt('Pick a display handle for the community:') || '').trim();
+      if (h) { handle = h.slice(0, 24); try { localStorage.setItem('quantra.handle', handle); } catch {} }
+      return handle;
+    }
+
+    function renderTabs() {
+      $('cmTabs').innerHTML = [['ideas','💡 Trade ideas'],['leaderboard','🏆 Leaderboard']].map(([k,l]) => `<button class="cm-tab ${k===tab?'is-active':''}" data-t="${k}">${l}</button>`).join('');
+      $('cmTabs').querySelectorAll('.cm-tab').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.t; renderTabs(); load(); }));
+      $('signinNote').innerHTML = tok ? '' : '<div class="signin-note">Browsing as a guest. <a href="index.html">Sign in on the terminal</a> to post ideas, vote, and publish your paper return.</div>';
+    }
+
+    function ideaCard(it) {
+      const mine = it.handle && it.handle === handle;
+      return `<div class="idea" data-id="${it.id}">
+        <div class="idea__top">
+          <a class="idea__open idea__sym" href="index.html?type=${encodeURIComponent(it.assetType||'crypto')}&id=${encodeURIComponent(it.assetId||it.symbol)}&symbol=${encodeURIComponent(it.symbol)}&name=${encodeURIComponent(it.symbol)}">${esc(it.symbol)}</a>
+          <span class="idea__dir ${it.direction}">${it.direction}</span>
+          <span class="idea__who">by <b>${esc(it.handle||'anon')}</b></span>
+          <span class="idea__when">${ago(it.ts)}</span>
+        </div>
+        <div class="idea__thesis">${esc(it.thesis)}</div>
+        <div class="idea__meta">
+          <button class="idea__vote" data-vote="${it.id}">▲ ${it.votes||0}</button>
+          ${it.horizon ? '<span>⏱ '+esc(it.horizon)+'</span>' : ''}
+          ${it.target!=null ? '<span>🎯 '+esc(it.target)+'</span>' : ''}
+          ${mine ? `<button class="idea__del" data-del="${it.id}" title="Delete">🗑</button>` : ''}
+        </div></div>`;
+    }
+
+    async function loadIdeas() {
+      const postForm = `
+        <div class="cm-card">
+          <div class="cm-post">
+            <select id="iType"><option value="crypto">Crypto</option><option value="stock">Stock</option><option value="etf">ETF</option><option value="commodity">Commodity</option><option value="index">Index</option><option value="fx">Forex</option></select>
+            <input id="iSym" type="text" placeholder="Symbol (e.g. BTC, AAPL)" maxlength="20" autocomplete="off" />
+            <select id="iDir" class="full" style="max-width:200px"><option value="bullish">Bullish ▲</option><option value="bearish">Bearish ▼</option><option value="neutral">Neutral</option></select>
+            <textarea id="iThesis" class="full" placeholder="Your thesis — why? (max 600 chars)" maxlength="600"></textarea>
+            <input id="iHorizon" class="full" type="text" placeholder="Horizon (optional, e.g. 2 weeks)" maxlength="40" style="max-width:260px" />
+          </div>
+          <div class="cm-postbar"><span class="cm-note" id="iMsg"></span><button class="btn btn--primary btn--sm" id="iPost">Post idea</button></div>
+        </div>`;
+      $('cmBody').innerHTML = (tok ? postForm : '') + '<div id="ideaList"><div class="cm-state">Loading ideas…</div></div>';
+      if (tok) {
+        $('iPost').addEventListener('click', async () => {
+          const symbol = ($('iSym').value || '').trim().toUpperCase(); const thesis = ($('iThesis').value || '').trim();
+          if (!symbol || !thesis) { $('iMsg').textContent = 'Add a symbol and your thesis.'; return; }
+          if (!ensureHandle()) { $('iMsg').textContent = 'Pick a handle to post.'; return; }
+          $('iPost').disabled = true;
+          try {
+            await api('/community/ideas', { method: 'POST', body: JSON.stringify({ symbol, type: $('iType').value, id: symbol, direction: $('iDir').value, thesis, horizon: $('iHorizon').value, handle }) });
+            $('iSym').value = ''; $('iThesis').value = ''; $('iHorizon').value = ''; $('iMsg').textContent = '';
+            loadIdeas();
+          } catch (e) { $('iMsg').textContent = e.message; $('iPost').disabled = false; }
+        });
+      }
+      try {
+        const d = await api('/community/ideas');
+        const el = $('ideaList');
+        el.innerHTML = d.ideas.length ? d.ideas.map(ideaCard).join('') : '<div class="cm-state">No ideas yet — be the first to post one.</div>';
+        el.querySelectorAll('[data-vote]').forEach((b) => b.addEventListener('click', async () => {
+          if (!tok) return alert('Sign in to vote.');
+          try { const r = await api('/community/vote', { method: 'POST', body: JSON.stringify({ id: b.dataset.vote }) }); b.textContent = '▲ ' + r.votes; b.classList.toggle('on', r.voted); } catch (e) { alert(e.message); }
+        }));
+        el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
+          if (!confirm('Delete this idea?')) return;
+          try { await api('/community/ideas?id=' + encodeURIComponent(b.dataset.del), { method: 'DELETE' }); loadIdeas(); } catch (e) { alert(e.message); }
+        }));
+      } catch { $('ideaList').innerHTML = '<div class="cm-state">Could not load ideas.</div>'; }
+    }
+
+    async function computePaperReturn() {
+      let paper = null; try { paper = JSON.parse(localStorage.getItem('quantra.paper') || 'null'); } catch {}
+      if (!paper || !paper.positions) return null;
+      let posVal = 0;
+      await Promise.all((paper.positions || []).map(async (p) => {
+        try { const d = await api(`/price?type=${p.type}&id=${encodeURIComponent(p.id||p.symbol)}&symbol=${encodeURIComponent(p.symbol)}`); if (d.ok) posVal += d.price * p.qty; } catch {}
+      }));
+      const equity = (paper.cash || 0) + posVal, start = paper.startCash || 100000;
+      return { equity, ret: (equity - start) / start * 100, trades: (paper.trades || []).length };
+    }
+
+    async function loadLeaderboard() {
+      const pubBar = tok ? `<div class="cm-card" style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap"><span class="cm-note" id="pubMsg" style="margin:0">Publish your current paper-trading return to the leaderboard.</span><button class="btn btn--primary btn--sm" id="pubBtn">🏆 Publish my return</button></div>` : '';
+      $('cmBody').innerHTML = pubBar + '<div id="lbList"><div class="cm-state">Loading leaderboard…</div></div>';
+      if (tok) $('pubBtn').addEventListener('click', async () => {
+        if (!ensureHandle()) { $('pubMsg').textContent = 'Pick a handle first.'; return; }
+        $('pubBtn').disabled = true; $('pubMsg').textContent = 'Computing your equity…';
+        const r = await computePaperReturn();
+        if (!r) { $('pubMsg').textContent = 'Make some paper trades first on the Paper page.'; $('pubBtn').disabled = false; return; }
+        try { await api('/community/publish', { method: 'POST', body: JSON.stringify({ return: r.ret, equity: r.equity, trades: r.trades, handle }) }); $('pubMsg').textContent = `Published: ${r.ret>=0?'+':''}${r.ret.toFixed(2)}% (${fmt(r.equity)}).`; loadLeaderboard(); }
+        catch (e) { $('pubMsg').textContent = e.message; $('pubBtn').disabled = false; }
+      });
+      try {
+        const d = await api('/community/leaderboard');
+        const el = $('lbList');
+        el.innerHTML = d.leaders.length ? d.leaders.map((l, i) => `<div class="lb-row"><span class="lb-rank ${i<3?'top':''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':'#'+(i+1)}</span><span class="lb-handle">${esc(l.handle)}<small>${l.trades||0} trades · ${fmt(l.equity)} equity</small></span><span class="lb-ret ${l.return>=0?'up':'down'}">${l.return>=0?'+':''}${Number(l.return).toFixed(2)}%</span></div>`).join('') : '<div class="cm-state">No one on the leaderboard yet. Trade on the Paper page, then publish your return.</div>';
+      } catch { $('lbList').innerHTML = '<div class="cm-state">Could not load the leaderboard.</div>'; }
+    }
+
+    function load() { if (!onServer) { $('cmBody').innerHTML = '<div class="cm-state">Run the live server to use the community.</div>'; return; } tab === 'ideas' ? loadIdeas() : loadLeaderboard(); }
+    renderTabs(); load();
+  </script>
+</body>
+</html>
