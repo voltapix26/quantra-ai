@@ -24,6 +24,15 @@
     .pill.ok{color:var(--mint);background:rgba(52,211,153,.12)}
     .pill.no{color:var(--amber);background:rgba(251,191,36,.12)}
     .pill.adm{color:var(--indigo);background:rgba(129,140,248,.14)}
+    .pill.pend{color:var(--amber);background:rgba(251,191,36,.14)}
+    .abtn{font-size:.72rem;font-weight:600;padding:.28em .7em;border-radius:7px;border:1px solid var(--line-2);background:rgba(255,255,255,.04);color:var(--muted);cursor:pointer;white-space:nowrap}
+    .abtn:hover{background:rgba(255,255,255,.08);color:var(--text)}
+    .abtn:disabled{opacity:.5;cursor:default}
+    .abtn.ok{color:var(--mint);border-color:rgba(52,211,153,.4)}
+    .abtn.ok:hover{background:rgba(52,211,153,.12)}
+    .abtn.del{color:var(--rose);border-color:rgba(244,63,94,.4)}
+    .abtn.del:hover{background:rgba(244,63,94,.12)}
+    .abtn+.abtn{margin-left:.35rem}
     .act{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem}
     .act.fail,.act.deny{color:var(--rose)} .act.login,.act.signup{color:var(--mint)}
     .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;color:var(--muted-2)}
@@ -59,7 +68,7 @@
 
   <main class="container adm">
     <h1>Admin &amp; audit</h1>
-    <div class="adm-note">🔒 <b>Passwords are never shown here.</b> They're stored as one-way salted scrypt hashes and cannot be recovered by anyone — by design. This panel is oversight only: account emails, metadata, and a security audit trail. To help a locked-out user, send a password reset.</div>
+    <div class="adm-note">🔒 <b>Passwords are never shown here.</b> They're stored as one-way salted scrypt hashes and cannot be recovered by anyone — by design. You can <b>approve</b> pending accounts (new signups can't sign in until you approve them), <b>revoke</b> access, or <b>delete</b> an account entirely. To help a locked-out user, send a password reset.</div>
     <div id="admState"></div>
     <div id="admBody" hidden>
       <div class="adm-sub">📊 Footfall &amp; status</div>
@@ -88,8 +97,46 @@
       if (!r.ok) { const e = new Error('http'); e.code = r.status; throw e; }
       return r.json();
     }
+    async function post(path, body) {
+      const r = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: Object.assign({ 'Content-Type': 'application/json' }, tok ? { Authorization: 'Bearer ' + tok } : {}), body: JSON.stringify(body || {}) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      return d;
+    }
     const fmtTime = (ms) => ms ? new Date(ms).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    function renderUsers(data) {
+      $('usersHdr').textContent = `Users (${data.count})`;
+      $('usersT').innerHTML = '<tr><th>Email</th><th>Name</th><th>Plan</th><th>Verified</th><th>Status</th><th>Created</th><th>Last login</th><th>Actions</th></tr>' +
+        (data.users || []).map((u) => `<tr data-id="${esc(u.id)}" data-email="${esc(u.email)}">
+          <td><b>${esc(u.email)}</b>${u.superAdmin ? ' <span class="pill adm">admin</span>' : ''}</td>
+          <td>${esc(u.name)}</td>
+          <td>${esc(u.plan)}</td>
+          <td>${u.verified ? '<span class="pill ok">yes</span>' : '<span class="pill no">no</span>'}</td>
+          <td>${u.superAdmin || u.approved ? '<span class="pill ok">approved</span>' : '<span class="pill pend">pending</span>'}</td>
+          <td>${fmtTime(u.createdAt)}</td>
+          <td>${fmtTime(u.lastLogin)}</td>
+          <td>${u.superAdmin ? '<span style="color:var(--muted-2)">—</span>'
+            : (u.approved ? '<button class="abtn" data-act="revoke">Revoke</button>' : '<button class="abtn ok" data-act="approve">Approve</button>')
+              + '<button class="abtn del" data-act="delete">Delete</button>'}</td>
+        </tr>`).join('');
+    }
+    async function loadUsers() { renderUsers(await api('/api/admin/users')); }
+    function bindUserActions() {
+      const t = $('usersT'); if (!t || t._bound) return; t._bound = true;
+      t.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-act]'); if (!btn) return;
+        const tr = btn.closest('tr'); const id = tr.dataset.id, email = tr.dataset.email, act = btn.dataset.act;
+        if (act === 'delete' && !confirm(`Permanently delete ${email}?\n\nThis removes their account, workspace and all saved data. This cannot be undone.`)) return;
+        if (act === 'revoke' && !confirm(`Revoke access for ${email}?\nThey'll be signed out and blocked until you re-approve them.`)) return;
+        btn.disabled = true;
+        try {
+          if (act === 'delete') await post('/api/admin/users/delete', { id });
+          else await post('/api/admin/users/approve', { id, approved: act === 'approve' });
+          await loadUsers();
+        } catch (err) { alert(err.message); btn.disabled = false; }
+      });
+    }
     (async () => {
       if (!(location.protocol === 'http:' || location.protocol === 'https:')) { $('admState').innerHTML = '<div class="adm-deny">Run the live server to use the admin panel.</div>'; return; }
       let data;
@@ -130,17 +177,7 @@
           `<div class="strow"><span>Node</span><b>${esc(s2.node)}</b></div>`;
       } catch {}
 
-      $('usersHdr').textContent = `Users (${data.count})`;
-      $('usersT').innerHTML = '<tr><th>Email</th><th>Name</th><th>Plan</th><th>Verified</th><th>Workspace</th><th>Created</th><th>Last login</th><th>Role</th></tr>' +
-        data.users.map((u) => `<tr>
-          <td><b>${esc(u.email)}</b>${u.superAdmin ? ' <span class="pill adm">admin</span>' : ''}</td>
-          <td>${esc(u.name)}</td>
-          <td>${esc(u.plan)}</td>
-          <td>${u.verified ? '<span class="pill ok">yes</span>' : '<span class="pill no">no</span>'}</td>
-          <td>${esc(u.workspace)}</td>
-          <td>${fmtTime(u.createdAt)}</td>
-          <td>${fmtTime(u.lastLogin)}</td>
-          <td>${esc(u.role)}</td></tr>`).join('');
+      bindUserActions(); renderUsers(data);
 
       try {
         const a = await api('/api/admin/audit?limit=400');

@@ -81,6 +81,7 @@
     const btn = $('authSubmit'), old = btn.textContent; btn.disabled = true; btn.textContent = '…';
     try {
       const r = await api(mode === 'signup' ? '/auth/signup' : '/auth/login', { method: 'POST', body: JSON.stringify({ email, password, name, orgName, consent }) });
+      if (r.pending) { const ee = $('authErr'); ee.hidden = false; ee.style.color = 'var(--mint)'; ee.textContent = r.message || 'Your account is awaiting administrator approval.'; return; }
       if (r.token) setToken(r.token);
       user = r.user; renderBtn(); closeModal(); await syncOnLogin(); await loadLimits();
     } catch (err) { const ee = $('authErr'); ee.hidden = false; ee.style.color = ''; ee.textContent = err.message; }
