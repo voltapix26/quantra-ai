@@ -8,3 +8,6 @@ slide-*.jpg
 cloudflared.exe
 *.log
 .DS_Store
+
+docs/_vh_export.docx
+docs/*.pdf
