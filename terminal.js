@@ -226,6 +226,22 @@
     const btn = $('chartBig'); if (btn) { btn.classList.toggle('is-on', on); btn.textContent = on ? '⤡ Shrink' : '⤢ Enlarge'; }
     if (replay.on) drawReplay(); else if (current && state) { redrawChart(); drawPanes(state.history); }
   }
+  // Is the asset's exchange open right now? Uses Yahoo's per-exchange session window.
+  function marketStatus(type, meta) {
+    if (type === 'crypto') return { label: 'Open · 24/7', cls: 'open' };
+    const now = Math.floor(Date.now() / 1000);
+    if (type === 'fx') {
+      const d = new Date(), dow = d.getUTCDay(), hr = d.getUTCHours();
+      const closed = (dow === 6) || (dow === 0 && hr < 22) || (dow === 5 && hr >= 22);
+      return closed ? { label: 'Closed', cls: 'closed' } : { label: 'Open · 24/5', cls: 'open' };
+    }
+    const cp = meta && meta.currentTradingPeriod;
+    if (!cp || !cp.regular) return null;
+    if (now >= cp.regular.start && now < cp.regular.end) return { label: 'Market open', cls: 'open' };
+    if (cp.pre && now >= cp.pre.start && now < cp.pre.end) return { label: 'Pre-market', cls: 'pre' };
+    if (cp.post && now >= cp.post.start && now < cp.post.end) return { label: 'After-hours', cls: 'pre' };
+    return { label: 'Market closed', cls: 'closed' };
+  }
   // Heikin Ashi: smoothed OHLC that filters noise (a TradingView staple).
   function heikinAshi(o) {
     const O = o.opens, H = o.highs, L = o.lows, C = o.closes, ho = [], hh = [], hl = [], hc = [];
@@ -1209,6 +1225,8 @@
       } else { chip.textContent = res.verdict.trend; chip.className = 'chip chip--' + (up ? 'up' : res.verdict.dir === 'down' ? 'down' : 'neutral'); }
       const SUBS = { crypto: 'Cryptocurrency · 24/7 market', stock: 'Equity / stock', etf: 'Exchange-traded fund', commodity: 'Commodity / futures', index: 'Market index', fx: 'Foreign exchange pair' };
       $('dSub').textContent = SUBS[item.type] || '—';   // always set (fundamentals may refine it for stocks)
+      // Market open/closed badge (per-exchange session window from Yahoo).
+      { const mk = $('dMkt'); if (mk) { const st = marketStatus(item.type, hist && hist.meta); if (st) { mk.textContent = st.label; mk.className = 'dmkt ' + st.cls; mk.hidden = false; } else mk.hidden = true; } }
       // Data-freshness line: free feeds (esp. non-US/Gulf/Asian exchanges) can lag the
       // live market, so show exactly when this price is from instead of looking "wrong".
       { const af = $('dAsOf'); const mt = hist && hist.meta && hist.meta.regularMarketTime; const tz = hist && hist.meta && hist.meta.exchangeTimezoneName;
