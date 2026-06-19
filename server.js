@@ -256,6 +256,20 @@ const api = {
   async 'commodity/board'() { return cached('comb', 60000, () => buildBoard(UNIV.commodity, 'commodity')); },
   async 'index/board'() { return cached('idxb', 60000, () => buildBoard(UNIV.index, 'index')); },
   async 'fx/board'() { return cached('fxb', 60000, () => buildBoard(UNIV.fx, 'fx')); },
+  // Universal current price for any held asset (portfolio tracker).
+  async 'price'(q) {
+    const idv = q.id || q.symbol; if (!idv) return { ok: false };
+    if (q.type === 'crypto') {
+      try { const d = await cached(`px:c:${idv}`, 30000, () => getJSON(`${CG}/simple/price?ids=${encodeURIComponent(idv)}&vs_currencies=usd`, cgHeaders())); const p = d[idv] && d[idv].usd; if (p != null) return { ok: true, price: p, currency: 'USD' }; } catch {}
+      try { const d = await getJSON(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(String(q.symbol || idv).toLowerCase())}-${encodeURIComponent(String(idv).toLowerCase())}?quotes=USD`); const p = d && d.quotes && d.quotes.USD && d.quotes.USD.price; if (p != null) return { ok: true, price: p, currency: 'USD' }; } catch {}
+      return { ok: false };
+    }
+    try {
+      const d = await cached(`px:y:${idv}`, 30000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(idv)}?range=1d&interval=1d`));
+      const r = d.chart.result[0], closes = (r.indicators.quote[0].close || []).filter((v) => v != null);
+      return { ok: true, price: closes.length ? closes[closes.length - 1] : (r.meta && r.meta.regularMarketPrice), currency: (r.meta && r.meta.currency) || 'USD' };
+    } catch { return { ok: false }; }
+  },
 
   /* ---- screener.in-style fundamentals (Yahoo quoteSummary) ---- */
   async 'stock/fundamentals'(q) {
@@ -685,6 +699,7 @@ async function authRoute(req, res, u) {
         if (Array.isArray(body.watchlist)) d.watchlist = body.watchlist.slice(0, cfg.watchlistMax);
         if (body.prefs && typeof body.prefs === 'object') d.prefs = { ...d.prefs, ...body.prefs };
         if (Array.isArray(body.screens)) d.screens = body.screens.slice(0, 50);
+        if (Array.isArray(body.portfolio)) d.portfolio = body.portfolio.slice(0, 200);
         await store.putUserData(s.user.id, d);
         return send(res, 200, d);
       }
