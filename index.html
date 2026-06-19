@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=19" />
+  <link rel="stylesheet" href="styles.css?v=20" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -243,6 +243,27 @@
           <div class="askq-foot">Educational answers grounded in this asset's live readings — not investment advice.</div>
         </div>
 
+        <!-- MONITORED ALERTS -->
+        <div class="card alerts" id="alertsCard" hidden>
+          <div class="alerts-hdr">
+            <span class="alerts-title">🔔 Monitored alerts</span>
+            <span class="alerts-sub">for <b id="alFor">this asset</b></span>
+            <span class="alerts-badge" id="alBadge">runs 24/7 · emails you</span>
+          </div>
+          <div class="alerts-new">
+            <select id="alCond" aria-label="Alert condition">
+              <option value="price_above">Price rises to ≥</option>
+              <option value="price_below">Price falls to ≤</option>
+              <option value="pct_up">Up % today ≥</option>
+              <option value="pct_down">Down % today ≥</option>
+            </select>
+            <input id="alValue" type="text" inputmode="decimal" placeholder="value" autocomplete="off" />
+            <button class="btn btn--primary btn--sm" id="alCreate">Create alert</button>
+          </div>
+          <div class="alerts-note" id="alNote"></div>
+          <div class="alerts-list" id="alList"></div>
+        </div>
+
         <!-- FUNDAMENTALS (stocks) -->
         <div class="card" id="fundCard" hidden>
           <div class="section-title">
@@ -305,10 +326,10 @@
     <span class="legal-links"><a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refund.html">Refunds</a></span>
   </p>
 
-  <script src="globe.js?v=19"></script>
-  <script src="auth.js?v=19"></script>
-  <script src="analysis.js?v=19"></script>
-  <script src="report.js?v=19"></script>
-  <script src="terminal.js?v=19"></script>
+  <script src="globe.js?v=20"></script>
+  <script src="auth.js?v=20"></script>
+  <script src="analysis.js?v=20"></script>
+  <script src="report.js?v=20"></script>
+  <script src="terminal.js?v=20"></script>
 </body>
 </html>

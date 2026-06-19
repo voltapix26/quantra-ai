@@ -732,6 +732,68 @@
     const t = $('askqThread'); if (t) t.scrollTop = t.scrollHeight;
   }
 
+  /* ---------------- Monitored alerts (server-side, emails you) ---------------- */
+  let salerts = [];
+  try { salerts = JSON.parse(localStorage.getItem('quantra.salerts') || '[]'); } catch {}
+  const signedIn = () => !!(window.QuantraAuth && window.QuantraAuth.user);
+  const uid = () => 'a' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+  function alCondText(a) {
+    if (a.cond === 'price_above') return 'rises to ≥ ' + money(a.value, curBase);
+    if (a.cond === 'price_below') return 'falls to ≤ ' + money(a.value, curBase);
+    if (a.cond === 'pct_up') return 'up ' + a.value + '% or more today';
+    if (a.cond === 'pct_down') return 'down ' + Math.abs(a.value) + '% or more today';
+    return 'condition met';
+  }
+  function saveSAlerts() {
+    try { localStorage.setItem('quantra.salerts', JSON.stringify(salerts)); } catch {}
+    if (signedIn() && window.QuantraAuth.pushData) window.QuantraAuth.pushData({ alerts: salerts });
+  }
+  async function meGet() {
+    if (!onServer || !signedIn()) return null;
+    try { const t = window.QuantraAuth.token; const r = await fetch(`${API}/me/data`, { headers: t ? { Authorization: 'Bearer ' + t } : {}, credentials: 'same-origin' }); return r.ok ? await r.json() : null; } catch { return null; }
+  }
+  async function refreshAlertsFromServer() {
+    const d = await meGet(); if (!d || !Array.isArray(d.alerts)) return;
+    const wasActive = new Set(salerts.filter((a) => a.status === 'active').map((a) => a.id));
+    salerts = d.alerts;
+    salerts.filter((a) => a.status === 'triggered' && wasActive.has(a.id)).forEach((a) => R && R.toast && R.toast('🔔 ' + a.symbol + ' ' + alCondText(a)));
+    try { localStorage.setItem('quantra.salerts', JSON.stringify(salerts)); } catch {}
+    renderAlertsCard();
+  }
+  function setAlertAsset(item) {
+    const card = $('alertsCard'); if (!card) return;
+    card.hidden = false;
+    if ($('alFor')) $('alFor').textContent = item.symbol;
+    renderAlertsCard();
+  }
+  function createAlert() {
+    if (!current) return R && R.toast && R.toast('Select an asset first.');
+    const cond = $('alCond').value;
+    const value = parseFloat(String($('alValue').value || '').replace(/[^0-9.\-]/g, ''));
+    if (isNaN(value)) return R && R.toast && R.toast('Enter a value.');
+    salerts.unshift({ id: uid(), assetId: current.id, symbol: current.symbol, name: current.name || current.symbol, assetType: current.type, cond, value, status: 'active', createdAt: Date.now() });
+    if (salerts.length > 100) salerts = salerts.slice(0, 100);
+    $('alValue').value = '';
+    saveSAlerts(); renderAlertsCard();
+    if (R && R.toast) R.toast(signedIn() ? `Alert set — we'll watch ${current.symbol} 24/7 and email you.` : `Alert saved on this device. Sign in for 24/7 monitoring + email.`);
+  }
+  function deleteAlert(id) { salerts = salerts.filter((a) => a.id !== id); saveSAlerts(); renderAlertsCard(); }
+  function renderAlertsCard() {
+    const note = $('alNote'), list = $('alList'); if (!list) return;
+    if (note) note.textContent = signedIn()
+      ? 'These run on our servers and email you the moment they trigger — even with Quantra closed.'
+      : 'Saved on this device for now. Sign in to monitor 24/7 and get an email when they fire.';
+    const mine = current ? salerts.filter((a) => a.assetId === current.id && a.assetType === current.type) : salerts;
+    const ordered = mine.slice().sort((a, b) => (a.status === b.status ? b.createdAt - a.createdAt : a.status === 'active' ? -1 : 1));
+    if (!ordered.length) { list.innerHTML = '<div class="alerts-empty">No alerts yet for this asset. Set one above.</div>'; return; }
+    list.innerHTML = ordered.map((a) => `<div class="al-row">
+      <span class="al-row__sym">${a.symbol}</span>
+      <span class="al-row__cond">${alCondText(a)}${a.status === 'triggered' && a.triggeredPrice != null ? ' · hit ' + money(a.triggeredPrice, curBase) : ''}</span>
+      <span class="al-row__status ${a.status}">${a.status === 'triggered' ? '✓ fired' : 'active'}</span>
+      <button class="al-row__del" data-al="${a.id}" aria-label="delete alert">✕</button></div>`).join('');
+    list.querySelectorAll('[data-al]').forEach((b) => b.addEventListener('click', () => deleteAlert(b.dataset.al)));
+  }
+
   /* ---------------- live seconds (tick) chart ---------------- */
   function pushTick(p) {
     if (!(p > 0)) return;
@@ -910,6 +972,7 @@
       renderNews(sent, item);
       state.news = sent;
       setAskAsset(item);
+      setAlertAsset(item);
 
       // upgrade the verdict with the AI reasoning engine when a key is configured
       const badge = $('aiBadge');
@@ -1148,6 +1211,14 @@
   setInterval(refreshBoardPrices, 25000);   // keep non-crypto board prices current
   if ($('askqSend')) $('askqSend').addEventListener('click', () => askSend());
   if ($('askqInput')) $('askqInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); askSend(); } });
+  if ($('alCreate')) $('alCreate').addEventListener('click', createAlert);
+  if ($('alValue')) $('alValue').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); createAlert(); } });
+  // pull server-side alert state (picks up triggers fired while away) on load, on sync, and every 60s
+  if (onServer) {
+    window.addEventListener('quantra:synced', refreshAlertsFromServer);
+    refreshAlertsFromServer();
+    setInterval(() => { if (signedIn()) refreshAlertsFromServer(); }, 60000);
+  }
 
   // deep-link from the screener: index.html?type=&id=&symbol=&name=
   const P = new URLSearchParams(location.search);

@@ -355,6 +355,27 @@ button{font-family:inherit}
 .askq-input input{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:10px;padding:.6em .8em;color:var(--text);font-size:.9rem;font-family:inherit}
 .askq-input input:focus{outline:none;border-color:var(--mint)}
 .askq-foot{font-size:.72rem;color:var(--muted-2);margin-top:.55rem}
+
+/* ---- Monitored alerts ---- */
+.alerts-hdr{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.7rem}
+.alerts-title{font-family:'Space Grotesk';font-weight:700;font-size:1.05rem}
+.alerts-sub{color:var(--muted);font-size:.85rem}.alerts-sub b{color:var(--text)}
+.alerts-badge{margin-left:auto;font-size:.66rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--mint);background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.25);padding:.2em .5em;border-radius:6px}
+.alerts-new{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem}
+.alerts-new select,.alerts-new input{background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:9px;padding:.5em .7em;color:var(--text);font-size:.85rem;font-family:inherit}
+.alerts-new select{flex:0 0 auto}.alerts-new input{flex:1;min-width:90px}
+.alerts-new select:focus,.alerts-new input:focus{outline:none;border-color:var(--mint)}
+.alerts-new select option{background:#0E1525;color:#E7ECF5}
+.alerts-note{font-size:.74rem;color:var(--muted-2);margin-bottom:.6rem}
+.alerts-list{display:flex;flex-direction:column;gap:.4rem}
+.al-row{display:flex;align-items:center;gap:.6rem;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:.85rem}
+.al-row__sym{font-family:'Space Grotesk';font-weight:700;color:var(--text)}
+.al-row__cond{color:var(--muted)}
+.al-row__status{margin-left:auto;font-size:.66rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:.18em .5em;border-radius:5px}
+.al-row__status.active{color:var(--cyan);background:rgba(34,211,238,.12)}
+.al-row__status.triggered{color:var(--amber);background:rgba(251,191,36,.14)}
+.al-row__del{background:none;border:0;color:var(--muted-2);cursor:pointer;font-size:.95rem;line-height:1}.al-row__del:hover{color:var(--rose)}
+.alerts-empty{color:var(--muted-2);font-size:.82rem;padding:.4rem 0}
 @media (max-width:600px){.proj-table{font-size:.8rem}.proj-table th,.proj-table td{padding:.4rem .4rem}}
 
 .disclaimer{text-align:center;color:var(--muted-2);font-size:.76rem;margin-top:.4rem}

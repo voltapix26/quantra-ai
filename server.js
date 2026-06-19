@@ -262,14 +262,17 @@ const api = {
   async 'price'(q) {
     const idv = q.id || q.symbol; if (!idv) return { ok: false };
     if (q.type === 'crypto') {
-      try { const d = await cached(`px:c:${idv}`, 30000, () => getJSON(`${CG}/simple/price?ids=${encodeURIComponent(idv)}&vs_currencies=usd`, cgHeaders())); const p = d[idv] && d[idv].usd; if (p != null) return { ok: true, price: p, currency: 'USD' }; } catch {}
-      try { const d = await getJSON(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(String(q.symbol || idv).toLowerCase())}-${encodeURIComponent(String(idv).toLowerCase())}?quotes=USD`); const p = d && d.quotes && d.quotes.USD && d.quotes.USD.price; if (p != null) return { ok: true, price: p, currency: 'USD' }; } catch {}
+      try { const d = await cached(`px:c:${idv}`, 30000, () => getJSON(`${CG}/simple/price?ids=${encodeURIComponent(idv)}&vs_currencies=usd&include_24hr_change=true`, cgHeaders())); const row = d[idv]; if (row && row.usd != null) return { ok: true, price: row.usd, change: row.usd_24h_change != null ? +row.usd_24h_change.toFixed(2) : null, currency: 'USD' }; } catch {}
+      try { const d = await getJSON(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(String(q.symbol || idv).toLowerCase())}-${encodeURIComponent(String(idv).toLowerCase())}?quotes=USD`); const u = d && d.quotes && d.quotes.USD; if (u && u.price != null) return { ok: true, price: u.price, change: u.percent_change_24h != null ? +u.percent_change_24h.toFixed(2) : null, currency: 'USD' }; } catch {}
       return { ok: false };
     }
     try {
       const d = await cached(`px:y:${idv}`, 30000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(idv)}?range=1d&interval=1d`));
       const r = d.chart.result[0], closes = (r.indicators.quote[0].close || []).filter((v) => v != null);
-      return { ok: true, price: closes.length ? closes[closes.length - 1] : (r.meta && r.meta.regularMarketPrice), currency: (r.meta && r.meta.currency) || 'USD' };
+      const price = (r.meta && r.meta.regularMarketPrice != null) ? r.meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
+      const prev = r.meta && r.meta.chartPreviousClose;
+      const change = (price != null && prev) ? +(((price - prev) / prev) * 100).toFixed(2) : null;
+      return { ok: true, price, change, currency: (r.meta && r.meta.currency) || 'USD' };
     } catch { return { ok: false }; }
   },
 
@@ -525,6 +528,71 @@ function localAnswer(question, c) {
   return { ok: true, source: 'quantra', text: p.join(' ') };
 }
 
+/* ============================================================
+   Server-side alert monitor — fires even when the tab is closed,
+   and emails the user. Active alerts live in each user's data;
+   we keep a flat in-memory index and poll prices on a timer.
+   ============================================================ */
+let alertIdx = [];   // [{ userId, email, alert }]
+function alertCondText(a) {
+  const v = a.value;
+  if (a.cond === 'price_above') return `is at or above ${v}`;
+  if (a.cond === 'price_below') return `is at or below ${v}`;
+  if (a.cond === 'pct_up') return `is up ${v}% or more today`;
+  if (a.cond === 'pct_down') return `is down ${Math.abs(v)}% or more today`;
+  return 'condition met';
+}
+function alertCrossed(a, price, change) {
+  if (price == null) return false;
+  if (a.cond === 'price_above') return price >= a.value;
+  if (a.cond === 'price_below') return price <= a.value;
+  if (a.cond === 'pct_up') return change != null && change >= a.value;
+  if (a.cond === 'pct_down') return change != null && change <= -Math.abs(a.value);
+  return false;
+}
+const activeAlerts = (d) => (d && Array.isArray(d.alerts) ? d.alerts : []).filter((a) => a && a.status === 'active');
+function indexUser(userId, email, d) {
+  alertIdx = alertIdx.filter((x) => x.userId !== userId);
+  for (const a of activeAlerts(d)) alertIdx.push({ userId, email, alert: a });
+}
+async function hydrateAlerts() {
+  try {
+    const users = await store.allUsers(); const idx = [];
+    for (const u of users) { const d = await store.getUserData(u.id); for (const a of activeAlerts(d)) idx.push({ userId: u.id, email: u.email, alert: a }); }
+    alertIdx = idx;
+    if (idx.length) console.log(`[alerts] monitoring ${idx.length} active alert(s)`);
+  } catch (e) { console.warn('[alerts] hydrate failed:', e.message); }
+}
+async function fireAlert(entry, price) {
+  const { userId, email } = entry, aId = entry.alert.id;
+  let d; try { d = await store.getUserData(userId); } catch { return; }
+  const al = (d.alerts || []).find((y) => y.id === aId);
+  if (!al || al.status !== 'active') { alertIdx = alertIdx.filter((y) => !(y.userId === userId && y.alert.id === aId)); return; }
+  al.status = 'triggered'; al.triggeredAt = Date.now(); al.triggeredPrice = price;
+  try { await store.putUserData(userId, d); } catch {}
+  alertIdx = alertIdx.filter((y) => !(y.userId === userId && y.alert.id === aId));
+  const cond = alertCondText(al);
+  const pretty = '$' + Number(price).toLocaleString('en-US', { maximumFractionDigits: price >= 1000 ? 0 : price >= 1 ? 2 : 6 });
+  sendMail(email, `🔔 ${al.symbol} ${cond}`,
+    shell(`${al.symbol} alert triggered`, `<p style="color:#93A0B8">Your Quantra alert fired — <b style="color:#E7ECF5">${al.symbol}</b> ${cond}.</p><p style="color:#E7ECF5;font-size:20px;margin:14px 0"><b>Now: ${pretty}</b></p>${btn(APP_URL, 'Open Quantra AI')}`),
+    `Quantra alert: ${al.symbol} ${cond}. Now ${pretty}.`).catch(() => {});
+}
+let alertBusy = false;
+async function monitorAlerts() {
+  if (alertBusy || !alertIdx.length) return; alertBusy = true;
+  try {
+    const groups = new Map();
+    for (const x of alertIdx) { const k = (x.alert.assetType || 'crypto') + ':' + (x.alert.assetId || x.alert.symbol); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
+    for (const list of groups.values()) {
+      const a0 = list[0].alert; let pr;
+      try { pr = await api['price']({ id: a0.assetId || a0.symbol, symbol: a0.symbol, type: a0.assetType }); } catch { pr = null; }
+      if (!pr || !pr.ok || pr.price == null) continue;
+      for (const x of list) if (alertCrossed(x.alert, pr.price, pr.change)) await fireAlert(x, pr.price);
+    }
+  } catch (e) { console.warn('[alerts] monitor error:', e.message); }
+  alertBusy = false;
+}
+
 /* ---- static + routing ---- */
 function serveStatic(req, res) {
   let rel = decodeURIComponent(req.url.split('?')[0]);
@@ -760,7 +828,22 @@ async function authRoute(req, res, u) {
         if (body.prefs && typeof body.prefs === 'object') d.prefs = { ...d.prefs, ...body.prefs };
         if (Array.isArray(body.screens)) d.screens = body.screens.slice(0, 50);
         if (Array.isArray(body.portfolio)) d.portfolio = body.portfolio.slice(0, 200);
+        if (Array.isArray(body.alerts)) d.alerts = body.alerts.slice(0, 100).map((a) => ({
+          id: String(a.id || '').slice(0, 40),
+          assetId: String(a.assetId || a.symbol || '').slice(0, 40),
+          symbol: String(a.symbol || '').slice(0, 20),
+          name: String(a.name || '').slice(0, 80),
+          assetType: String(a.assetType || 'crypto').slice(0, 12),
+          cond: ['price_above', 'price_below', 'pct_up', 'pct_down'].includes(a.cond) ? a.cond : 'price_above',
+          value: Number(a.value) || 0,
+          note: String(a.note || '').slice(0, 120),
+          status: a.status === 'triggered' ? 'triggered' : 'active',
+          createdAt: Number(a.createdAt) || Date.now(),
+          triggeredAt: a.triggeredAt ? Number(a.triggeredAt) : undefined,
+          triggeredPrice: a.triggeredPrice != null ? Number(a.triggeredPrice) : undefined,
+        })).filter((a) => a.id && a.symbol);
         await store.putUserData(s.user.id, d);
+        if (Array.isArray(body.alerts)) indexUser(s.user.id, s.user.email, d);   // keep the monitor in sync
         return send(res, 200, d);
       }
     }
@@ -1063,6 +1146,8 @@ store.ready().then(() => {
   setInterval(snapshotToday, 6 * 60 * 60 * 1000).unref(); // daily-ish; no-ops if today is done
   metricsLoad();
   setInterval(metricsFlush, 120000).unref();              // persist footfall every 2 min
+  hydrateAlerts();                                        // rebuild active-alert index from accounts
+  setInterval(monitorAlerts, 60000).unref();             // check alert prices every 60s (fires + emails)
   process.on('SIGTERM', () => { metricsFlush().finally(() => process.exit(0)); });
   http.createServer(async (req, res) => {
     const u = new URL(req.url, `http://localhost:${PORT}`);
