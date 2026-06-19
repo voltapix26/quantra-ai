@@ -50,6 +50,8 @@
 
     <div id="trCards" class="tr-cards" hidden></div>
 
+    <div id="trCalibration"></div>
+
     <div id="trIntegrity"></div>
 
     <h2 style="font-size:1.15rem;margin-top:2rem">Embed the live badge</h2>
@@ -87,8 +89,24 @@
           <div class="tr-card__row"><span>Bearish calls down</span><b>${pct(h.bearDown)}</b></div>
           <div class="tr-card__row"><span>Avg fwd return</span><b>${sret(h.avgReturn)}</b></div>
         </div>`).join('');
+      renderCalibration(d.calibration);
       renderIntegrity(d.integrity);
     })();
+
+    function renderCalibration(c) {
+      const el = $('trCalibration'); if (!el) return;
+      if (!c || !c.n) {
+        el.innerHTML = `<div class="tr-note" style="margin-top:1.4rem">📐 <b>Projection-band calibration</b> — accumulating. Each day we record every asset's 80% projection band (P10–P90); once snapshots span a full horizon we report how often the real price actually landed inside it. Target: <b>80%</b>.</div>`;
+        return;
+      }
+      const cov = c.coverage, off = Math.abs(cov - 0.8);
+      const cls = off <= 0.04 ? 'is-ok' : 'is-bad';
+      const rows = (c.perHorizon || []).filter((h) => h.n).map((h) => `<div class="tr-card__row"><span>${h.horizon}-session band</span><b>${pct(h.coverage)}${h.n ? ' · n=' + h.n.toLocaleString() : ''}</b></div>`).join('');
+      el.innerHTML = `<div class="tr-integrity ${cls}" style="margin-top:1.4rem;display:block">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem"><span class="tr-integrity__dot">📐</span>
+        <span><b>Projection-band calibration (live)</b> — of <b>${c.n.toLocaleString()}</b> matured projections, <b style="color:var(--mint)">${pct(cov)}</b> of actual prices landed inside the 80% band. Target is 80%; this is measured on real forward outcomes, not back-filled.</span></div>
+        ${rows}</div>`;
+    }
 
     function renderIntegrity(i) {
       if (!i) return;
