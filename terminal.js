@@ -182,7 +182,9 @@
   document.addEventListener('click', (e) => { if (!e.target.closest('.search')) $('results').hidden = true; });
 
   /* ---------------- chart (price + SMAs + forecast) ---------------- */
-  const W = 720, H = 240, PAD = 8;
+  const W = 720, PAD = 8;
+  let H = 240, enlarged = false;
+  try { enlarged = localStorage.getItem('quantra.enlarge') === '1'; if (enlarged) H = 480; } catch {}
   let chartState = null;   // {total, histLen, vals, dates, fcMid, yAt} for hover tooltip
   let chartType = 'line';  // 'line' | 'candle'
   try { const ct = localStorage.getItem('quantra.charttype'); if (ct === 'candle' || ct === 'line') chartType = ct; } catch {}
@@ -192,11 +194,37 @@
   let tickMode = false, tickBuf = [], tickTimer = null, tickWinMs = 300000;  // live seconds chart
 
   function drawChart(hist, fc) {
+    renderLegend();
     const ohlc = candleHist || hist;
     const hasOHLC = ohlc && ohlc.opens && ohlc.highs && ohlc.lows && ohlc.opens.length === ohlc.closes.length
       && ohlc.highs.some((h, i) => h > ohlc.lows[i]);   // real OHLC (not degenerate)
     if ((chartType === 'candle' || chartType === 'heikin') && hasOHLC) return drawCandles(chartType === 'heikin' ? heikinAshi(ohlc) : ohlc, fc);
     return drawLine(hist, fc, chartType === 'area');
+  }
+  // Dynamic legend: shows only the overlays currently switched on, with their colours.
+  function renderLegend() {
+    const el = $('legend'); if (!el) return;
+    const it = (c, n, dim) => `<span><i style="background:${c}${dim ? ';opacity:.55' : ''}"></i>${n}</span>`;
+    let h = it('#34D399', 'Price') + it('#818CF8', 'SMA 20') + it('#FBBF24', 'SMA 50');
+    if (studyBB) h += it('#22D3EE', 'Bollinger');
+    if (studyEma) h += it('#2DD4BF', 'EMA 21');
+    if (studyMcg) h += it('#EC4899', 'McGinley');
+    if (studyVwap) h += it('#FBBF24', 'VWAP');
+    if (studyKelt) h += it('#F59E0B', 'Keltner');
+    if (studyDon) h += it('#A78BFA', 'Donchian');
+    if (studyIchi) h += it('#818CF8', 'Ichimoku');
+    if (studySar) h += it('#34D399', 'PSAR');
+    if (studySuper) h += it('#34D399', 'Supertrend');
+    h += it('#22D3EE', 'Forecast', true);
+    el.innerHTML = h;
+  }
+  function setEnlarged(on) {
+    enlarged = on; H = on ? 480 : 240;
+    try { localStorage.setItem('quantra.enlarge', on ? '1' : '0'); } catch {}
+    const chart = $('chart'); if (chart) chart.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const term = document.querySelector('.term'); if (term) term.classList.toggle('is-enlarged', on);
+    const btn = $('chartBig'); if (btn) { btn.classList.toggle('is-on', on); btn.textContent = on ? '⤡ Shrink' : '⤢ Enlarge'; }
+    if (replay.on) drawReplay(); else if (current && state) { redrawChart(); drawPanes(state.history); }
   }
   // Heikin Ashi: smoothed OHLC that filters noise (a TradingView staple).
   function heikinAshi(o) {
@@ -1464,6 +1492,10 @@
     if (aA) aA.addEventListener('click', addAlert);
     if (aP) aP.addEventListener('keydown', (e) => { if (e.key === 'Enter') addAlert(); });
     if (chartEl) chartEl.addEventListener('pointerdown', onChartDown); }
+  // enlarge / shrink chart
+  { const cb = $('chartBig'); if (cb) { cb.textContent = enlarged ? '⤡ Shrink' : '⤢ Enlarge'; cb.classList.toggle('is-on', enlarged); cb.addEventListener('click', () => setEnlarged(!enlarged)); }
+    const chart = $('chart'); if (chart) chart.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const term = document.querySelector('.term'); if (term) term.classList.toggle('is-enlarged', enlarged); }
   setupChartHover();
   fillRanges();
   function gateFeature(flag, msg) {

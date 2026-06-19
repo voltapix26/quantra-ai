@@ -192,6 +192,10 @@ button{font-family:inherit}
 
 .chartwrap{position:relative}
 .chart{width:100%;height:240px;margin:.2rem 0 .6rem;cursor:crosshair}
+/* enlarged chart: collapse the board, give the chart full width + height */
+.term.is-enlarged{grid-template-columns:1fr}
+.term.is-enlarged .board{display:none}
+.term.is-enlarged .chart{height:min(72vh,640px)}
 .chart-tip{position:absolute;top:2px;display:none;pointer-events:none;z-index:6;
   background:var(--panel-2);border:1px solid var(--line-2);border-radius:9px;padding:.32rem .55rem;
   font-size:.72rem;line-height:1.3;white-space:nowrap;box-shadow:var(--shadow)}
