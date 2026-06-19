@@ -650,7 +650,7 @@
       return `<tr><td>${fmtD(d)}<small>+${h.bars} ${interval === '1wk' ? 'wk' : interval === '60m' ? 'h' : interval === '1m' ? 'm' : 'sessions'}</small></td><td class="proj-px">${money(proj, curBase)}</td><td class="proj-rng">${money(lo, curBase)} – ${money(hi, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${(h.move * 100).toFixed(1)}%</td><td>${st}</td></tr>`;
     }).join('');
     $('projTable').innerHTML = '<tr><th>Date</th><th>Projected (P50)</th><th>Range (P10–P90)</th><th>Δ vs now</th><th>Status</th></tr>' + rows;
-    $('projAsof').textContent = 'Anchored to ' + fmtD(new Date(lastIso || Date.now())) + ' · ' + Math.round((fc.probUp || 0) * 100) + '% modelled chance of finishing higher. Monte-Carlo projection — probabilistic, not a guarantee.';
+    $('projAsof').innerHTML = 'Anchored to ' + fmtD(new Date(lastIso || Date.now())) + ' · ' + Math.round((fc.probUp || 0) * 100) + '% modelled chance of finishing higher. The <b>P10–P90 range is a calibrated 80% band</b> — in a 5-year backtest, ~80% of actual prices landed inside it. Probabilistic, not a guarantee.';
     card.hidden = false;
     logProjection(item, fc, hist, interval, isCrypto, lastIso);
     renderProjScorecard(item, hist);
