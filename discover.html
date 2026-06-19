@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Market Discovery</title>
+  <meta name="description" content="Live market heatmap, top movers and market breadth across crypto, stocks, ETFs, commodities, indices and forex." />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=20" />
+  <style>
+    .dsc{max-width:1180px;margin:0 auto;padding:1.3rem 0 4rem}
+    .dsc h1{font-size:1.9rem;margin-bottom:.2rem}
+    .dsc-lead{color:var(--muted);margin-bottom:1.1rem}
+    .dsc-tabs{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.2rem}
+    .dsc-tab{background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:.4em .95em;font-size:.84rem;cursor:pointer;font-family:inherit;transition:all .15s}
+    .dsc-tab:hover{color:var(--text);border-color:var(--line-2)}
+    .dsc-tab.is-active{background:linear-gradient(135deg,var(--mint),var(--cyan));color:#06231d;border-color:transparent;font-weight:600}
+    .dsc-breadth{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:1rem 1.1rem;margin-bottom:1.2rem}
+    .dsc-breadth__top{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem}
+    .dsc-breadth__top b{font-family:'Space Grotesk';font-size:1.05rem}
+    .dsc-breadth__avg{margin-left:auto;font-family:'Space Grotesk';font-weight:700;font-size:1.15rem}
+    .dsc-bar{height:14px;border-radius:7px;overflow:hidden;display:flex;background:var(--line-2)}
+    .dsc-bar i{display:block;height:100%}
+    .dsc-bar .up{background:var(--mint)}.dsc-bar .flat{background:#5A6680}.dsc-bar .down{background:var(--rose)}
+    .dsc-breadth__lbl{display:flex;justify-content:space-between;font-size:.76rem;color:var(--muted-2);margin-top:.4rem}
+    .dsc-cols{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.2rem}
+    @media(max-width:640px){.dsc-cols{grid-template-columns:1fr}}
+    .dsc-mv{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.6rem .3rem .4rem}
+    .dsc-mv h3{font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-2);padding:.2rem .8rem .5rem;margin:0}
+    .mv-row{display:flex;align-items:center;gap:.6rem;padding:.42rem .8rem;cursor:pointer;border-radius:8px}
+    .mv-row:hover{background:rgba(255,255,255,.04)}
+    .mv-row__sym{font-family:'Space Grotesk';font-weight:700;min-width:60px}
+    .mv-row__name{color:var(--muted-2);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+    .mv-row__px{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.82rem}
+    .mv-row__chg{font-variant-numeric:tabular-nums;font-weight:600;min-width:62px;text-align:right}
+    .up{color:var(--mint)}.down{color:var(--rose)}
+    .dsc-heat-h{display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem}
+    .dsc-heat-h h2{font-size:1.1rem;margin:0}
+    .dsc-heat-h .scale{margin-left:auto;display:flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--muted-2)}
+    .dsc-heat-h .swatch{width:13px;height:13px;border-radius:3px;display:inline-block}
+    .dsc-heat{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:5px}
+    .heat{border-radius:8px;padding:.55rem .5rem;cursor:pointer;border:1px solid rgba(255,255,255,.06);min-height:58px;display:flex;flex-direction:column;justify-content:center;transition:transform .1s}
+    .heat:hover{transform:scale(1.04);border-color:rgba(255,255,255,.25)}
+    .heat__sym{font-family:'Space Grotesk';font-weight:700;font-size:.86rem;color:#fff}
+    .heat__chg{font-size:.76rem;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.92)}
+    .dsc-state{padding:2.2rem;text-align:center;color:var(--muted)}
+    .dsc-foot{font-size:.74rem;color:var(--muted-2);margin-top:1rem}
+  </style>
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand"><span class="brand__mark">
+        <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true"><defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs><path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/><path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="82" cy="16" r="6" fill="#34D399"/></svg>
+      </span><span class="brand__name">Quantra<span class="brand__ai">AI</span></span></a>
+      <span class="bar__tag">Discover</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links">
+        <a href="index.html">Terminal</a>
+        <a href="discover.html" class="is-active">Discover</a>
+        <a href="screener.html">Screener</a>
+        <a href="portfolio.html">Portfolio</a>
+        <a href="track-record.html">Track record</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container dsc">
+    <h1>Market discovery</h1>
+    <p class="dsc-lead">What's moving right now — a live heatmap, top movers and market breadth. <span id="dscAsof" style="color:var(--muted-2)"></span></p>
+
+    <div class="dsc-tabs" id="dscTabs"></div>
+    <div id="dscBody"><div class="dsc-state">Loading live market…</div></div>
+    <p class="dsc-foot">Daily % change from free live feeds; figures move when the underlying market is open (crypto trades 24/7). Click any tile to open it in the terminal. Educational — not investment advice.</p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const onServer = location.protocol === 'http:' || location.protocol === 'https:';
+    const TABS = [['crypto','Crypto'],['all','All markets'],['stock','Stocks'],['etf','ETFs'],['commodity','Commodities'],['index','Indices'],['fx','Forex']];
+    let curClass = 'crypto';
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const sChg = (n) => (n == null ? '—' : (n >= 0 ? '+' : '') + n.toFixed(2) + '%');
+    const money = (n, c) => n == null ? '—' : (c === 'USD' || !c ? '$' : '') + Number(n).toLocaleString('en-US',{maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : Math.abs(n) >= 1 ? 2 : 6}) + (c && c !== 'USD' ? ' ' + c : '');
+    function heatColor(ch) {
+      const m = Math.max(-1, Math.min(1, ch / 8));
+      return m >= 0 ? `rgba(52,211,153,${(0.14 + m * 0.6).toFixed(2)})` : `rgba(248,113,113,${(0.14 + (-m) * 0.6).toFixed(2)})`;
+    }
+    const link = (it) => `index.html?type=${encodeURIComponent(it.type)}&id=${encodeURIComponent(it.id)}&symbol=${encodeURIComponent(it.symbol)}&name=${encodeURIComponent(it.name || it.symbol)}`;
+
+    function renderTabs() {
+      $('dscTabs').innerHTML = TABS.map(([k, l]) => `<button class="dsc-tab ${k === curClass ? 'is-active' : ''}" data-c="${k}">${l}</button>`).join('');
+      $('dscTabs').querySelectorAll('.dsc-tab').forEach((b) => b.addEventListener('click', () => { curClass = b.dataset.c; renderTabs(); load(); }));
+    }
+    function moverRow(it) {
+      return `<a class="mv-row" href="${link(it)}"><span class="mv-row__sym">${esc(it.symbol)}</span><span class="mv-row__name">${esc(it.name || '')}</span><span class="mv-row__px">${money(it.price, it.currency)}</span><span class="mv-row__chg ${it.change >= 0 ? 'up' : 'down'}">${sChg(it.change)}</span></a>`;
+    }
+    function render(d) {
+      const b = d.breadth, tot = Math.max(1, d.count);
+      const upPct = (b.up / tot * 100).toFixed(1), downPct = (b.down / tot * 100).toFixed(1), flatPct = (b.flat / tot * 100).toFixed(1);
+      const body = `
+        <div class="dsc-breadth">
+          <div class="dsc-breadth__top">
+            <b>Market breadth</b>
+            <span style="color:var(--muted-2);font-size:.85rem">${d.count} assets</span>
+            <span class="dsc-breadth__avg ${b.avg >= 0 ? 'up' : 'down'}">${sChg(b.avg)} avg</span>
+          </div>
+          <div class="dsc-bar"><i class="up" style="width:${upPct}%"></i><i class="flat" style="width:${flatPct}%"></i><i class="down" style="width:${downPct}%"></i></div>
+          <div class="dsc-breadth__lbl"><span class="up">▲ ${b.up} advancing</span><span>${b.flat} flat</span><span class="down">${b.down} declining ▼</span></div>
+        </div>
+        <div class="dsc-cols">
+          <div class="dsc-mv"><h3>🚀 Top gainers</h3>${d.gainers.map(moverRow).join('') || '<div class="dsc-state">—</div>'}</div>
+          <div class="dsc-mv"><h3>🔻 Top losers</h3>${d.losers.map(moverRow).join('') || '<div class="dsc-state">—</div>'}</div>
+        </div>
+        <div class="dsc-heat-h">
+          <h2>Heatmap</h2>
+          <span class="scale"><span class="swatch" style="background:${heatColor(-8)}"></span>−<span class="swatch" style="background:${heatColor(0)}"></span>+<span class="swatch" style="background:${heatColor(8)}"></span></span>
+        </div>
+        <div class="dsc-heat">${d.items.map((it) => `<a class="heat" href="${link(it)}" style="background:${heatColor(it.change)}" title="${esc(it.name || it.symbol)} · ${money(it.price, it.currency)}"><span class="heat__sym">${esc(it.symbol)}</span><span class="heat__chg">${sChg(it.change)}</span></a>`).join('')}</div>`;
+      $('dscBody').innerHTML = body;
+      $('dscAsof').textContent = '· updated ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    }
+    async function load() {
+      if (!onServer) { $('dscBody').innerHTML = '<div class="dsc-state">Run the live server to see market discovery.</div>'; return; }
+      $('dscBody').innerHTML = '<div class="dsc-state">Loading live market…</div>';
+      try {
+        const d = await (await fetch('/api/discover?class=' + curClass)).json();
+        if (!d || !d.count) { $('dscBody').innerHTML = '<div class="dsc-state">No live data for this market right now — try another tab.</div>'; return; }
+        render(d);
+      } catch { $('dscBody').innerHTML = '<div class="dsc-state">Could not load the market right now.</div>'; }
+    }
+    renderTabs(); load();
+    if (onServer) setInterval(load, 45000);   // refresh the discovery view
+  </script>
+</body>
+</html>

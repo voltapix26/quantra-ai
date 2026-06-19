@@ -258,6 +258,35 @@ const api = {
   async 'commodity/board'() { return cached('comb', 20000, () => buildBoard(UNIV.commodity, 'commodity')); },
   async 'index/board'() { return cached('idxb', 20000, () => buildBoard(UNIV.index, 'index')); },
   async 'fx/board'() { return cached('fxb', 20000, () => buildBoard(UNIV.fx, 'fx')); },
+
+  /* ---- market discovery: heatmap + movers + breadth ---- */
+  async 'discover'(q) {
+    const cls = q.class || 'crypto';
+    const boards = {
+      crypto: () => api['crypto/markets']({}), stock: () => api['stock/board'](), etf: () => api['etf/board'](),
+      commodity: () => api['commodity/board'](), index: () => api['index/board'](), fx: () => api['fx/board'](),
+    };
+    let raw = [];
+    if (cls === 'all') {
+      const arrs = await Promise.all(Object.values(boards).map((f) => f().catch(() => [])));
+      raw = arrs.flat();
+    } else if (boards[cls]) {
+      raw = await boards[cls]().catch(() => []);
+    }
+    const items = raw
+      .map((it) => ({ id: it.id, symbol: it.symbol, name: it.name, type: it.type, price: it.price, change: it.change24h, marketCap: it.marketCap || null, currency: it.currency || 'USD' }))
+      .filter((x) => x.change != null && isFinite(x.change) && x.price != null);
+    const up = items.filter((x) => x.change > 0).length, down = items.filter((x) => x.change < 0).length;
+    const avg = items.length ? items.reduce((s, x) => s + x.change, 0) / items.length : 0;
+    const byMove = (a, b) => b.change - a.change;
+    return {
+      class: cls, count: items.length,
+      breadth: { up, down, flat: items.length - up - down, avg: +avg.toFixed(2) },
+      gainers: items.slice().sort(byMove).slice(0, 12),
+      losers: items.slice().sort((a, b) => a.change - b.change).slice(0, 12),
+      items: items.slice().sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0)),
+    };
+  },
   // Universal current price for any held asset (portfolio tracker).
   async 'price'(q) {
     const idv = q.id || q.symbol; if (!idv) return { ok: false };
