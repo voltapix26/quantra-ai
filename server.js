@@ -109,10 +109,6 @@ const cgHeaders = () => (COINGECKO_KEY ? { 'x-cg-demo-api-key': COINGECKO_KEY } 
 // Set SUPER_ADMINS="a@x.com,b@y.com". Empty = nobody has admin access (secure default).
 const SUPER_ADMINS = new Set((process.env.SUPER_ADMINS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
 const isSuperAdmin = (email) => SUPER_ADMINS.has(String(email || '').toLowerCase());
-// Account approval gate. Super-admins are always approved; pre-existing accounts (no `approved`
-// field) are grandfathered in; new signups are created pending (approved:false) until a
-// super-admin approves them.
-const isApproved = (u) => !!u && (isSuperAdmin(u.email) || u.approved !== false);
 
 // Web Push (PWA notifications) — optional; enabled only when VAPID keys are set.
 let webpush = null, PUSH_ENABLED = false;
@@ -1048,7 +1044,7 @@ async function createSession(email) { const t = crypto.randomBytes(24).toString(
 // the cookie (https-wrapped previews, cross-site iframes, some localhost tunnels).
 function bearerToken(req) { const h = String(req.headers['authorization'] || ''); const m = h.match(/^Bearer\s+(.+)$/i); return m ? m[1].trim() : null; }
 async function sessionUser(req) { const t = parseCookies(req).qsid || bearerToken(req); if (!t) return null; const s = await store.getSession(t); if (!s || s.exp < Date.now()) { if (s) await store.delSession(t); return null; } const u = await store.getUserByEmail(s.email); return u ? { user: u, token: t } : null; }
-async function userPublic(u) { const org = await store.getOrg(u.orgId); return { id: u.id, email: u.email, name: u.name, orgId: u.orgId, role: u.role, verified: !!u.verified, approved: isApproved(u), plan: (org || {}).plan || 'free', superAdmin: isSuperAdmin(u.email) }; }
+async function userPublic(u) { const org = await store.getOrg(u.orgId); return { id: u.id, email: u.email, name: u.name, orgId: u.orgId, role: u.role, verified: !!u.verified, plan: (org || {}).plan || 'free', superAdmin: isSuperAdmin(u.email) }; }
 function sendC(res, code, obj, cookie) { const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }; if (cookie) h['Set-Cookie'] = cookie; res.writeHead(code, h); res.end(JSON.stringify(obj)); }
 
 /* ---- sliding-window rate limiting (per-instance, in-memory) ---- */
@@ -1128,11 +1124,10 @@ async function authRoute(req, res, u) {
       if (await store.getUserByEmail(email)) return send(res, 409, { error: 'An account with that email already exists.' });
       const userId = newId('usr'), orgId = newId('org');
       await store.putOrg({ id: orgId, name: String(body.orgName || '').trim() || `${name}'s workspace`, plan: 'free', apiKey: 'qk_live_' + crypto.randomBytes(16).toString('hex'), ownerId: userId, createdAt: Date.now() });
-      const user = { id: userId, email, name, passHash: hashPw(pw), orgId, role: 'owner', verified: false, approved: isSuperAdmin(email), createdAt: Date.now() };
+      const user = { id: userId, email, name, passHash: hashPw(pw), orgId, role: 'owner', verified: false, createdAt: Date.now() };
       await store.putUser(user);
       audit('signup', req, email, { orgId });
       emailVerify(user).catch(() => {});
-      if (!isApproved(user)) return send(res, 200, { ok: true, pending: true, message: 'Account created. An administrator must approve your account before you can sign in.' });
       const tok = await createSession(email);
       return sendC(res, 200, { ok: true, user: await userPublic(user), token: tok }, cookieFor(tok, req));
     }
@@ -1141,7 +1136,6 @@ async function authRoute(req, res, u) {
       const email = String(body.email || '').trim().toLowerCase(), pw = String(body.password || '');
       const usr = await store.getUserByEmail(email);
       if (!usr || !verifyPw(pw, usr.passHash)) { audit('login_failed', req, email); return send(res, 401, { error: 'Wrong email or password.' }); }
-      if (!isApproved(usr)) { audit('login_pending', req, email); return send(res, 200, { ok: false, pending: true, message: 'Your account is awaiting administrator approval.' }); }
       usr.lastLogin = Date.now(); await store.putUser(usr);
       const tok = await createSession(email);
       audit('login', req, email);
@@ -1274,20 +1268,10 @@ async function authRoute(req, res, u) {
       const users = await store.allUsers();
       const rows = await Promise.all(users.map(async (u) => {
         const org = await store.getOrg(u.orgId);
-        return { id: u.id, email: u.email, name: u.name, role: u.role, verified: !!u.verified, approved: isApproved(u), plan: (org || {}).plan || 'free', workspace: (org || {}).name || null, createdAt: u.createdAt || null, lastLogin: u.lastLogin || null, superAdmin: isSuperAdmin(u.email) };
+        return { id: u.id, email: u.email, name: u.name, role: u.role, verified: !!u.verified, plan: (org || {}).plan || 'free', workspace: (org || {}).name || null, createdAt: u.createdAt || null, lastLogin: u.lastLogin || null, superAdmin: isSuperAdmin(u.email) };
       }));
       rows.sort((a, b) => (b.lastLogin || b.createdAt || 0) - (a.lastLogin || a.createdAt || 0));
       return send(res, 200, { count: rows.length, users: rows });
-    }
-    if (p === '/api/admin/users/approve' && m === 'POST') {
-      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
-      if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
-      const target = await store.getUserById(String(body.id || '')); if (!target) return send(res, 404, { error: 'User not found.' });
-      if (isSuperAdmin(target.email)) return send(res, 400, { error: 'Super-admin accounts are always approved.' });
-      target.approved = body.approved !== false; await store.putUser(target);
-      if (!target.approved) await store.delSessionsForEmail(target.email);   // revoking access ends live sessions
-      audit(target.approved ? 'admin_approve_user' : 'admin_revoke_user', req, s.user.email, { target: target.email });
-      return send(res, 200, { ok: true, approved: target.approved });
     }
     if (p === '/api/admin/users/delete' && m === 'POST') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
