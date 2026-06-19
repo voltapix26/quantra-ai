@@ -1278,9 +1278,14 @@
         if (af) {
           if (item.type !== 'crypto' && tMs) {
             const ageMin = (Date.now() - tMs) / 60000;
+            const st = mktState(item.type, bi.tp || tpFromMeta(hist && hist.meta), bi.mktOpen, bi.holiday);
+            const open = st && st.open;
             const tstr = new Date(tMs).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz || undefined });
-            af.textContent = `Price as of ${tstr}${tz ? ' · ' + tz.split('/').pop().replace(/_/g, ' ') : ''}${ageMin > 30 ? ' · delayed feed' : ''}`;
-            af.className = 'das-of' + (ageMin > 30 ? ' is-stale' : ''); af.hidden = false;
+            // Only call it "delayed" when the market is OPEN and the price is stale; when
+            // closed it's simply the last close (not a feed problem), and fresh = live.
+            const tail = !open ? ' · at last close' : (ageMin > 8 ? ' · delayed feed' : ' · live');
+            af.textContent = `Price as of ${tstr}${tz ? ' · ' + tz.split('/').pop().replace(/_/g, ' ') : ''}${tail}`;
+            af.className = 'das-of' + (open && ageMin > 8 ? ' is-stale' : ''); af.hidden = false;
           } else { af.hidden = true; }
         } }
 
@@ -1477,7 +1482,7 @@
         if (q && q.ok && q.price && current && current.id === item.id) { item.price = q.price; setDetailPrice(q.price); updateRowPrice(item); liveTag(true, 'LIVE · Finnhub'); }
       } catch {}
     };
-    tick(); quoteTimer = setInterval(tick, 4000);
+    tick(); quoteTimer = setInterval(tick, 2500);   // real-time US quote, snappier
   }
   function stopQuote() { if (quoteTimer) { clearInterval(quoteTimer); quoteTimer = null; } }
   // Live seconds for stocks/ETFs: poll Finnhub real-time quote ~1s and feed the tick chart.
@@ -1612,7 +1617,7 @@
   loadFX().then(() => { if (board.length) renderBoard(); if (current) select(current); });
   // start live streams once we know which sources are available (covers any load ordering)
   loadLiveConfig().then(() => { if (assetClass === 'crypto' && board.length) startArr(); if (current) startLive(current); });
-  setInterval(refreshBoardPrices, 15000);   // keep non-crypto board prices current
+  setInterval(refreshBoardPrices, 10000);   // keep non-crypto board prices current
   setInterval(tickMarketStatus, 20000);     // flip open/closed dots live at session boundaries
   if ($('askqSend')) $('askqSend').addEventListener('click', () => askSend());
   if ($('askqInput')) $('askqInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); askSend(); } });
