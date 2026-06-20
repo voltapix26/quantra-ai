@@ -1004,7 +1004,9 @@ const { planOf } = require('./plans');
 // Flip FORCE_ULTIMATE to false to restore per-org billing plans.
 const FORCE_ULTIMATE = true;
 const planFor = (org, email) => isSuperAdmin(email) ? 'ultimate' : (FORCE_ULTIMATE ? (org ? 'ultimate' : 'free') : ((org && org.plan) || 'free'));
+const maskKey = (k) => { k = String(k || ''); return k.length <= 6 ? '••••' : k.slice(0, 4) + '…' + k.slice(-2); };
 const { sendMail, mailConfig, shell, btn, APP_URL } = require('./mailer');
+const broker = require('./broker');
 // load the analysis engine server-side (it assigns window.Quantra) for scoring
 global.window = global.window || {};
 try { require('./analysis'); } catch {}
@@ -1333,6 +1335,71 @@ async function authRoute(req, res, u) {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       const org = (await store.getOrg(s.user.orgId)) || {};
       return send(res, 200, { id: org.id, name: org.name, plan: planFor(org, s.user.email), members: await store.countMembers(s.user.orgId), apiKey: s.user.role === 'owner' ? org.apiKey : undefined, billingEnabled: !!stripe, devBilling: !!process.env.QUANTRA_DEV_BILLING && !PROD });
+    }
+
+    /* ---- Bring-your-own-broker (user links their OWN broker; Quantra never holds funds) ---- */
+    // Connection status — NEVER returns the secret; key id is masked.
+    if (p === '/api/broker/providers' && m === 'GET') return send(res, 200, { providers: broker.list() });
+    if (p === '/api/broker/status' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const b = s.user.broker;
+      return send(res, 200, { connected: !!b, provider: b ? b.provider : null, mode: b ? b.mode : null, keyHint: b ? maskKey(b.keyId) : null, connectedAt: b ? b.connectedAt : null });
+    }
+    if (p === '/api/broker/connect' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const provider = String(body.provider || '').toLowerCase();
+      const mode = body.mode === 'live' ? 'live' : 'paper';
+      const keyId = String(body.keyId || '').trim(), secret = String(body.secret || '').trim();
+      if (!broker.PROVIDERS[provider]) return send(res, 400, { error: 'Unsupported broker.' });
+      if (!keyId || !secret) return send(res, 400, { error: 'Enter both the API key and secret.' });
+      let account;
+      try { account = await broker.verify(provider, { mode, keyId, secret }); }
+      catch (e) { return send(res, 200, { ok: false, error: 'Broker rejected the credentials: ' + (e.message || 'unknown error') }); }
+      const usr = await store.getUserByEmail(s.user.email);
+      usr.broker = { provider, mode, keyId, secret, connectedAt: Date.now() };
+      await store.putUser(usr);
+      audit('broker_connect', req, s.user.email, { provider, mode });   // secret never logged
+      return send(res, 200, { ok: true, provider, mode, keyHint: maskKey(keyId), account });
+    }
+    if (p === '/api/broker/disconnect' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const usr = await store.getUserByEmail(s.user.email);
+      delete usr.broker; await store.putUser(usr);
+      audit('broker_disconnect', req, s.user.email);
+      return send(res, 200, { ok: true });
+    }
+    if (p === '/api/broker/account' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const b = s.user.broker; if (!b) return send(res, 400, { error: 'No broker connected.' });
+      try {
+        const prov = broker.PROVIDERS[b.provider];
+        const [account, positions] = await Promise.all([prov.account(b), prov.positions(b).catch(() => [])]);
+        return send(res, 200, { ok: true, provider: b.provider, mode: b.mode, account, positions });
+      } catch (e) { return send(res, 200, { ok: false, error: e.message }); }
+    }
+    if (p === '/api/broker/orders' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const b = s.user.broker; if (!b) return send(res, 400, { error: 'No broker connected.' });
+      try { return send(res, 200, { ok: true, orders: await broker.PROVIDERS[b.provider].orders(b) }); }
+      catch (e) { return send(res, 200, { ok: false, error: e.message }); }
+    }
+    // Place an order — ALWAYS user-initiated (one explicit request per order; no autonomous loop).
+    if (p === '/api/broker/order' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const b = s.user.broker; if (!b) return send(res, 400, { error: 'No broker connected.' });
+      // Live orders require the client to echo the live mode explicitly — guards against an accidental real-money send.
+      if (b.mode === 'live' && body.confirmLive !== true) return send(res, 400, { error: 'Live order not confirmed.' });
+      try {
+        const order = await broker.PROVIDERS[b.provider].placeOrder(b, { symbol: body.symbol, side: body.side, type: body.type, qty: body.qty, notional: body.notional, limitPrice: body.limitPrice, tif: body.tif });
+        audit('broker_order', req, s.user.email, { provider: b.provider, mode: b.mode, symbol: order.symbol, side: order.side, qty: order.qty, type: order.type });
+        return send(res, 200, { ok: true, mode: b.mode, order });
+      } catch (e) { return send(res, 200, { ok: false, error: e.message }); }
+    }
+    if (p === '/api/broker/cancel' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const b = s.user.broker; if (!b) return send(res, 400, { error: 'No broker connected.' });
+      try { await broker.PROVIDERS[b.provider].cancel(b, String(body.id || '')); return send(res, 200, { ok: true }); }
+      catch (e) { return send(res, 200, { ok: false, error: e.message }); }
     }
 
     // dev-only: simulate a plan change without Stripe (never in production)
@@ -1694,7 +1761,7 @@ store.ready().then(() => {
       await trackDevSeed(); return send(res, 200, { ok: true });
     }
     if (u.pathname === '/api/billing/webhook') return billingWebhook(req, res);
-    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname === '/api/brief' || u.pathname.startsWith('/api/community/') || u.pathname.startsWith('/api/billing/')) {
+    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname === '/api/brief' || u.pathname.startsWith('/api/community/') || u.pathname.startsWith('/api/billing/') || u.pathname.startsWith('/api/broker/')) {
       return authRoute(req, res, u);
     }
     if (u.pathname.startsWith('/api/')) {

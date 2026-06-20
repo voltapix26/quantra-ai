@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Automated Trading</title>
+  <meta name="description" content="Link your own brokerage and route orders from Quantra. Paper-mode first; you stay in control." />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=44" />
+  <style>
+    .bk{max-width:1020px;margin:0 auto;padding:1.3rem 0 4rem}
+    .bk h1{font-size:1.9rem;margin-bottom:.2rem}
+    .bk-lead{color:var(--muted);margin-bottom:1rem}
+    .bk-safe{background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.25);color:var(--muted);border-radius:12px;padding:.85rem 1rem;font-size:.84rem;line-height:1.55;margin-bottom:1.3rem}
+    .bk-safe b{color:var(--mint)}
+    .bk-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:1.1rem 1.2rem;margin-bottom:1.1rem}
+    .bk-card h2{font-size:1.05rem;margin:0 0 .8rem}
+    .bk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem}
+    .bk-stat{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:var(--r);padding:.7rem .9rem}
+    .bk-stat .v{font-family:'Space Grotesk';font-size:1.35rem;font-weight:700}
+    .bk-stat .l{font-size:.7rem;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;margin-top:.15rem}
+    .fld{display:flex;flex-direction:column;gap:.3rem;font-size:.74rem;color:var(--muted-2);margin-bottom:.7rem}
+    .fld input,.fld select{background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:8px;padding:.5em .65em;color:var(--text);font-size:.9rem;font-family:inherit}
+    .fld input:focus,.fld select:focus{outline:none;border-color:var(--mint)}
+    .fld select option{background:#0E1525;color:#E7ECF5}
+    .bk-row{display:flex;gap:.7rem;flex-wrap:wrap}.bk-row .fld{flex:1;min-width:120px}
+    .seg2{display:inline-flex;background:rgba(255,255,255,.04);border-radius:9px;padding:3px;gap:3px}
+    .seg2 button{background:none;border:0;color:var(--muted);padding:.4em .9em;border-radius:7px;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit}
+    .seg2 button.on{background:var(--mint);color:#06231d}
+    .seg2 button.on.live{background:var(--rose);color:#2a0710}
+    .badge{font-size:.7rem;font-weight:700;padding:.2em .6em;border-radius:6px;letter-spacing:.04em}
+    .badge.paper{color:var(--mint);background:rgba(52,211,153,.14)}
+    .badge.live{color:var(--rose);background:rgba(244,63,94,.16)}
+    .warn{background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.35);color:var(--rose);border-radius:10px;padding:.7rem .9rem;font-size:.82rem;line-height:1.5;margin:.7rem 0}
+    .bk-t{width:100%;border-collapse:collapse;font-size:.84rem}
+    .bk-t th{text-align:right;font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-2);font-weight:600;padding:.5rem .7rem;border-bottom:1px solid var(--line);white-space:nowrap}
+    .bk-t th:first-child,.bk-t td:first-child{text-align:left}
+    .bk-t td{padding:.5rem .7rem;border-bottom:1px solid var(--line);color:var(--muted);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+    .bk-t b{color:var(--text)}
+    .up{color:var(--mint)}.down{color:var(--rose)}
+    .bk-msg{font-size:.84rem;margin-top:.6rem}
+    .bk-foot{font-size:.74rem;color:var(--muted-2);margin-top:1rem;line-height:1.5}
+    .bk-gate{padding:2.4rem 1rem;text-align:center;color:var(--muted)}
+    .pill-side{font-size:.68rem;font-weight:700;padding:.1em .45em;border-radius:5px}
+    .pill-side.buy{color:var(--mint);background:rgba(52,211,153,.12)}
+    .pill-side.sell{color:var(--rose);background:rgba(244,63,94,.12)}
+  </style>
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand"><span class="brand__mark">
+        <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true"><defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs><path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/><path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="82" cy="16" r="6" fill="#34D399"/></svg>
+      </span><span class="brand__name">Quantra<span class="brand__ai">AI</span></span></a>
+      <span class="bar__tag">Trade</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links">
+        <a href="index.html">Terminal</a>
+        <a href="portfolio.html">Portfolio</a>
+        <a href="paper.html">Paper</a>
+        <a href="broker.html" class="is-active">Trade</a>
+        <a href="track-record.html">Track record</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container bk">
+    <h1>Automated trading <span class="badge paper" id="modeBadge" hidden>PAPER</span></h1>
+    <p class="bk-lead">Link <b>your own</b> brokerage and place orders from Quantra. You stay in control — every order is one you click.</p>
+    <div class="bk-safe">🔒 <b>Quantra never holds your money.</b> Orders execute inside <b>your</b> connected broker account — the broker custodies the funds and is the regulated party. <b>Paper mode</b> uses simulated money (no risk). There is <b>no autonomous trading</b>: nothing is bought or sold unless you place the order yourself. Switch to live only with money you can afford to risk, and after reviewing your local regulations.</div>
+
+    <div id="bkGate" class="bk-gate">Checking your session…</div>
+    <div id="bkApp" hidden></div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const onServer = location.protocol === 'http:' || location.protocol === 'https:';
+    const tok = (() => { try { return localStorage.getItem('quantra.sid') || ''; } catch { return ''; } })();
+    const headers = (extra) => Object.assign(tok ? { Authorization: 'Bearer ' + tok } : {}, extra || {});
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const money = (n) => n == null || isNaN(n) ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const num = (n) => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 4 });
+    async function api(path, opts) {
+      const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers: headers((opts && opts.headers) || (opts && opts.body ? { 'Content-Type': 'application/json' } : {})) }));
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 401) throw Object.assign(new Error('Not signed in.'), { code: 401 });
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      return d;
+    }
+    let status = null;   // { connected, provider, mode, keyHint }
+
+    function gate(msg) { $('bkGate').hidden = false; $('bkApp').hidden = true; $('bkGate').innerHTML = msg; }
+
+    async function load() {
+      if (!onServer) return gate('Run the live server to use trading.');
+      try { status = await api('/api/broker/status'); }
+      catch (e) { return gate(e.code === 401 ? 'Please <a href="index.html" style="color:var(--mint)">sign in</a> first, then return here.' : esc(e.message)); }
+      $('bkGate').hidden = true; $('bkApp').hidden = false;
+      status.connected ? renderConnected() : renderConnect();
+    }
+
+    /* ---------- not connected: link a broker ---------- */
+    function renderConnect() {
+      $('modeBadge').hidden = true;
+      $('bkApp').innerHTML = `
+        <div class="bk-card">
+          <h2>Connect your broker</h2>
+          <div class="fld"><label>Broker</label>
+            <select id="cProvider"><option value="alpaca">Alpaca · US stocks, ETFs &amp; crypto</option></select>
+          </div>
+          <div class="fld"><label>Mode</label>
+            <div class="seg2" id="cMode"><button data-m="paper" class="on">Paper (simulated)</button><button data-m="live" class="live">Live (real money)</button></div>
+          </div>
+          <div id="liveWarn"></div>
+          <div class="fld"><label>API key ID</label><input id="cKey" type="text" autocomplete="off" spellcheck="false" placeholder="PK… / AK…" /></div>
+          <div class="fld"><label>API secret key</label><input id="cSecret" type="password" autocomplete="off" spellcheck="false" placeholder="kept server-side, never shown again" /></div>
+          <button class="btn btn--primary" id="cBtn">Connect broker</button>
+          <div class="bk-msg" id="cMsg"></div>
+          <p class="bk-foot">Get free <b>paper</b> keys instantly at <a href="https://alpaca.markets" target="_blank" rel="noopener" style="color:var(--cyan)">alpaca.markets</a> → Paper Trading → API Keys. Your secret is stored server-side for routing orders and is never sent back to the browser.</p>
+        </div>`;
+      let mode = 'paper';
+      const seg = $('cMode');
+      seg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.m;
+        [...seg.children].forEach((x) => x.classList.toggle('on', x === b)); $('cBtn').classList.toggle('on', false);
+        $('liveWarn').innerHTML = mode === 'live' ? `<div class="warn">⚠ <b>Live mode places real orders with real money</b> in your Alpaca account. Make sure you understand the risks and your local regulations. We recommend testing in paper mode first.</div>` : ''; });
+      $('cBtn').addEventListener('click', async () => {
+        const keyId = $('cKey').value.trim(), secret = $('cSecret').value.trim(), msg = $('cMsg');
+        if (!keyId || !secret) { msg.style.color = 'var(--rose)'; msg.textContent = 'Enter both the API key and secret.'; return; }
+        $('cBtn').disabled = true; msg.style.color = 'var(--muted-2)'; msg.textContent = 'Verifying with the broker…';
+        try {
+          const r = await api('/api/broker/connect', { method: 'POST', body: JSON.stringify({ provider: $('cProvider').value, mode, keyId, secret }) });
+          if (!r.ok) { msg.style.color = 'var(--rose)'; msg.textContent = r.error; $('cBtn').disabled = false; return; }
+          status = { connected: true, provider: r.provider, mode: r.mode, keyHint: r.keyHint }; renderConnected();
+        } catch (e) { msg.style.color = 'var(--rose)'; msg.textContent = e.message; $('cBtn').disabled = false; }
+      });
+    }
+
+    /* ---------- connected: account, ticket, orders ---------- */
+    async function renderConnected() {
+      const live = status.mode === 'live';
+      $('modeBadge').hidden = false; $('modeBadge').className = 'badge ' + (live ? 'live' : 'paper'); $('modeBadge').textContent = live ? 'LIVE' : 'PAPER';
+      $('bkApp').innerHTML = `
+        <div class="bk-card">
+          <h2 style="display:flex;align-items:center;gap:.6rem">Account
+            <span class="badge ${live ? 'live' : 'paper'}">${live ? 'LIVE · real money' : 'PAPER · simulated'}</span>
+            <span style="margin-left:auto;font-size:.78rem;color:var(--muted-2);font-weight:400">${esc(status.provider)} · ${esc(status.keyHint || '')}</span>
+          </h2>
+          <div class="bk-grid" id="acct"><div class="bk-stat"><div class="v">…</div><div class="l">Loading</div></div></div>
+        </div>
+        <div class="bk-card">
+          <h2>Place an order</h2>
+          ${live ? '<div class="warn">⚠ You are in <b>LIVE</b> mode — orders use real money. Each order asks you to confirm.</div>' : ''}
+          <div class="bk-row">
+            <div class="fld" style="flex:1.3"><label>Symbol</label><input id="oSym" type="text" placeholder="AAPL" spellcheck="false" /></div>
+            <div class="fld"><label>Side</label><div class="seg2" id="oSide"><button data-s="buy" class="on">Buy</button><button data-s="sell">Sell</button></div></div>
+          </div>
+          <div class="bk-row">
+            <div class="fld"><label>Order type</label><select id="oType"><option value="market">Market</option><option value="limit">Limit</option></select></div>
+            <div class="fld"><label>Quantity (shares)</label><input id="oQty" type="text" inputmode="decimal" placeholder="1" /></div>
+            <div class="fld" id="oLimitWrap" hidden><label>Limit price</label><input id="oLimit" type="text" inputmode="decimal" placeholder="0.00" /></div>
+          </div>
+          <button class="btn btn--primary" id="oBtn">Review &amp; place order</button>
+          <div class="bk-msg" id="oMsg"></div>
+        </div>
+        <div class="bk-card">
+          <h2>Positions</h2>
+          <div style="overflow-x:auto"><table class="bk-t" id="posT"></table></div>
+        </div>
+        <div class="bk-card">
+          <h2>Recent orders</h2>
+          <div style="overflow-x:auto"><table class="bk-t" id="ordT"></table></div>
+        </div>
+        <div style="text-align:right"><button class="btn btn--ghost btn--sm" id="discBtn">Disconnect broker</button></div>
+        <p class="bk-foot">Quantra routes orders to your broker only when you click. It does not run any background or high-frequency strategy. Microsecond/high-frequency execution is not offered — it requires exchange co-location and is not possible from a web app.</p>`;
+
+      let side = 'buy';
+      $('oSide').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; side = b.dataset.s; [...$('oSide').children].forEach((x) => x.classList.toggle('on', x === b)); });
+      $('oType').addEventListener('change', () => { $('oLimitWrap').hidden = $('oType').value !== 'limit'; });
+      $('oBtn').addEventListener('click', () => placeOrder(side));
+      $('discBtn').addEventListener('click', async () => { if (!confirm('Disconnect your broker? Your stored API keys will be removed.')) return; try { await api('/api/broker/disconnect', { method: 'POST', body: '{}' }); status = { connected: false }; renderConnect(); } catch (e) { alert(e.message); } });
+
+      loadAccount(); loadOrders();
+    }
+
+    async function loadAccount() {
+      try {
+        const r = await api('/api/broker/account');
+        if (!r.ok) { $('acct').innerHTML = `<div class="warn" style="grid-column:1/-1">${esc(r.error)}</div>`; return; }
+        const a = r.account;
+        $('acct').innerHTML =
+          stat(money(a.equity), 'Equity') + stat(money(a.cash), 'Cash') + stat(money(a.buyingPower), 'Buying power') + stat(esc(a.status || '—'), 'Account status');
+        const pos = r.positions || [];
+        $('posT').innerHTML = pos.length
+          ? '<tr><th>Symbol</th><th>Qty</th><th>Avg entry</th><th>Price</th><th>Value</th><th>Unreal. P&L</th></tr>' + pos.map((p) => {
+              const cls = p.unrealizedPL >= 0 ? 'up' : 'down';
+              return `<tr><td><b>${esc(p.symbol)}</b></td><td>${num(p.qty)}</td><td>${money(p.avgEntry)}</td><td>${money(p.currentPrice)}</td><td>${money(p.marketValue)}</td><td class="${cls}">${money(p.unrealizedPL)} (${p.unrealizedPLpc >= 0 ? '+' : ''}${num(p.unrealizedPLpc)}%)</td></tr>`;
+            }).join('')
+          : '<tr><td style="color:var(--muted-2);padding:1rem .7rem">No open positions.</td></tr>';
+      } catch (e) { $('acct').innerHTML = `<div class="warn" style="grid-column:1/-1">${esc(e.message)}</div>`; }
+    }
+    const stat = (v, l) => `<div class="bk-stat"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+
+    async function loadOrders() {
+      try {
+        const r = await api('/api/broker/orders'); if (!r.ok) { $('ordT').innerHTML = `<tr><td>${esc(r.error)}</td></tr>`; return; }
+        const os = r.orders || [];
+        $('ordT').innerHTML = os.length
+          ? '<tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Type</th><th>Status</th><th>Filled @</th></tr>' + os.map((o) => `<tr>
+              <td><b>${esc(o.symbol)}</b></td><td><span class="pill-side ${o.side}">${esc(o.side)}</span></td>
+              <td>${num(o.qty)}</td><td>${esc(o.type)}</td><td>${esc(o.status)}</td>
+              <td>${o.filledAvg ? money(o.filledAvg) : '—'}</td></tr>`).join('')
+          : '<tr><td style="color:var(--muted-2);padding:1rem .7rem">No orders yet.</td></tr>';
+      } catch (e) { $('ordT').innerHTML = `<tr><td>${esc(e.message)}</td></tr>`; }
+    }
+
+    async function placeOrder(side) {
+      const msg = $('oMsg'), sym = $('oSym').value.trim().toUpperCase(), qty = parseFloat($('oQty').value), type = $('oType').value, limit = parseFloat($('oLimit').value);
+      if (!sym) { msg.style.color = 'var(--rose)'; msg.textContent = 'Enter a symbol.'; return; }
+      if (!(qty > 0)) { msg.style.color = 'var(--rose)'; msg.textContent = 'Enter a quantity greater than 0.'; return; }
+      if (type === 'limit' && !(limit > 0)) { msg.style.color = 'var(--rose)'; msg.textContent = 'Enter a limit price.'; return; }
+      const live = status.mode === 'live';
+      const summary = `${side.toUpperCase()} ${qty} ${sym} · ${type}${type === 'limit' ? ' @ ' + limit : ' (market)'}\nMode: ${live ? 'LIVE — REAL MONEY' : 'Paper (simulated)'}`;
+      if (!confirm((live ? '⚠ CONFIRM LIVE ORDER (real money)\n\n' : 'Confirm order\n\n') + summary)) return;
+      $('oBtn').disabled = true; msg.style.color = 'var(--muted-2)'; msg.textContent = 'Placing order…';
+      try {
+        const r = await api('/api/broker/order', { method: 'POST', body: JSON.stringify({ symbol: sym, side, type, qty, limitPrice: limit, confirmLive: live ? true : undefined }) });
+        if (!r.ok) { msg.style.color = 'var(--rose)'; msg.textContent = '✗ ' + r.error; }
+        else { msg.style.color = 'var(--mint)'; msg.textContent = `✓ ${r.mode === 'live' ? 'Live' : 'Paper'} order submitted: ${r.order.side} ${num(r.order.qty)} ${r.order.symbol} · ${r.order.status}`; $('oSym').value = ''; $('oQty').value = ''; loadAccount(); loadOrders(); }
+      } catch (e) { msg.style.color = 'var(--rose)'; msg.textContent = '✗ ' + e.message; }
+      $('oBtn').disabled = false;
+    }
+
+    load();
+  </script>
+</body>
+</html>
