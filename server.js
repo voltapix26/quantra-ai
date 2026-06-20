@@ -999,6 +999,11 @@ function readBody(req) {
    ============================================================ */
 const store = require('./store');
 const { planOf } = require('./plans');
+// For now every signed-in user is granted the top "ultimate" plan, and super-admins always are.
+// Anonymous (not signed in) stays on "free" — so a user must at least sign in to get it.
+// Flip FORCE_ULTIMATE to false to restore per-org billing plans.
+const FORCE_ULTIMATE = true;
+const planFor = (org, email) => isSuperAdmin(email) ? 'ultimate' : (FORCE_ULTIMATE ? (org ? 'ultimate' : 'free') : ((org && org.plan) || 'free'));
 const { sendMail, shell, btn, APP_URL } = require('./mailer');
 // load the analysis engine server-side (it assigns window.Quantra) for scoring
 global.window = global.window || {};
@@ -1044,7 +1049,7 @@ async function createSession(email) { const t = crypto.randomBytes(24).toString(
 // the cookie (https-wrapped previews, cross-site iframes, some localhost tunnels).
 function bearerToken(req) { const h = String(req.headers['authorization'] || ''); const m = h.match(/^Bearer\s+(.+)$/i); return m ? m[1].trim() : null; }
 async function sessionUser(req) { const t = parseCookies(req).qsid || bearerToken(req); if (!t) return null; const s = await store.getSession(t); if (!s || s.exp < Date.now()) { if (s) await store.delSession(t); return null; } const u = await store.getUserByEmail(s.email); return u ? { user: u, token: t } : null; }
-async function userPublic(u) { const org = await store.getOrg(u.orgId); return { id: u.id, email: u.email, name: u.name, orgId: u.orgId, role: u.role, verified: !!u.verified, plan: (org || {}).plan || 'free', superAdmin: isSuperAdmin(u.email) }; }
+async function userPublic(u) { const org = await store.getOrg(u.orgId); return { id: u.id, email: u.email, name: u.name, orgId: u.orgId, role: u.role, verified: !!u.verified, plan: planFor(org, u.email), superAdmin: isSuperAdmin(u.email) }; }
 function sendC(res, code, obj, cookie) { const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }; if (cookie) h['Set-Cookie'] = cookie; res.writeHead(code, h); res.end(JSON.stringify(obj)); }
 
 /* ---- sliding-window rate limiting (per-instance, in-memory) ---- */
@@ -1196,7 +1201,7 @@ async function authRoute(req, res, u) {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       if (m === 'GET') return send(res, 200, await store.getUserData(s.user.id));
       if (m === 'PUT') {
-        const org = await store.getOrg(s.user.orgId), cfg = planOf(org && org.plan);
+        const org = await store.getOrg(s.user.orgId), cfg = planOf(planFor(org, s.user.email));
         const d = await store.getUserData(s.user.id);
         if (Array.isArray(body.watchlist)) d.watchlist = body.watchlist.slice(0, cfg.watchlistMax);
         if (body.prefs && typeof body.prefs === 'object') d.prefs = { ...d.prefs, ...body.prefs };
@@ -1237,7 +1242,7 @@ async function authRoute(req, res, u) {
     if (p === '/api/me/limits' && m === 'GET') {
       const s = await sessionUser(req);
       const org = s ? await store.getOrg(s.user.orgId) : null;
-      const plan = org ? org.plan : 'free', cfg = planOf(plan);
+      const plan = planFor(org, s && s.user && s.user.email), cfg = planOf(plan);
       const used = (org && org.usage && org.usage.day === new Date().toISOString().slice(0, 10)) ? org.usage.ai : 0;
       return send(res, 200, { loggedIn: !!s, plan, aiVerdicts: cfg.aiVerdicts, intraday: cfg.intraday, exports: cfg.exports, screener: cfg.screener, watchlistMax: cfg.watchlistMax, aiDaily: cfg.aiDaily, aiUsed: used });
     }
@@ -1268,7 +1273,7 @@ async function authRoute(req, res, u) {
       const users = await store.allUsers();
       const rows = await Promise.all(users.map(async (u) => {
         const org = await store.getOrg(u.orgId);
-        return { id: u.id, email: u.email, name: u.name, role: u.role, verified: !!u.verified, plan: (org || {}).plan || 'free', workspace: (org || {}).name || null, createdAt: u.createdAt || null, lastLogin: u.lastLogin || null, superAdmin: isSuperAdmin(u.email) };
+        return { id: u.id, email: u.email, name: u.name, role: u.role, verified: !!u.verified, plan: planFor(org, u.email), workspace: (org || {}).name || null, createdAt: u.createdAt || null, lastLogin: u.lastLogin || null, superAdmin: isSuperAdmin(u.email) };
       }));
       rows.sort((a, b) => (b.lastLogin || b.createdAt || 0) - (a.lastLogin || a.createdAt || 0));
       return send(res, 200, { count: rows.length, users: rows });
@@ -1316,7 +1321,7 @@ async function authRoute(req, res, u) {
     if (p === '/api/org' && m === 'GET') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       const org = (await store.getOrg(s.user.orgId)) || {};
-      return send(res, 200, { id: org.id, name: org.name, plan: org.plan, members: await store.countMembers(s.user.orgId), apiKey: s.user.role === 'owner' ? org.apiKey : undefined, billingEnabled: !!stripe, devBilling: !!process.env.QUANTRA_DEV_BILLING && !PROD });
+      return send(res, 200, { id: org.id, name: org.name, plan: planFor(org, s.user.email), members: await store.countMembers(s.user.orgId), apiKey: s.user.role === 'owner' ? org.apiKey : undefined, billingEnabled: !!stripe, devBilling: !!process.env.QUANTRA_DEV_BILLING && !PROD });
     }
 
     // dev-only: simulate a plan change without Stripe (never in production)
@@ -1332,7 +1337,7 @@ async function authRoute(req, res, u) {
     if (p === '/api/ai/reason' && m === 'POST') {
       const s = await sessionUser(req);
       const org = s ? await store.getOrg(s.user.orgId) : null;
-      const cfg = planOf(org && org.plan);
+      const cfg = planOf(planFor(org, s && s.user && s.user.email));
       // Premium: LLM-enhanced read with live-news comprehension for paid plans,
       // when an API key is configured and the daily allowance isn't spent.
       if (cfg.aiVerdicts && ANTHROPIC_KEY && Anthropic && AI_MODEL && org) {
