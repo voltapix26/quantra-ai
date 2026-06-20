@@ -1471,7 +1471,9 @@ async function billingWebhook(req, res) {
    forward returns. Accumulates from day one so performance can
    be reported honestly (not back-filled).
    ============================================================ */
-const TR_HORIZONS = [5, 10, 30];
+// Short horizons mature within days so the record advances with the calendar from day one,
+// instead of sitting empty until a 5-day window first completes.
+const TR_HORIZONS = [1, 2, 3, 5, 10, 30];
 // Band multiplier for the live projection-calibration widget. With a daily σ from
 // the trailing window, exp(±BAND_Z·σ·√H) lands realised coverage at ~80% on a
 // 5-year backtest (Z=1.28→78%, 1.45→83%), so 1.34 ≈ a true 80% band.
@@ -1642,7 +1644,7 @@ function tradeStream(req, res, u) {
 
 store.ready().then(() => {
   snapshotToday();
-  setInterval(snapshotToday, 6 * 60 * 60 * 1000).unref(); // daily-ish; no-ops if today is done
+  setInterval(snapshotToday, 2 * 60 * 60 * 1000).unref(); // every 2h so the new day's snapshot lands promptly; no-ops if today is done
   metricsLoad();
   setInterval(metricsFlush, 120000).unref();              // persist footfall every 2 min
   hydrateAlerts();                                        // rebuild active-alert index from accounts
@@ -1669,7 +1671,7 @@ store.ready().then(() => {
     if (u.pathname === '/healthz' || u.pathname === '/readyz') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ ok: true, storage: store.kind })); }
     // public track record
     if (u.pathname === '/api/stream/trades' && req.method === 'GET') return tradeStream(req, res, u);
-    if (u.pathname === '/api/track-record' && req.method === 'GET') return send(res, 200, await trackRecord());
+    if (u.pathname === '/api/track-record' && req.method === 'GET') { snapshotToday().catch(() => {}); return send(res, 200, await trackRecord()); }
     if (u.pathname === '/api/track-record/ledger' && req.method === 'GET') return send(res, 200, await verifyLedger());
     if (u.pathname === '/api/track-record/badge.svg' && req.method === 'GET') {
       const svg = badgeSvg(await trackRecord());
