@@ -11,8 +11,12 @@
   --r-sm:12px; --r:18px; --r-lg:24px; --shadow:0 24px 60px -24px rgba(0,0,0,.7); --ring:0 0 0 1px var(--line);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100vh}
+/* Fit-to-screen: clip horizontal overflow on every device so nothing (e.g. the fixed
+   background glows) can push the page wider than the viewport. `clip` (not `hidden`)
+   avoids creating a scroll container, so the sticky board keeps working. */
+html{scroll-behavior:smooth;overflow-x:clip}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100vh;overflow-x:clip;max-width:100%}
+img,video,iframe{max-width:100%}
 a{color:inherit;text-decoration:none}
 h1,h2,h3,h4{font-family:'Space Grotesk','Inter',sans-serif;letter-spacing:-.02em;line-height:1.15}
 svg{display:block}
@@ -548,7 +552,6 @@ button{font-family:inherit}
    bigger tap targets, no horizontal overflow.
    ============================================================ */
 @media (max-width:600px){
-  html,body{overflow-x:hidden}
   .container{width:min(1280px,95vw)}
   .wrap{padding:1rem 0 2.4rem}
 
