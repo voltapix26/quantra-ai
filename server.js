@@ -1004,7 +1004,7 @@ const { planOf } = require('./plans');
 // Flip FORCE_ULTIMATE to false to restore per-org billing plans.
 const FORCE_ULTIMATE = true;
 const planFor = (org, email) => isSuperAdmin(email) ? 'ultimate' : (FORCE_ULTIMATE ? (org ? 'ultimate' : 'free') : ((org && org.plan) || 'free'));
-const { sendMail, shell, btn, APP_URL } = require('./mailer');
+const { sendMail, mailConfig, shell, btn, APP_URL } = require('./mailer');
 // load the analysis engine server-side (it assigns window.Quantra) for scoring
 global.window = global.window || {};
 try { require('./analysis'); } catch {}
@@ -1278,6 +1278,17 @@ async function authRoute(req, res, u) {
       rows.sort((a, b) => (b.lastLogin || b.createdAt || 0) - (a.lastLogin || a.createdAt || 0));
       return send(res, 200, { count: rows.length, users: rows });
     }
+    if (p === '/api/admin/mail-test' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
+      const to = String(body.to || s.user.email).trim().toLowerCase();
+      const cfg = mailConfig();
+      const r = await sendMail(to, 'Quantra AI — test email',
+        shell('Test email', '<p style="color:#cbd5e1">If you can read this, Resend delivery is working. ✅</p>'),
+        'Quantra AI test email — if you received this, delivery is working.');
+      audit('admin_mail_test', req, s.user.email, { to, ok: r.ok, status: r.status || null });
+      return send(res, 200, { ok: r.ok, to, from: cfg.from, configured: cfg.configured, sandbox: cfg.sandbox, status: r.status || null, id: r.id || null, error: r.error || null });
+    }
     if (p === '/api/admin/users/delete' && m === 'POST') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
@@ -1315,7 +1326,7 @@ async function authRoute(req, res, u) {
       return send(res, 200, {
         today: td, days, topPages,
         users: { total: users.length, verified, paid }, signups,
-        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, twelvedata: !!TWELVEDATA_KEY, push: PUSH_ENABLED, cryptoStream: true, uptimeSec: Math.round(process.uptime()), node: process.version },
+        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, twelvedata: !!TWELVEDATA_KEY, push: PUSH_ENABLED, cryptoStream: true, mail: mailConfig(), uptimeSec: Math.round(process.uptime()), node: process.version },
       });
     }
     if (p === '/api/org' && m === 'GET') {

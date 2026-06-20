@@ -170,8 +170,26 @@
           `<div class="strow"><span>Finnhub (stocks/news)</span><b>${on(s2.finnhub)}</b></div>` +
           `<div class="strow"><span>Crypto live stream</span><b>${on(s2.cryptoStream)}</b></div>` +
           `<div class="strow"><span>AI key</span><b>${on(s2.ai)}</b></div>` +
+          `<div class="strow"><span>Email (Resend)</span><b>${on(s2.mail && s2.mail.configured)}</b></div>` +
+          (s2.mail ? `<div class="strow"><span>Mail from</span><b style="font-size:.78rem">${esc(s2.mail.from)}</b></div>` : '') +
+          (s2.mail && s2.mail.sandbox ? `<div class="strow" style="color:var(--amber)"><span>⚠ Sandbox sender</span><b style="color:var(--amber);font-size:.72rem;text-align:right">delivers only to your Resend signup email — verify a domain &amp; set MAIL_FROM</b></div>` : '') +
           `<div class="strow"><span>Uptime</span><b>${Math.floor(s2.uptimeSec / 3600)}h ${Math.floor((s2.uptimeSec % 3600) / 60)}m</b></div>` +
-          `<div class="strow"><span>Node</span><b>${esc(s2.node)}</b></div>`;
+          `<div class="strow"><span>Node</span><b>${esc(s2.node)}</b></div>` +
+          `<div style="margin-top:.7rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+             <input id="mailTo" type="email" placeholder="you@example.com" style="flex:1;min-width:140px;background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:7px;color:var(--text);padding:.4em .6em;font-size:.8rem" />
+             <button class="abtn ok" id="mailTestBtn">Send test email</button>
+           </div><div id="mailTestOut" style="font-size:.78rem;color:var(--muted-2);margin-top:.5rem"></div>`;
+        const mb = $('mailTestBtn');
+        if (mb) mb.addEventListener('click', async () => {
+          const out = $('mailTestOut'), to = ($('mailTo').value || '').trim();
+          mb.disabled = true; out.style.color = 'var(--muted-2)'; out.textContent = 'Sending…';
+          try {
+            const r = await post('/api/admin/mail-test', { to });
+            if (r.ok) { out.style.color = 'var(--mint)'; out.textContent = `✓ Sent to ${r.to} from ${r.from}${r.id ? ' (id ' + r.id + ')' : ''}. Check the inbox (and spam).`; }
+            else { out.style.color = 'var(--rose)'; out.textContent = `✗ Not sent: ${r.error || 'unknown error'}${r.sandbox ? ' — you\'re on the resend.dev sandbox, which only delivers to your Resend signup email.' : ''}`; }
+          } catch (e) { out.style.color = 'var(--rose)'; out.textContent = '✗ ' + e.message; }
+          mb.disabled = false;
+        });
       } catch {}
 
       bindUserActions(); renderUsers(data);

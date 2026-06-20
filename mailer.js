@@ -7,6 +7,18 @@
 const APP_URL = process.env.APP_URL || ('http://localhost:' + (process.env.PORT || 5280));
 const FROM = process.env.MAIL_FROM || 'Quantra AI <onboarding@resend.dev>';
 
+// Reports how email delivery is configured (for the admin panel / diagnostics).
+function mailConfig() {
+  return {
+    configured: !!process.env.RESEND_API_KEY,
+    from: FROM,
+    // Resend's onboarding@resend.dev sandbox sender ONLY delivers to your own Resend
+    // signup address — real recipients are silently rejected until you verify a domain.
+    sandbox: /resend\.dev/i.test(FROM),
+  };
+}
+
+// Returns { ok, status?, id?, error?, dev? } so callers/diagnostics can see why a send failed.
 async function sendMail(to, subject, html, text) {
   if (process.env.RESEND_API_KEY) {
     try {
@@ -15,12 +27,14 @@ async function sendMail(to, subject, html, text) {
         headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: FROM, to, subject, html, text }),
       });
-      if (!r.ok) console.warn('[mail] Resend error:', await r.text().catch(() => r.status));
-      return r.ok;
-    } catch (e) { console.warn('[mail] error:', e.message); return false; }
+      const raw = await r.text().catch(() => '');
+      if (!r.ok) { console.warn('[mail] Resend error:', r.status, raw); return { ok: false, status: r.status, error: raw || ('HTTP ' + r.status) }; }
+      let id = null; try { id = JSON.parse(raw).id; } catch {}
+      return { ok: true, status: r.status, id };
+    } catch (e) { console.warn('[mail] error:', e.message); return { ok: false, error: e.message }; }
   }
   console.log(`\n[mail:dev] To: ${to}\n  Subject: ${subject}\n  ${text}\n`);
-  return false;
+  return { ok: false, dev: true, error: 'RESEND_API_KEY is not set — email was logged to the server console (dev mode), not sent.' };
 }
 
 function shell(title, body) {
@@ -31,4 +45,4 @@ function shell(title, body) {
 }
 const btn = (url, label) => `<a href="${url}" style="display:inline-block;background:#34D399;color:#051018;font-weight:700;text-decoration:none;padding:11px 20px;border-radius:8px;margin:6px 0">${label}</a>`;
 
-module.exports = { sendMail, shell, btn, APP_URL };
+module.exports = { sendMail, mailConfig, shell, btn, APP_URL };
