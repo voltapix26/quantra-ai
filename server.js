@@ -300,6 +300,18 @@ function alignedFromYahoo(r) {
   return out;
 }
 
+// Authoritative previous-session close (= Yahoo's regularMarketPreviousClose). The chart
+// endpoint's chartPreviousClose is range-relative, so we must ask for range=1d specifically.
+// Needed for futures/indices, where `meta.previousClose` is absent and guessing from the
+// monthly series picks the wrong session (e.g. Friday instead of the official prior close).
+async function dayPrevClose(sym) {
+  try {
+    const d = await cached(`prevc:${sym}`, 60000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=1d`));
+    const m = d.chart.result[0].meta || {};
+    return m.chartPreviousClose != null ? m.chartPreviousClose : (m.previousClose != null ? m.previousClose : null);
+  } catch { return null; }
+}
+
 /* Build a board for any list of Yahoo symbols (stocks/ETFs/commodities/indices/FX). */
 async function buildBoard(list, type) {
   const out = await Promise.all(list.map(async (it) => {
@@ -316,6 +328,7 @@ async function buildBoard(list, type) {
       // change wildly wrong (e.g. MSFT showing -10% on an up day). Use previousClose, or
       // yesterday's bar — session-aware so it's right intraday and pre-market.
       let prev = meta.previousClose;
+      if (prev == null) prev = await dayPrevClose(sym);   // authoritative daily prev (futures/indices)
       if (prev == null) {
         const lastBarDay = a.dates.length ? a.dates[a.dates.length - 1].slice(0, 10) : null;
         const rmtDay = meta.regularMarketTime ? new Date(meta.regularMarketTime * 1000).toISOString().slice(0, 10) : lastBarDay;
