@@ -1245,6 +1245,20 @@
     $('aiBadge').hidden = true;
     try {
       const [hist, fund, peers, news] = await Promise.all([loadChart(item, dataRange, dataInterval), loadFundamentals(item), loadPeers(item), loadNews(item)]);
+      // Anchor the chart's last point + analysed price to the board's LIVE price (Finnhub for US,
+      // latest market price otherwise). The chart history comes from Yahoo/CoinGecko, whose last
+      // bar lags the real-time quote — without this the line ends below/above the displayed price
+      // and looks "inaccurate". Only nudge when the live price is sane (within 25% of last close).
+      const bi = board.find((b) => b.id === item.id) || {};
+      if (!secMode && bi.price != null && isFinite(bi.price) && hist.closes && hist.closes.length) {
+        const i = hist.closes.length - 1, lc = hist.closes[i];
+        if (lc && Math.abs(bi.price - lc) / lc < 0.25) {
+          hist.closes[i] = bi.price;
+          if (hist.highs && hist.highs[i] != null) hist.highs[i] = Math.max(hist.highs[i], bi.price);
+          if (hist.lows && hist.lows[i] != null) hist.lows[i] = Math.min(hist.lows[i], bi.price);
+          if (hist.opens && hist.opens[i] == null) hist.opens[i] = lc;
+        }
+      }
       curBase = (item.type === 'crypto') ? 'USD' : (hist.currency || (fund && fund.currency) || 'USD');
       const sent = Q.sentiment(news);
       const res = Q.analyze(hist, item.name || item.symbol, fund, sent);
@@ -1265,7 +1279,6 @@
 
       const up = res.verdict.dir !== 'down';
       $('dPrice').textContent = money(res.price, curBase);
-      const bi = board.find((b) => b.id === item.id) || {};
       const chg = bi.change24h, chgAbs = bi.changeAbs;
       const chip = $('dChange');
       if (chg != null) {
