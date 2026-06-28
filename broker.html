@@ -7,7 +7,7 @@
   <meta name="description" content="Link your own brokerage and route orders from Quantra. Paper-mode first; you stay in control." />
   <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=47" />
+  <link rel="stylesheet" href="styles.css?v=48" />
   <style>
     .bk{max-width:1020px;margin:0 auto;padding:1.3rem 0 4rem}
     .bk h1{font-size:1.9rem;margin-bottom:.2rem}
@@ -68,8 +68,15 @@
   </header>
 
   <main class="container bk">
-    <h1>Automated trading <span class="badge paper" id="modeBadge" hidden>PAPER</span></h1>
-    <p class="bk-lead">Link <b>your own</b> brokerage and place orders from Quantra. You stay in control — every order is one you click.</p>
+    <div class="phero">
+      <div class="phero__mesh" aria-hidden="true"></div>
+      <div>
+        <span class="phero__badge"><span class="live-dot"></span>Bring-your-own-broker</span>
+        <h1>Automated trading <span class="badge paper" id="modeBadge" hidden>PAPER</span></h1>
+        <p>Link your own regulated brokerage and route orders from Quantra — paper-first, and you stay in control. Quantra never holds your funds.</p>
+      </div>
+      <canvas class="phero__gl" data-gl data-particles="180" aria-hidden="true"></canvas>
+    </div>
     <div class="bk-safe">🔒 <b>Quantra never holds your money.</b> Orders execute inside <b>your</b> connected broker account — the broker custodies the funds and is the regulated party. <b>Paper mode</b> uses simulated money (no risk). There is <b>no autonomous trading</b>: nothing is bought or sold unless you place the order yourself. Switch to live only with money you can afford to risk, and after reviewing your local regulations.</div>
 
     <div id="bkGate" class="bk-gate">Checking your session…</div>
@@ -236,5 +243,7 @@
 
     load();
   </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
+  <script src="hero.js?v=2" defer></script>
 </body>
 </html>

@@ -42,9 +42,15 @@
   </header>
 
   <main class="container legal" style="max-width:820px">
-    <div class="legal-meta" style="margin-top:1.4rem">Transparency report</div>
-    <h1 style="font-size:2rem">How the Quantra Score has actually done</h1>
-    <p style="color:var(--muted)">Every day we snapshot each asset's Quantra Score and later measure the realised forward return. This page reports the out-of-sample directional accuracy — honestly, with the sample size, and with no back-filling.</p>
+    <div class="phero" style="margin-top:1.4rem">
+      <div class="phero__mesh" aria-hidden="true"></div>
+      <div>
+        <span class="phero__badge"><span class="live-dot"></span>Transparency report</span>
+        <h1>How the Quantra Score has actually done</h1>
+        <p>Every day we snapshot each asset's Quantra Score and later measure the realised forward return — reporting out-of-sample directional accuracy and 80% band calibration, honestly, with no back-filling.</p>
+      </div>
+      <canvas class="phero__gl" data-gl data-particles="180" aria-hidden="true"></canvas>
+    </div>
 
     <div id="trState"></div>
 
@@ -130,5 +136,7 @@
       });
     })();
   </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
+  <script src="hero.js?v=2" defer></script>
 </body>
 </html>

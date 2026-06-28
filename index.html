@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0A0F1C" />
   <link rel="apple-touch-icon" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=47" />
+  <link rel="stylesheet" href="styles.css?v=48" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -119,9 +119,50 @@
           </div>
         </div>
         <div class="hero__visual">
-          <canvas id="heroGL" aria-hidden="true"></canvas>
+          <canvas id="heroGL" data-gl data-particles="520" aria-hidden="true"></canvas>
           <div class="hero__orb" aria-hidden="true"></div>
         </div>
+      </div>
+    </section>
+
+    <section class="feat container">
+      <div class="feat__head">
+        <span class="feat__kicker"><span class="live-dot"></span>One terminal · everything</span>
+        <h2 class="feat__title">A $20,000 terminal, distilled into your browser</h2>
+        <p class="feat__sub">Institutional-grade analysis, real-time data and an AI analyst — across every major market, with the transparency retail tools never gave you.</p>
+      </div>
+      <div class="feat-grid">
+        <article class="feat-card">
+          <div class="feat-card__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg></div>
+          <h3>16-study charting suite</h3>
+          <p>Ichimoku, Supertrend, VWAP, Bollinger, ADX and more — on line &amp; candlestick charts, with replay and drawing tools.</p>
+        </article>
+        <article class="feat-card">
+          <div class="feat-card__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4c1.5.5 3 2 3 4.5 0 1-.4 2-1 2.7.4.7.6 1.5.6 2.3a4 4 0 0 1-7 2.6A4 4 0 0 1 5 15.5c0-.8.2-1.6.6-2.3-.6-.7-1-1.7-1-2.7C4.5 8 6 6.5 8 6a4 4 0 0 1 4-4Z"/><path d="M12 6v13"/></svg></div>
+          <h3>AI analyst on every asset</h3>
+          <p>A grounded, plain-language read of any stock or coin — and a personalized daily brief across your watchlist.</p>
+        </article>
+        <article class="feat-card">
+          <div class="feat-card__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 2 12 12"/><path d="M16 2h6v6"/></svg></div>
+          <h3>Calibrated forecasts</h3>
+          <p>Monte-Carlo projections proven to ~80% band coverage on live outcomes — published transparently, not back-filled.</p>
+          <span class="tag">~80% calibrated</span>
+        </article>
+        <article class="feat-card">
+          <div class="feat-card__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20 15.3 15.3 0 0 1 0-20"/></svg></div>
+          <h3>25 global markets</h3>
+          <p>Stocks across 25 exchanges, 32 indices, ETFs, crypto, FX and commodities — each in its native currency.</p>
+        </article>
+        <article class="feat-card">
+          <div class="feat-card__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8a4 4 0 0 0-7.4 0"/><path d="M7 13h10"/><path d="M7 17h7"/></svg></div>
+          <h3>Broker-linked trading</h3>
+          <p>Connect your own regulated brokerage and route orders from Quantra — paper-first, you in control, funds never held by us.</p>
+        </article>
+        <article class="feat-card">
+          <div class="feat-card__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg></div>
+          <h3>Real-time &amp; honest</h3>
+          <p>Live US &amp; crypto feeds, accurate open/closed status with a holiday calendar, and clear "live / delayed" labelling.</p>
+        </article>
       </div>
     </section>
 
@@ -411,7 +452,7 @@
   </p>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
-  <script src="hero.js?v=1" defer></script>
+  <script src="hero.js?v=2" defer></script>
   <script src="auth.js?v=46"></script>
   <script src="analysis.js?v=45"></script>
   <script src="report.js?v=45"></script>

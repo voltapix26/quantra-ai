@@ -30,9 +30,8 @@
     io.observe(hero);
   } else { runCounters(); }
 
-  /* ---- Three.js 3D centerpiece ---- */
-  function initGL() {
-    var canvas = document.getElementById('heroGL');
+  /* ---- Three.js 3D centerpiece (mounts on every canvas[data-gl]) ---- */
+  function initGL(canvas) {
     if (!canvas || typeof THREE === 'undefined') return;
     var renderer;
     try { renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true }); }
@@ -62,7 +61,7 @@
     })));
 
     // particle halo (indigo, additive glow) — background detail, low cost
-    var N = 520, arr = new Float32Array(N * 3);
+    var N = +(canvas.dataset.particles || 520), arr = new Float32Array(N * 3);
     for (var i = 0; i < N; i++) {
       var r = 2.0 + Math.random() * 1.9, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
       arr[i * 3] = r * Math.sin(ph) * Math.cos(th);
@@ -114,6 +113,10 @@
     requestAnimationFrame(loop);
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initGL);
-  else initGL();
+  function boot() {
+    if (typeof THREE === 'undefined') return;
+    document.querySelectorAll('canvas[data-gl]').forEach(initGL);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();

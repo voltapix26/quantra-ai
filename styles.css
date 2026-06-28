@@ -647,3 +647,43 @@ button{font-family:inherit}
 }
 @media (max-width:420px){.hero__stats{gap:.9rem}}
 @media (prefers-reduced-motion:reduce){.hero__mesh{animation:none}}
+
+/* ============================================================
+   Features section + glass page-hero (v48) — site-wide premium
+   ============================================================ */
+.feat{padding:clamp(2rem,5vw,4rem) 0}
+.feat__head{text-align:center;max-width:660px;margin:0 auto 2.2rem}
+.feat__kicker{display:inline-flex;align-items:center;gap:.5em;font-size:.74rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mint);margin-bottom:.7rem}
+.feat__title{font-family:'Space Grotesk',Inter,sans-serif;font-size:clamp(1.5rem,3vw,2.3rem);font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.feat__sub{color:var(--muted);margin-top:.7rem;font-size:1.02rem;line-height:1.6}
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+@media(max-width:900px){.feat-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.feat-grid{grid-template-columns:1fr}}
+.feat-card{position:relative;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.018));
+  border:1px solid var(--line-2);border-radius:18px;padding:1.4rem;overflow:hidden;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease}
+.feat-card:hover{transform:translateY(-4px);border-color:rgba(52,211,153,.4);box-shadow:0 18px 50px -24px rgba(52,211,153,.45)}
+.feat-card::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s ease;
+  background:radial-gradient(120% 80% at 0% 0%,rgba(52,211,153,.10),transparent 50%)}
+.feat-card:hover::before{opacity:1}
+.feat-card__ico{width:46px;height:46px;display:grid;place-items:center;border-radius:13px;color:var(--mint);
+  background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.28);margin-bottom:.95rem}
+.feat-card__ico svg{width:23px;height:23px}
+.feat-card h3{font-size:1.06rem;margin-bottom:.4rem}
+.feat-card p{color:var(--muted);font-size:.9rem;line-height:1.55}
+.feat-card .tag{display:inline-block;margin-top:.7rem;font-size:.7rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--cyan);background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.22);border-radius:6px;padding:.16em .5em}
+
+/* glass page-hero (sub-pages: Trade, Track record) */
+.phero{position:relative;overflow:hidden;border:1px solid var(--line-2);border-radius:22px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.012));
+  padding:clamp(1.3rem,3vw,2rem) clamp(1.3rem,3vw,2.1rem);margin:1.1rem 0 1.5rem;
+  display:grid;grid-template-columns:1fr auto;align-items:center;gap:1rem}
+.phero__mesh{position:absolute;inset:-40% -15%;z-index:-1;pointer-events:none;filter:blur(16px);
+  background:radial-gradient(38% 60% at 16% 20%,rgba(52,211,153,.20),transparent 70%),radial-gradient(40% 60% at 92% 28%,rgba(34,211,238,.15),transparent 70%),radial-gradient(46% 62% at 72% 96%,rgba(129,140,248,.13),transparent 72%)}
+.phero__badge{display:inline-flex;align-items:center;gap:.5em;font-size:.75rem;font-weight:600;color:var(--text);
+  background:rgba(255,255,255,.05);border:1px solid var(--line-2);border-radius:999px;padding:.34em .85em;margin-bottom:.8rem}
+.phero h1{font-family:'Space Grotesk',Inter,sans-serif;font-size:clamp(1.5rem,3vw,2.1rem);font-weight:700;letter-spacing:-.02em;line-height:1.08}
+.phero p{color:var(--muted);margin-top:.5rem;max-width:62ch;line-height:1.55}
+.phero__gl{width:128px;height:128px;flex:0 0 auto;display:block}
+@media(max-width:720px){.phero{grid-template-columns:1fr}.phero__gl{display:none}}
