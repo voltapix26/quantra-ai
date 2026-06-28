@@ -42,6 +42,7 @@ const COINGECKO_KEY = process.env.COINGECKO_KEY || ''; // free "demo" key — ra
 const FMP_KEY = process.env.FMP_API_KEY || '';         // Financial Modeling Prep — economic calendar (free tier)
 const MARKETAUX_KEY = process.env.MARKETAUX_API_KEY || ''; // marketaux — premium multi-source news (free tier)
 const TWELVEDATA_KEY = process.env.TWELVEDATA_API_KEY || ''; // Twelve Data — fresher global quotes incl. Gulf/Asia
+const POLYGON_KEY = process.env.POLYGON_API_KEY || '';  // Polygon.io — US stocks (real-time needs the Advanced tier; lower tiers are 15-min delayed). US-only.
 // Map a Yahoo suffix → Twelve Data exchange code so international quotes resolve.
 const TD_EXCH = { NS: 'NSE', BO: 'BSE', L: 'LSE', HK: 'HKEX', T: 'XTKS', KS: 'KRX', TW: 'TWSE', SI: 'SGX', AX: 'ASX', SR: 'Tadawul', AE: 'DFM', AD: 'ADX', JO: 'JSE', SS: 'SSE', SZ: 'SZSE', DE: 'XETR', PA: 'Euronext', AS: 'Euronext', MI: 'MTA', MC: 'BME', SW: 'SIX', ST: 'OMX', OL: 'OSL', CO: 'OMXC', TO: 'TSX', SA: 'B3', MX: 'BMV', JK: 'IDX', BK: 'SET', KL: 'Bursa' };
 function tdSymbol(yh) {
@@ -102,6 +103,26 @@ async function tdQuote(yh) {
     const price = +d.close, prev = +d.previous_close;
     if (!isFinite(price)) return null;
     return { price, prev: isFinite(prev) ? prev : null, change: isFinite(+d.change) ? +d.change : null, changePct: isFinite(+d.percent_change) ? +d.percent_change : null, currency: d.currency || null, asOf: d.datetime || null };
+  } catch { return null; }
+}
+// Real-time-ish quote from Polygon.io — US plain tickers only (no suffix/^/=). Real-time on the
+// Advanced tier; lower tiers return 15-min-delayed/EOD. Used only as a fallback AFTER Finnhub so it
+// never downgrades the free real-time US feed. Returns null → caller falls back.
+async function polyQuote(sym) {
+  if (!POLYGON_KEY || /[.\^=]/.test(String(sym))) return null;
+  try {
+    const d = await cached(`poly:${sym}`, 15000, () => getJSON(`https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(sym)}?apiKey=${POLYGON_KEY}`));
+    const t = d && d.ticker; if (!t) return null;
+    const price = (t.lastTrade && t.lastTrade.p) || (t.day && t.day.c) || (t.prevDay && t.prevDay.c);
+    const prev = t.prevDay && t.prevDay.c;
+    if (!(price > 0)) return null;
+    return {
+      price, prev: prev || null,
+      change: (t.todaysChange != null) ? t.todaysChange : (prev ? price - prev : null),
+      changePct: (t.todaysChangePerc != null) ? t.todaysChangePerc : (prev ? ((price - prev) / prev) * 100 : null),
+      currency: 'USD',
+      asOf: (t.lastTrade && t.lastTrade.t) ? Math.round(t.lastTrade.t / 1e6) : (t.updated ? Math.round(t.updated / 1e6) : null),
+    };
   } catch { return null; }
 }
 const cgHeaders = () => (COINGECKO_KEY ? { 'x-cg-demo-api-key': COINGECKO_KEY } : {});
@@ -343,6 +364,7 @@ async function buildBoard(list, type) {
       if (fhEligible(sym)) {
         const fh = await fhQuote(sym);
         if (fh && fh.price != null) { price = fh.price; if (fh.changePct != null) change24h = fh.changePct; if (fh.change != null) changeAbs = fh.change; if (fh.asOf) asOf = fh.asOf; }
+        else if (POLYGON_KEY) { const pg = await polyQuote(sym); if (pg && pg.price != null) { price = pg.price; if (pg.changePct != null) change24h = pg.changePct; if (pg.change != null) changeAbs = pg.change; if (pg.asOf) asOf = pg.asOf; } }
       } else if (TWELVEDATA_KEY && String(sym).includes('.')) {
         const td = await tdQuote(sym);
         if (td && td.price != null) {
@@ -613,13 +635,14 @@ const api = {
     else holiday = curatedHoliday(idv);
     // Real-time override: Finnhub for US (free, live), Twelve Data for non-US (when keyed).
     const fh = await fhQuote(idv);
-    const td = fh ? null : await tdQuote(idv);
-    const rt = fh || td;
+    const pg = fh ? null : await polyQuote(idv);
+    const td = (fh || pg) ? null : await tdQuote(idv);
+    const rt = fh || pg || td;
     if (rt && rt.price != null) {
       return { ok: true, price: rt.price, change: rt.changePct != null ? +rt.changePct.toFixed(2) : (base ? base.change : null),
         changeAbs: rt.change != null ? rt.change : (base ? base.changeAbs : null),
         currency: (rt.currency) || (base ? base.currency : 'USD'), asOf: rt.asOf || (base ? base.asOf : null),
-        tp: base ? base.tp : null, mktOpen, holiday, source: fh ? 'finnhub' : 'twelvedata' };
+        tp: base ? base.tp : null, mktOpen, holiday, source: fh ? 'finnhub' : pg ? 'polygon' : 'twelvedata' };
     }
     if (base && base.price != null) return { ok: true, ...base, mktOpen, holiday, source: 'yahoo' };
     return { ok: false };
@@ -1341,7 +1364,7 @@ async function authRoute(req, res, u) {
       return send(res, 200, {
         today: td, days, topPages,
         users: { total: users.length, verified, paid }, signups,
-        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, twelvedata: !!TWELVEDATA_KEY, push: PUSH_ENABLED, cryptoStream: true, mail: mailConfig(), uptimeSec: Math.round(process.uptime()), node: process.version },
+        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, push: PUSH_ENABLED, cryptoStream: true, mail: mailConfig(), uptimeSec: Math.round(process.uptime()), node: process.version },
       });
     }
     if (p === '/api/org' && m === 'GET') {
