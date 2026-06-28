@@ -12,8 +12,8 @@ const crypto = require('crypto');
 
 // Resilience: a stray async error should degrade one request, never take the
 // whole web server down. Log and keep serving instead of crashing the process.
-process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', (e && e.stack) || e));
-process.on('uncaughtException', (e) => console.error('[uncaughtException]', (e && e.stack) || e));
+process.on('unhandledRejection', (e) => { try { noteError(); } catch {} console.error('[unhandledRejection]', (e && e.stack) || e); });
+process.on('uncaughtException', (e) => { try { noteError(); } catch {} console.error('[uncaughtException]', (e && e.stack) || e); });
 
 const ROOT = __dirname;
 const PORT = process.env.PORT || 5280;
@@ -1348,6 +1348,12 @@ async function authRoute(req, res, u) {
       audit('admin_view_audit', req, s.user.email);
       return send(res, 200, { events: await store.listAudit(limit, offset) });
     }
+    if (p === '/api/admin/selfcheck' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
+      if (u.searchParams.get('run') === '1') await selfCheck();   // run on demand
+      return send(res, 200, { last: healthLast, history: healthHistory });
+    }
     if (p === '/api/admin/stats' && m === 'GET') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
@@ -1557,7 +1563,7 @@ async function authRoute(req, res, u) {
       return send(res, 200, { ok: true, url: ps.url });
     }
     return send(res, 404, { error: 'unknown route' });
-  } catch (e) { return send(res, 500, { error: String(e.message || e) }); }
+  } catch (e) { try { noteError(); } catch {} return send(res, 500, { error: String(e.message || e) }); }
 }
 
 function readRaw(req) { return new Promise((resolve) => { let d = ''; req.on('data', (c) => { d += c; if (d.length > 1e6) req.destroy(); }); req.on('end', () => resolve(d)); req.on('error', () => resolve('')); }); }
@@ -1756,6 +1762,46 @@ function tradeStream(req, res, u) {
   req.on('close', () => { clearInterval(ping); fhUnsubscribe(sym, res); });
 }
 
+/* ============================================================
+   Continuous self-diagnostics (vigilance). The app tests ITSELF in
+   production every few minutes — feeds alive, prices sane, %s correct,
+   forecast calibration in range, storage reachable, error-rate low —
+   keeps a rolling health history and emails super-admins the moment
+   anything fails. It REPORTS and ALERTS; it never auto-rewrites code.
+   ============================================================ */
+let healthLast = null, healthHistory = [], errCount = 0, lastHealthAlert = 0;
+function noteError() { errCount++; }
+function alertAdmins(result) {
+  if (Date.now() - lastHealthAlert < 3600000) return; lastHealthAlert = Date.now();   // debounce: 1/hr
+  const failsHtml = result.checks.filter((c) => !c.ok).map((c) => `• ${c.name}: ${c.detail}`).join('<br>');
+  const failsTxt = result.checks.filter((c) => !c.ok).map((c) => c.name + ': ' + c.detail).join('\n');
+  for (const email of SUPER_ADMINS) {
+    sendMail(email, '⚠ Quantra self-check failed',
+      shell('Self-check failed', `<p style="color:#cbd5e1">One or more live checks just failed on Quantra:</p><p style="color:#fb7185">${failsHtml}</p><p style="color:#8a94a6;font-size:12px">Open /admin → System health for detail.</p>`),
+      'Quantra self-check failed:\n' + failsTxt).catch(() => {});
+  }
+}
+let scBusy = false;
+async function selfCheck() {
+  if (scBusy) return healthLast; scBusy = true;
+  const checks = [], add = (name, ok, detail) => checks.push({ name, ok: !!ok, detail: String(detail == null ? '' : detail) });
+  try {
+    try { const c = await api['crypto/markets']({ page: '1' }); add('crypto_feed', Array.isArray(c) && c.length > 0 && c.every((x) => x.price > 0), `${(c || []).length} coins live`); } catch (e) { add('crypto_feed', false, e.message); }
+    try { const s = await api['stock/board']({}); add('stock_feed', Array.isArray(s) && s.length > 0, `${(s || []).length} symbols`); } catch (e) { add('stock_feed', false, e.message); }
+    try { const p = await api['price']({ type: 'stock', id: 'AAPL', symbol: 'AAPL' }); add('price_sanity', p && p.price > 0 && Math.abs(p.change || 0) < 50, `AAPL ${p && p.price} · ${p && p.change}% · ${p && p.source}`); } catch (e) { add('price_sanity', false, e.message); }
+    try { const tr = await trackRecord(); const cov = tr && tr.calibration && tr.calibration.coverage; add('forecast_calibration', !tr || tr.building || cov == null || (cov >= 0.5 && cov <= 0.98), cov != null ? `${(cov * 100).toFixed(0)}% band coverage` : 'building'); } catch (e) { add('forecast_calibration', false, e.message); }
+    try { await store.allUsers(); add('storage', true, store.kind); } catch (e) { add('storage', false, e.message); }
+    add('error_rate', errCount < 25, `${errCount} server errors since last check`);
+  } catch (e) { add('selfcheck', false, e.message); }
+  const ok = checks.every((c) => c.ok);
+  healthLast = { ts: Date.now(), ok, checks, uptimeSec: Math.round(process.uptime()) };
+  healthHistory.push({ ts: healthLast.ts, ok, fails: checks.filter((c) => !c.ok).map((c) => c.name) });
+  if (healthHistory.length > 60) healthHistory.shift();
+  errCount = 0; scBusy = false;
+  if (!ok) { audit('selfcheck_fail', null, null, { fails: healthLast.checks.filter((c) => !c.ok) }); alertAdmins(healthLast); }
+  return healthLast;
+}
+
 store.ready().then(() => {
   snapshotToday();
   setInterval(snapshotToday, 2 * 60 * 60 * 1000).unref(); // every 2h so the new day's snapshot lands promptly; no-ops if today is done
@@ -1763,6 +1809,7 @@ store.ready().then(() => {
   setInterval(metricsFlush, 120000).unref();              // persist footfall every 2 min
   hydrateAlerts();                                        // rebuild active-alert index from accounts
   setInterval(monitorAlerts, 60000).unref();             // check alert prices every 60s (fires + emails)
+  setTimeout(selfCheck, 20000); setInterval(selfCheck, 12 * 60 * 1000).unref(); // self-diagnostics every 12 min
   // Keep-warm: free hosts sleep after ~15 min idle, so the first visit then takes
   // ~50s to wake. A self-ping every few minutes keeps it hot → the app loads in <1s.
   const SELF_URL = (process.env.RENDER_EXTERNAL_URL || process.env.APP_URL || '').replace(/\/$/, '');

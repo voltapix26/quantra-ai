@@ -82,7 +82,10 @@
         <div class="adm-wrap" style="padding:1rem 1.1rem"><div style="font-size:.78rem;color:var(--muted-2);margin-bottom:.5rem">System status</div><div id="statStatus"></div></div>
       </div>
 
-      <div class="adm-sub" id="usersHdr">Users</div>
+      <div class="adm-sub" style="margin-top:1.8rem">🩺 Self-diagnostics <span style="color:var(--muted-2);font-weight:400">· the app testing itself, every 12 min</span></div>
+      <div class="adm-wrap" style="padding:1rem 1.1rem"><div id="healthBody" style="font-size:.86rem;color:var(--muted)">Loading…</div></div>
+
+      <div class="adm-sub" id="usersHdr" style="margin-top:1.8rem">Users</div>
       <div class="adm-wrap"><table class="adm-t" id="usersT"></table></div>
       <div class="adm-sub" style="margin-top:1.8rem">Audit log <span style="color:var(--muted-2);font-weight:400">· most recent first</span></div>
       <div class="adm-wrap"><table class="adm-t" id="auditT"></table></div>
@@ -120,6 +123,16 @@
         </tr>`).join('');
     }
     async function loadUsers() { renderUsers(await api('/api/admin/users')); }
+    function renderHealth(h) {
+      const el = $('healthBody'); if (!el) return;
+      const last = h && h.last;
+      if (!last) { el.innerHTML = 'No self-check has run yet — first one runs ~20s after a deploy.'; return; }
+      const dot = (ok) => `<span class="dot ${ok ? 'on' : 'off'}" style="${ok ? '' : 'background:var(--rose)'}"></span>`;
+      const overall = `<div style="margin-bottom:.7rem;font-weight:600;color:${last.ok ? 'var(--mint)' : 'var(--rose)'}">${last.ok ? '✓ All systems healthy' : '⚠ Issue detected'} <span style="color:var(--muted-2);font-weight:400">· checked ${fmtTime(last.ts)}</span></div>`;
+      const rows = (last.checks || []).map((c) => `<div class="strow"><span>${dot(c.ok)}${esc(c.name)}</span><b style="color:${c.ok ? 'var(--text)' : 'var(--rose)'};font-weight:400;font-size:.8rem">${esc(c.detail)}</b></div>`).join('');
+      const hist = (h.history || []).slice(-30).map((x) => `<span title="${fmtTime(x.ts)}${x.fails && x.fails.length ? ' · ' + x.fails.join(',') : ''}" style="display:inline-block;width:9px;height:14px;border-radius:2px;margin-right:2px;background:${x.ok ? 'var(--mint)' : 'var(--rose)'}"></span>`).join('');
+      el.innerHTML = overall + rows + (hist ? `<div style="margin-top:.8rem;font-size:.72rem;color:var(--muted-2)">Recent checks</div><div style="margin-top:.3rem">${hist}</div>` : '');
+    }
     function bindUserActions() {
       const t = $('usersT'); if (!t || t._bound) return; t._bound = true;
       t.addEventListener('click', async (e) => {
@@ -197,6 +210,7 @@
       } catch {}
 
       bindUserActions(); renderUsers(data);
+      try { renderHealth(await api('/api/admin/selfcheck')); } catch {}
 
       try {
         const a = await api('/api/admin/audit?limit=400');
