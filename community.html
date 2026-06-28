@@ -61,7 +61,7 @@
       <span class="bar__tag">Community</span>
       <div class="bar__spacer"></div>
       <nav class="bar__links">
-        <a href="index.html">Terminal</a>
+        <a href="terminal.html">Terminal</a>
         <a href="brief.html">Brief</a>
         <a href="discover.html">Discover</a>
         <a href="paper.html">Paper</a>
@@ -113,7 +113,7 @@
       const mine = it.handle && it.handle === handle;
       return `<div class="idea" data-id="${it.id}">
         <div class="idea__top">
-          <a class="idea__open idea__sym" href="index.html?type=${encodeURIComponent(it.assetType||'crypto')}&id=${encodeURIComponent(it.assetId||it.symbol)}&symbol=${encodeURIComponent(it.symbol)}&name=${encodeURIComponent(it.symbol)}">${esc(it.symbol)}</a>
+          <a class="idea__open idea__sym" href="terminal.html?type=${encodeURIComponent(it.assetType||'crypto')}&id=${encodeURIComponent(it.assetId||it.symbol)}&symbol=${encodeURIComponent(it.symbol)}&name=${encodeURIComponent(it.symbol)}">${esc(it.symbol)}</a>
           <span class="idea__dir ${it.direction}">${it.direction}</span>
           <span class="idea__who">by <b>${esc(it.handle||'anon')}</b></span>
           <span class="idea__when">${ago(it.ts)}</span>

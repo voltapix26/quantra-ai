@@ -1650,7 +1650,7 @@
     setInterval(() => { if (signedIn()) refreshAlertsFromServer(); }, 60000);
   }
 
-  // deep-link from the screener: index.html?type=&id=&symbol=&name=
+  // deep-link from the screener: terminal.html?type=&id=&symbol=&name=
   const P = new URLSearchParams(location.search);
   const dlType = P.get('type'), dlId = P.get('id'), dlSym = P.get('symbol');
   if (dlSym && dlType && dlId) {

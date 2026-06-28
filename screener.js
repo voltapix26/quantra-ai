@@ -28,7 +28,7 @@
     const d = data.map((v, i) => `${i ? 'L' : 'M'}${(i * step).toFixed(1)} ${(h - ((v - min) / rng) * (h - 4) - 2).toFixed(1)}`).join(' ');
     return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><path d="${d}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
   }
-  const linkFor = (it) => `index.html?type=${it.type}&id=${encodeURIComponent(it.id)}&symbol=${encodeURIComponent(it.symbol)}&name=${encodeURIComponent(it.name || it.symbol)}`;
+  const linkFor = (it) => `terminal.html?type=${it.type}&id=${encodeURIComponent(it.id)}&symbol=${encodeURIComponent(it.symbol)}&name=${encodeURIComponent(it.name || it.symbol)}`;
 
   function scoreRing(q) {
     const c = scoreColor(q), circ = 2 * Math.PI * 15, off = circ * (1 - q / 100);

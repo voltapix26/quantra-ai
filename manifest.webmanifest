@@ -2,7 +2,7 @@
   "name": "Quantra AI — Market Terminal",
   "short_name": "Quantra AI",
   "description": "Live technical + fundamental market analysis, alerts, and AI insights across crypto, stocks, ETFs and more.",
-  "start_url": "/index.html",
+  "start_url": "/terminal.html",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

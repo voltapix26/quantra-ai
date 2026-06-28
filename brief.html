@@ -52,7 +52,7 @@
       <span class="bar__tag">Daily Brief</span>
       <div class="bar__spacer"></div>
       <nav class="bar__links">
-        <a href="index.html">Terminal</a>
+        <a href="terminal.html">Terminal</a>
         <a href="brief.html" class="is-active">Brief</a>
         <a href="discover.html">Discover</a>
         <a href="calendar.html">Calendar</a>
@@ -82,7 +82,7 @@
     const sChg = (n) => n == null ? '—' : (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
     const money = (n, c) => n == null ? '—' : (c === 'USD' || !c ? '$' : '') + Number(n).toLocaleString('en-US',{maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : Math.abs(n) >= 1 ? 2 : 6}) + (c && c !== 'USD' ? ' ' + c : '');
     const daysAway = (iso) => { const d = Math.round((new Date(iso + 'T00:00:00') - new Date(new Date().toDateString())) / 864e5); return d <= 0 ? 'today' : d === 1 ? 'tomorrow' : 'in ' + d + 'd'; };
-    const link = (it) => `index.html?type=${encodeURIComponent(it.type)}&id=${encodeURIComponent(it.id || it.symbol)}&symbol=${encodeURIComponent(it.symbol)}&name=${encodeURIComponent(it.name || it.symbol)}`;
+    const link = (it) => `terminal.html?type=${encodeURIComponent(it.type)}&id=${encodeURIComponent(it.id || it.symbol)}&symbol=${encodeURIComponent(it.symbol)}&name=${encodeURIComponent(it.name || it.symbol)}`;
 
     function myAssets() {
       let watch = [], pf = [];
