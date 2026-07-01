@@ -1388,6 +1388,7 @@ async function authRoute(req, res, u) {
       return send(res, 200, { connected: !!b, provider: b ? b.provider : null, mode: b ? b.mode : null, keyHint: b ? maskKey(b.keyId) : null, connectedAt: b ? b.connectedAt : null });
     }
     if (p === '/api/broker/connect' && m === 'POST') {
+      if (tooMany(res, 'bc:' + clientIp(req), 15, 3600000)) return;   // 15 connect attempts / hr / IP
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       const provider = String(body.provider || '').toLowerCase();
       const mode = body.mode === 'live' ? 'live' : 'paper';
@@ -1427,6 +1428,7 @@ async function authRoute(req, res, u) {
     }
     // Place an order — ALWAYS user-initiated (one explicit request per order; no autonomous loop).
     if (p === '/api/broker/order' && m === 'POST') {
+      if (tooMany(res, 'bo:' + clientIp(req), 60, 3600000)) return;   // 60 orders / hr / IP (anti-abuse)
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       const b = s.user.broker; if (!b) return send(res, 400, { error: 'No broker connected.' });
       // Live orders require the client to echo the live mode explicitly — guards against an accidental real-money send.
