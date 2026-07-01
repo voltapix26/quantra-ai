@@ -195,7 +195,25 @@
           `<div style="margin-top:.7rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
              <input id="mailTo" type="email" placeholder="you@example.com" style="flex:1;min-width:140px;background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:7px;color:var(--text);padding:.4em .6em;font-size:.8rem" />
              <button class="abtn ok" id="mailTestBtn">Send test email</button>
-           </div><div id="mailTestOut" style="font-size:.78rem;color:var(--muted-2);margin-top:.5rem"></div>`;
+           </div><div id="mailTestOut" style="font-size:.78rem;color:var(--muted-2);margin-top:.5rem"></div>
+           <div style="margin-top:.8rem;border-top:1px solid var(--line);padding-top:.7rem">
+             <button class="abtn ok" id="dataTestBtn">Test data feeds</button>
+             <span style="font-size:.72rem;color:var(--muted-2);margin-left:.5rem">checks Twelve Data (NSE), Polygon &amp; Finnhub</span>
+             <div id="dataTestOut" style="font-size:.8rem;margin-top:.5rem"></div>
+           </div>`;
+        const dbtn = $('dataTestBtn');
+        if (dbtn) dbtn.addEventListener('click', async () => {
+          const out = $('dataTestOut'); dbtn.disabled = true; out.style.color = 'var(--muted-2)'; out.textContent = 'Testing live feeds…';
+          const line = (name, r) => !r ? '' : !r.configured ? `<div class="strow"><span>${name}</span><b style="color:var(--muted-2);font-weight:400">not configured</b></div>`
+            : r.ok ? `<div class="strow"><span><span class="dot on"></span>${name}</span><b style="color:var(--mint);font-weight:400">live · ${r.symbol} = ${r.price}${r.exchange ? ' ('+r.exchange+')' : ''}</b></div>`
+            : `<div class="strow"><span><span class="dot" style="background:var(--rose)"></span>${name}</span><b style="color:var(--rose);font-weight:400;font-size:.78rem">${esc(r.error||'failed')}</b></div>`;
+          try {
+            const r = await api('/api/admin/datatest');
+            out.style.color = 'var(--muted)';
+            out.innerHTML = line('Twelve Data (RELIANCE.NS)', r.twelvedata) + line('Polygon (AAPL)', r.polygon) + line('Finnhub (AAPL)', r.finnhub);
+          } catch (e) { out.style.color = 'var(--rose)'; out.textContent = '✗ ' + e.message; }
+          dbtn.disabled = false;
+        });
         const mb = $('mailTestBtn');
         if (mb) mb.addEventListener('click', async () => {
           const out = $('mailTestOut'), to = ($('mailTo').value || '').trim();

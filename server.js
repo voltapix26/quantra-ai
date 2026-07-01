@@ -125,6 +125,33 @@ async function polyQuote(sym) {
     };
   } catch { return null; }
 }
+// Verbose provider self-tests for the admin diagnostic — surface the RAW success/error
+// (e.g. "symbol not found", "requires a paid plan", "out of credits") so the operator can
+// tell instantly whether a data key works and covers a given market.
+async function tdTest(yh) {
+  if (!TWELVEDATA_KEY) return { configured: false };
+  const { symbol, exchange } = tdSymbol(yh);
+  const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}${exchange ? '&exchange=' + encodeURIComponent(exchange) : ''}&apikey=${TWELVEDATA_KEY}`;
+  try { const d = await getJSON(url);
+    if (d && d.close && !d.code && d.status !== 'error') return { configured: true, ok: true, symbol: yh, price: +d.close, exchange: d.exchange || exchange || '' };
+    return { configured: true, ok: false, symbol: yh, error: (d && (d.message || d.status)) || 'no data returned' };
+  } catch (e) { return { configured: true, ok: false, symbol: yh, error: e.message }; }
+}
+async function polyTest(sym) {
+  if (!POLYGON_KEY) return { configured: false };
+  try { const d = await getJSON(`https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(sym)}?apiKey=${POLYGON_KEY}`);
+    const t = d && d.ticker, price = t && ((t.lastTrade && t.lastTrade.p) || (t.day && t.day.c) || (t.prevDay && t.prevDay.c));
+    if (price > 0) return { configured: true, ok: true, symbol: sym, price };
+    return { configured: true, ok: false, symbol: sym, error: (d && (d.message || d.error || d.status)) || 'no data returned' };
+  } catch (e) { return { configured: true, ok: false, symbol: sym, error: e.message }; }
+}
+async function fhTest(sym) {
+  if (!FINNHUB_KEY) return { configured: false };
+  try { const d = await getJSON(`${FINNHUB}/quote?symbol=${encodeURIComponent(sym)}&token=${FINNHUB_KEY}`);
+    if (d && d.c > 0) return { configured: true, ok: true, symbol: sym, price: d.c };
+    return { configured: true, ok: false, symbol: sym, error: 'no data returned' };
+  } catch (e) { return { configured: true, ok: false, symbol: sym, error: e.message }; }
+}
 const cgHeaders = () => (COINGECKO_KEY ? { 'x-cg-demo-api-key': COINGECKO_KEY } : {});
 // Super-admins (oversight only — emails/metadata + audit log, NEVER passwords).
 // Set SUPER_ADMINS="a@x.com,b@y.com". Empty = nobody has admin access (secure default).
@@ -1348,6 +1375,13 @@ async function authRoute(req, res, u) {
       }));
       rows.sort((a, b) => (b.lastLogin || b.createdAt || 0) - (a.lastLogin || a.createdAt || 0));
       return send(res, 200, { count: rows.length, users: rows });
+    }
+    if (p === '/api/admin/datatest' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
+      const nse = String(u.searchParams.get('symbol') || 'RELIANCE.NS');
+      const [twelvedata, polygon, finnhub] = await Promise.all([tdTest(nse), polyTest('AAPL'), fhTest('AAPL')]);
+      return send(res, 200, { twelvedata, polygon, finnhub });
     }
     if (p === '/api/admin/mail-test' && m === 'POST') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
