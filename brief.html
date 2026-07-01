@@ -70,8 +70,9 @@
       <button class="btn btn--primary btn--sm" id="brRefresh">↻ Regenerate</button>
       <span style="color:var(--muted-2);font-size:.82rem" id="brSrc"></span>
     </div>
+    <div id="brForYou"></div>
     <div id="brBody"></div>
-    <p class="br-foot">Built from your watchlist &amp; portfolio using live data.</p>
+    <p class="br-foot">Built from your watchlist &amp; portfolio using live data. The <b>For you</b> panel learns from the assets you open most.</p>
   </main>
 
   <script>
@@ -122,7 +123,7 @@
       $('brDate').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
       if (!onServer) { $('brBody').innerHTML = '<div class="br-state">Run the live server to generate your brief.</div>'; return; }
       const items = myAssets();
-      if (!items.length) { $('brBody').innerHTML = '<div class="br-state">Your watchlist is empty. Add assets from the <a href="index.html">terminal</a> or <a href="discover.html">discover</a> page, then come back for a personalized brief.</div>'; return; }
+      if (!items.length) { $('brBody').innerHTML = '<div class="br-state">Your watchlist is empty. Add assets from the <a href="terminal.html">terminal</a> or <a href="discover.html">discover</a> page, then come back for a personalized brief.</div>'; return; }
       $('brBody').innerHTML = '<div class="br-narr"><div class="br-narr__badge">✦ Quantra · generating…</div><div class="br-skel" style="width:92%"></div><div class="br-skel" style="width:85%"></div><div class="br-skel" style="width:78%"></div></div>';
       try {
         const headers = { 'Content-Type': 'application/json' }; if (tok) headers.Authorization = 'Bearer ' + tok;
@@ -131,8 +132,17 @@
         render(d);
       } catch { $('brBody').innerHTML = '<div class="br-state">Could not generate your brief right now.</div>'; }
     }
+    async function loadForYou() {
+      if (!onServer || !tok) return;   // personalized "For you" is for signed-in users
+      try {
+        const f = await (await fetch('/api/me/foryou', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'same-origin' })).json();
+        if (!f || !Array.isArray(f.watched) || !f.watched.length) return;
+        const rows = f.watched.map((r) => `<a class="br-row" href="${link(r)}"><span class="br-row__sym">${esc(r.symbol)}</span><span class="br-row__name">${esc(r.name || '')}</span><span class="br-row__px">${money(r.price, r.currency)}</span><span class="br-row__chg ${r.change >= 0 ? 'up' : 'down'}">${sChg(r.change)}</span></a>`).join('');
+        $('brForYou').innerHTML = `<div class="br-card" style="margin-bottom:1.3rem"><h3>✦ For you — the assets you follow most${f.favoriteClass ? ' · mostly ' + esc(f.favoriteClass) : ''}</h3>${rows}</div>`;
+      } catch {}
+    }
     $('brRefresh').addEventListener('click', load);
-    load();
+    load(); loadForYou();
   </script>
 </body>
 </html>

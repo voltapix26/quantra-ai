@@ -1277,6 +1277,37 @@ async function authRoute(req, res, u) {
         return send(res, 200, d);
       }
     }
+    /* ---- Personalization: learn what each user watches (affinity), tailor "For you" ---- */
+    if (p === '/api/me/track' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 200, { ok: false });   // silent for guests
+      const type = String(body.type || '').slice(0, 12), id = String(body.id || body.symbol || '').slice(0, 40);
+      const symbol = String(body.symbol || '').slice(0, 24), name = String(body.name || '').slice(0, 60);
+      if (!type || !id) return send(res, 200, { ok: false });
+      const d = await store.getUserData(s.user.id);
+      const aff = d.affinity = d.affinity || { symbols: {}, classes: {} };
+      const key = type + ':' + id, cur = aff.symbols[key] || { n: 0, type, id, symbol, name };
+      cur.n++; cur.t = Date.now(); if (symbol) cur.symbol = symbol; if (name) cur.name = name;
+      aff.symbols[key] = cur; aff.classes[type] = (aff.classes[type] || 0) + 1;
+      const keys = Object.keys(aff.symbols);
+      if (keys.length > 40) {   // keep the 40 strongest signals (views, then recency)
+        keys.sort((a, b) => (aff.symbols[b].n - aff.symbols[a].n) || ((aff.symbols[b].t || 0) - (aff.symbols[a].t || 0)));
+        const keep = {}; keys.slice(0, 40).forEach((k) => { keep[k] = aff.symbols[k]; }); aff.symbols = keep;
+      }
+      await store.putUserData(s.user.id, d);
+      return send(res, 200, { ok: true });
+    }
+    if (p === '/api/me/foryou' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const d = await store.getUserData(s.user.id);
+      const aff = d.affinity || { symbols: {}, classes: {} };
+      const syms = Object.values(aff.symbols || {}).sort((a, b) => (b.n - a.n) || ((b.t || 0) - (a.t || 0))).slice(0, 6);
+      const favClass = Object.entries(aff.classes || {}).sort((a, b) => b[1] - a[1])[0];
+      const watched = await Promise.all(syms.map(async (x) => {
+        try { const pr = await api['price']({ type: x.type, id: x.id, symbol: x.symbol }); return { type: x.type, id: x.id, symbol: x.symbol, name: x.name, price: pr && pr.price, change: pr && pr.change, currency: pr && pr.currency, views: x.n }; }
+        catch { return { type: x.type, id: x.id, symbol: x.symbol, name: x.name, views: x.n }; }
+      }));
+      return send(res, 200, { favoriteClass: favClass ? favClass[0] : null, watched, totalViews: Object.values(aff.classes || {}).reduce((a, b) => a + b, 0) });
+    }
     if (p === '/api/me/limits' && m === 'GET') {
       const s = await sessionUser(req);
       const org = s ? await store.getOrg(s.user.orgId) : null;
@@ -1846,7 +1877,7 @@ store.ready().then(() => {
       await trackDevSeed(); return send(res, 200, { ok: true });
     }
     if (u.pathname === '/api/billing/webhook') return billingWebhook(req, res);
-    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname === '/api/me/data' || u.pathname === '/api/me/limits' || u.pathname === '/api/me/export' || u.pathname === '/api/me/delete' || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname === '/api/brief' || u.pathname.startsWith('/api/community/') || u.pathname.startsWith('/api/billing/') || u.pathname.startsWith('/api/broker/')) {
+    if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname.startsWith('/api/me/') || u.pathname === '/api/org' || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname === '/api/brief' || u.pathname.startsWith('/api/community/') || u.pathname.startsWith('/api/billing/') || u.pathname.startsWith('/api/broker/')) {
       return authRoute(req, res, u);
     }
     if (u.pathname.startsWith('/api/')) {

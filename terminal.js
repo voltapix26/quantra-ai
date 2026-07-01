@@ -961,6 +961,13 @@
   let salerts = [];
   try { salerts = JSON.parse(localStorage.getItem('quantra.salerts') || '[]'); } catch {}
   const signedIn = () => !!(window.QuantraAuth && window.QuantraAuth.user);
+  function trackView(item) {   // personalization signal — records the viewed asset for signed-in users
+    if (!onServer || !signedIn() || !item) return;
+    const t = window.QuantraAuth && window.QuantraAuth.token;
+    fetch(`${API}/me/track`, { method: 'POST', credentials: 'same-origin',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, t ? { Authorization: 'Bearer ' + t } : {}),
+      body: JSON.stringify({ type: item.type, id: item.id, symbol: item.symbol, name: item.name }) }).catch(() => {});
+  }
   const uid = () => 'a' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
   function alCondText(a) {
     if (a.cond === 'price_above') return 'rises to ≥ ' + money(a.value, curBase);
@@ -1222,6 +1229,7 @@
   /* ---------------- select + analyze ---------------- */
   async function select(item) {
     current = item;
+    trackView(item);   // personalization: learn what this user watches (signed-in only, fire-and-forget)
     idxMode = (item.type === 'index');   // show index detail in points, not FX-converted
     stopLive(); stopTick();
     if (replay.on) { stopReplay(); replay.on = false; const rc = $('replayCtl'); if (rc) rc.hidden = true; const rtg = $('replayToggle'); if (rtg) { rtg.classList.remove('is-on'); rtg.textContent = '⏮ Replay'; } }
