@@ -152,6 +152,21 @@ async function fhTest(sym) {
     return { configured: true, ok: false, symbol: sym, error: 'no data returned' };
   } catch (e) { return { configured: true, ok: false, symbol: sym, error: e.message }; }
 }
+// Turn a raw provider error into a concrete fix the operator can act on.
+function feedHint(provider, r) {
+  if (!r || !r.configured || r.ok) return null;
+  const e = String(r.error || '').toLowerCase();
+  const varName = provider === 'twelvedata' ? 'TWELVEDATA_API_KEY' : provider === 'polygon' ? 'POLYGON_API_KEY' : 'FINNHUB_API_KEY';
+  if (/401|403|unauthor|invalid.*key|api ?key|forbidden/.test(e)) return `→ Key looks invalid — recheck ${varName} (exact spelling + value) on Render, then redeploy.`;
+  if (/credit|quota|out of|429|too many|rate.?limit|run out/.test(e)) return '→ Out of API credits or rate-limited — wait, or move to a higher plan.';
+  if (/plan|upgrade|not available|grow|\bpro\b|premium|subscription|access/.test(e)) return provider === 'twelvedata'
+    ? '→ NSE/BSE needs a higher Twelve Data plan — upgrade to Grow/Pro for Indian real-time.'
+    : `→ Real-time here is a paid ${provider} tier — upgrade the plan.`;
+  if (/not found|no data|symbol|invalid symbol/.test(e)) return provider === 'twelvedata'
+    ? '→ Symbol/exchange not covered on this plan — NSE/BSE usually needs a paid Twelve Data tier.'
+    : '→ Symbol not covered by this provider/plan.';
+  return '→ Check the provider dashboard for details on this error.';
+}
 const cgHeaders = () => (COINGECKO_KEY ? { 'x-cg-demo-api-key': COINGECKO_KEY } : {});
 // Super-admins (oversight only — emails/metadata + audit log, NEVER passwords).
 // Set SUPER_ADMINS="a@x.com,b@y.com". Empty = nobody has admin access (secure default).
@@ -1381,6 +1396,9 @@ async function authRoute(req, res, u) {
       if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
       const nse = String(u.searchParams.get('symbol') || 'RELIANCE.NS');
       const [twelvedata, polygon, finnhub] = await Promise.all([tdTest(nse), polyTest('AAPL'), fhTest('AAPL')]);
+      twelvedata.hint = feedHint('twelvedata', twelvedata);
+      polygon.hint = feedHint('polygon', polygon);
+      finnhub.hint = feedHint('finnhub', finnhub);
       return send(res, 200, { twelvedata, polygon, finnhub });
     }
     if (p === '/api/admin/mail-test' && m === 'POST') {
