@@ -1164,6 +1164,10 @@
 
   /* ---------------- live seconds (tick) chart ---------------- */
   let lastTickT = 0;
+  // Live self-scoring of the per-second projection: we log each projection with its due
+  // time, then grade it against the real tick that arrives at/after that time — a genuine,
+  // measured hit rate at the seconds scale (no back-fill, resets each session).
+  let projPending = [], projScore = { band: 0, dir: 0, n: 0, perS: {} }, lastProjRec = 0;
   function pushTick(p) {
     if (!(p > 0)) return;
     const t = Date.now();
@@ -1171,6 +1175,19 @@
     tickBuf.push({ t, p });
     const cut = t - tickWinMs;
     while (tickBuf.length > 2 && tickBuf[0].t < cut) tickBuf.shift();
+    // grade any matured projections against this real tick (band hit + direction hit)
+    if (projPending.length) {
+      const still = [];
+      for (const pp of projPending) {
+        if (t < pp.dueAt) { still.push(pp); continue; }
+        const inBand = p >= pp.lo && p <= pp.hi;
+        const dirOk = pp.mid === pp.base ? true : Math.sign(p - pp.base) === Math.sign(pp.mid - pp.base);
+        projScore.band += inBand ? 1 : 0; projScore.dir += dirOk ? 1 : 0; projScore.n++;
+        const ps = projScore.perS[pp.s] || (projScore.perS[pp.s] = { band: 0, dir: 0, n: 0 });
+        ps.band += inBand ? 1 : 0; ps.dir += dirOk ? 1 : 0; ps.n++;
+      }
+      projPending = still;
+    }
     // live millisecond readout — real receive time + real inter-tick gap (genuine cadence)
     const tl = $('tickLive');
     if (tl && tickMode) {
@@ -1219,17 +1236,29 @@
     const st = tickStats();
     if (!st) { $('projTable').innerHTML = ''; $('projAsof').textContent = 'Accumulating live ticks to project…'; card.hidden = false; return; }
     const now = Date.now();
-    const rows = [5, 10, 20, 30].map((s) => {
+    // Per-second horizons, down to the lowest the tick feed supports (+1s).
+    const HS = [1, 2, 3, 5, 10, 20, 30];
+    // Log fresh projections (~1×/sec) so pushTick can grade them once they mature.
+    if (now - lastProjRec > 1000) {
+      lastProjRec = now;
+      for (const s of HS) { const mid = st.last + st.driftPerSec * s, w = st.volPerSec * Math.sqrt(s) * 1.28; projPending.push({ dueAt: now + s * 1000, base: st.last, mid, lo: mid - w, hi: mid + w, s }); }
+      if (projPending.length > 800) projPending = projPending.slice(-800);
+    }
+    const rows = HS.map((s) => {
       const mid = st.last + st.driftPerSec * s, w = st.volPerSec * Math.sqrt(s) * 1.28, up = st.driftPerSec >= 0;
       const d = new Date(now + s * 1000);
-      return `<tr><td>${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}<small>+${s}s</small></td><td class="proj-px">${money(mid, curBase)}</td><td class="proj-rng">${money(mid - w, curBase)} – ${money(mid + w, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${((mid / st.last - 1) * 100).toFixed(2)}%</td></tr>`;
+      const ps = projScore.perS[s];
+      const hit = ps && ps.n ? `${Math.round(100 * ps.band / ps.n)}% <small>n=${ps.n}</small>` : '<span class="proj-wait">—</span>';
+      return `<tr><td>${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}<small>+${s}s</small></td><td class="proj-px">${money(mid, curBase)}</td><td class="proj-rng">${money(mid - w, curBase)} – ${money(mid + w, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${((mid / st.last - 1) * 100).toFixed(2)}%</td><td class="proj-hit">${hit}</td></tr>`;
     }).join('');
-    $('projTable').innerHTML = '<tr><th>Time</th><th>Projected</th><th>Range (P10–P90)</th><th>Δ vs now</th></tr>' + rows;
-    $('projAsof').textContent = 'Live tick projection from the last ' + tickBuf.length + ' ticks — very short horizon, high uncertainty, not a guarantee.';
+    $('projTable').innerHTML = '<tr><th>Time</th><th>Projected</th><th>Range (P10–P90)</th><th>Δ vs now</th><th>Live hit</th></tr>' + rows;
+    const sc = projScore.n ? ` Live hit rate this session: band ${Math.round(100 * projScore.band / projScore.n)}% · direction ${Math.round(100 * projScore.dir / projScore.n)}% (n=${projScore.n}).` : '';
+    $('projAsof').textContent = 'Live per-second projection from the last ' + tickBuf.length + ' ticks — down to a +1s horizon; very short, high uncertainty, not a guarantee.' + sc;
     card.hidden = false;
   }
   function startTickChart() {
     tickBuf = []; lastTickT = 0;
+    projPending = []; projScore = { band: 0, dir: 0, n: 0, perS: {} }; lastProjRec = 0;
     const tl = $('tickLive'); if (tl) { tl.hidden = false; tl.innerHTML = '<span class="tl-dot"></span>Waiting for the first live tick…'; }
     if (state && state.history && state.history.closes && state.history.closes.length) tickBuf.push({ t: Date.now(), p: state.history.closes[state.history.closes.length - 1] });
     drawTickChart(); renderTickProjection();

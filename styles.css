@@ -343,6 +343,9 @@ button{font-family:inherit}
 .proj-rng{color:var(--muted-2)}
 .proj-d.up{color:var(--mint);font-weight:600}
 .proj-d.down{color:var(--rose);font-weight:600}
+.proj-hit{color:var(--fg);font-weight:600}
+.proj-hit small{display:inline;color:var(--muted-2);font-size:.68rem;font-weight:400;margin-left:.25rem}
+.proj-wait{color:var(--muted-2);font-weight:400}
 .proj-pending{color:var(--muted-2);font-size:.74rem}
 
 /* ---- Ask Quantra (conversational analyst) ---- */
