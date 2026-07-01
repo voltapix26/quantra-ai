@@ -687,3 +687,11 @@ button{font-family:inherit}
 .phero p{color:var(--muted);margin-top:.5rem;max-width:62ch;line-height:1.55}
 .phero__gl{width:128px;height:128px;flex:0 0 auto;display:block}
 @media(max-width:720px){.phero{grid-template-columns:1fr}.phero__gl{display:none}}
+
+/* Live millisecond tick readout (seconds mode) — real receive time + inter-tick gap */
+.tick-live{display:flex;align-items:center;gap:.5rem;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;
+  color:var(--muted);background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.2);border-radius:9px;
+  padding:.4em .7em;margin:.1rem 0 .5rem;font-variant-numeric:tabular-nums}
+.tick-live b{color:var(--text);font-weight:600}
+.tick-live .tl-dot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 3px rgba(52,211,153,.18);animation:pulse 1.4s infinite}
+.tick-live .tl-gap{color:var(--cyan)}

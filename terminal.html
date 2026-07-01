@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0A0F1C" />
   <link rel="apple-touch-icon" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=48" />
+  <link rel="stylesheet" href="styles.css?v=49" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -166,6 +166,7 @@
             <span><i style="background:#FBBF24"></i>SMA 50</span>
             <span><i style="background:#22D3EE;opacity:.5"></i>Forecast · 80% band</span>
           </div>
+          <div class="tick-live" id="tickLive" hidden></div>
           <div class="chartwrap">
             <svg class="chart" id="chart" viewBox="0 0 720 240" preserveAspectRatio="none"></svg>
             <div class="chart-tip" id="chartTip"></div>
@@ -385,7 +386,7 @@
   <script src="auth.js?v=46"></script>
   <script src="analysis.js?v=45"></script>
   <script src="report.js?v=45"></script>
-  <script src="terminal.js?v=49"></script>
+  <script src="terminal.js?v=50"></script>
   <script src="pwa.js?v=45" defer></script>
 </body>
 </html>

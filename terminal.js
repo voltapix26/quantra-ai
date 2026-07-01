@@ -677,11 +677,13 @@
   function fmtTipDate(iso) {
     if (!iso) return '';
     const intr = $('intervalSel').value;
-    const opt = intr === 'sec'
-      ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
-      : (intr === '1m' || intr === '60m')
-        ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
-        : { year: 'numeric', month: 'short', day: 'numeric' };
+    if (intr === 'sec') {   // live mode: show real millisecond precision on the tick time
+      const d = new Date(iso);
+      return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+    }
+    const opt = (intr === '1m' || intr === '60m')
+      ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+      : { year: 'numeric', month: 'short', day: 'numeric' };
     return new Date(iso).toLocaleString('en-US', opt);
   }
   function setupChartHover() {
@@ -1161,12 +1163,22 @@
   }
 
   /* ---------------- live seconds (tick) chart ---------------- */
+  let lastTickT = 0;
   function pushTick(p) {
     if (!(p > 0)) return;
     const t = Date.now();
+    const gap = lastTickT ? t - lastTickT : null; lastTickT = t;
     tickBuf.push({ t, p });
     const cut = t - tickWinMs;
     while (tickBuf.length > 2 && tickBuf[0].t < cut) tickBuf.shift();
+    // live millisecond readout — real receive time + real inter-tick gap (genuine cadence)
+    const tl = $('tickLive');
+    if (tl && tickMode) {
+      const d = new Date(t), ms = String(d.getMilliseconds()).padStart(3, '0');
+      const hhmmss = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      tl.hidden = false;
+      tl.innerHTML = `<span class="tl-dot"></span><b>${hhmmss}.${ms}</b> · ${money(p, curBase)}${gap != null ? ` · <span class="tl-gap">+${gap} ms</span>` : ''}`;
+    }
     if (!tickTimer) tickTimer = setTimeout(() => { tickTimer = null; if (tickMode) { drawTickChart(); renderTickProjection(); } }, 250);
   }
   function tickStats() {
@@ -1217,11 +1229,12 @@
     card.hidden = false;
   }
   function startTickChart() {
-    tickBuf = [];
+    tickBuf = []; lastTickT = 0;
+    const tl = $('tickLive'); if (tl) { tl.hidden = false; tl.innerHTML = '<span class="tl-dot"></span>Waiting for the first live tick…'; }
     if (state && state.history && state.history.closes && state.history.closes.length) tickBuf.push({ t: Date.now(), p: state.history.closes[state.history.closes.length - 1] });
     drawTickChart(); renderTickProjection();
   }
-  function stopTick() { tickMode = false; if (tickTimer) { clearTimeout(tickTimer); tickTimer = null; } }
+  function stopTick() { tickMode = false; if (tickTimer) { clearTimeout(tickTimer); tickTimer = null; } const tl = $('tickLive'); if (tl) tl.hidden = true; }
 
   /* ---------------- Quantra Score + watchlist ---------------- */
   const scoreColor = (q) => q >= 70 ? '#34D399' : q >= 56 ? '#22D3EE' : q >= 45 ? '#FBBF24' : '#FB7185';
