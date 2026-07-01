@@ -67,10 +67,19 @@
       const raw = await getJSON(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=1&sparkline=true&price_change_percentage=24h`);
       return raw.map((c) => ({ type: 'crypto', id: c.id, symbol: (c.symbol || '').toUpperCase(), name: c.name, price: c.current_price, change24h: c.price_change_percentage_24h, marketCap: c.market_cap, volume: c.total_volume, spark: (c.sparkline_in_7d && c.sparkline_in_7d.price) || [] }));
     }
+    if (cls === 'foryou') {   // personalized: the assets this user opens most
+      if (!onServer || !signedIn()) return [];
+      const t = window.QuantraAuth && window.QuantraAuth.token;
+      const r = await fetch(`${API}/me/foryou`, { headers: t ? { Authorization: 'Bearer ' + t } : {}, credentials: 'same-origin' });
+      if (!r.ok) return [];
+      const f = await r.json();
+      return (f.watched || []).map((w) => ({ type: w.type, id: w.id, symbol: w.symbol, name: w.name, price: w.price, change24h: w.change, currency: w.currency, spark: [] }));
+    }
     if (!onServer) throw new Error('static');
     const q = cls === 'stock' ? `?market=${encodeURIComponent(stockMarket)}` : '';
     return getJSON(`${API}/${BOARD_EP[cls] || 'stock/board'}${q}`);
   }
+  function updateForYouTab() { const b = document.getElementById('segForYou'); if (b) b.hidden = !signedIn(); }
   // valid lookback ranges per interval (keeps Yahoo combos legal) + defaults
   const RANGES = {
     'sec': [['1m', '1m'], ['5m', '5m'], ['15m', '15m']],     // live tick window (crypto)
@@ -174,7 +183,9 @@
     if (cls === 'stock' && typeof applyCurrency === 'function') { const mk = stockMarkets.find((m) => m.id === stockMarket); if (mk) applyCurrency(mk.ccy, false); }
     $('search').value = ''; $('results').hidden = true;
     $('list').innerHTML = '<div class="tempty" id="empty">Loading live markets…</div>';
-    try { board = await loadBoard(cls); renderBoard(); (cls === 'crypto' ? startArr() : stopArr()); if (board[0]) select(board[0]); }
+    try { board = await loadBoard(cls); renderBoard(); (cls === 'crypto' ? startArr() : stopArr());
+      if (cls === 'foryou' && !board.length) { const em = $('empty'); if (em) em.textContent = 'Open a few assets and they’ll appear here — Quantra learns what you follow.'; }
+      if (board[0]) select(board[0]); }
     catch (e) {
       const empty = $('empty');
       if (cls === 'stock' && !onServer) empty.innerHTML = 'Stocks need the live server.<br>Run <code>node server.js</code> then open <b>localhost:5280</b>';
@@ -1545,6 +1556,7 @@
 
   /* ---------------- controls ---------------- */
   document.querySelectorAll('.seg__btn').forEach((b) => b.addEventListener('click', () => switchClass(b.dataset.class)));
+  updateForYouTab(); window.addEventListener('quantra:limits', updateForYouTab); setTimeout(updateForYouTab, 2000);
   function fillRanges() {
     const intr = $('intervalSel').value, opts = RANGES[intr] || RANGES['1d'], cur = $('rangeSel').value;
     $('rangeSel').innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');

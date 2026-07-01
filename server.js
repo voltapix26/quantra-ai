@@ -605,8 +605,9 @@ const api = {
     const topGainers = priced.slice(0, 3).map((x) => ({ symbol: x.symbol, change: x.change }));
     const topLosers = priced.slice(-3).reverse().map((x) => ({ symbol: x.symbol, change: x.change }));
     const date = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    const narrative = await briefNarrative({ date, count: priced.length, up, down, avg, topGainers, topLosers, market, earnings });
-    return { ok: true, date, count: priced.length, up, down, avg, rows: priced, topGainers, topLosers, market, earnings, text: narrative.text, source: narrative.source };
+    const watching = (body && Array.isArray(body.affinity)) ? body.affinity.slice(0, 4) : [];
+    const narrative = await briefNarrative({ date, count: priced.length, up, down, avg, topGainers, topLosers, market, earnings, watching });
+    return { ok: true, date, count: priced.length, up, down, avg, rows: priced, topGainers, topLosers, market, earnings, watching, text: narrative.text, source: narrative.source };
   },
   // Universal current price for any held asset (portfolio tracker).
   async 'price'(q) {
@@ -904,6 +905,7 @@ function localAnswer(question, c) {
 function localBrief(d) {
   const p = [];
   p.push(`Here's your ${d.date} brief.`);
+  if (d.watching && d.watching.length) p.push(`You've been following ${d.watching.slice(0, 3).join(', ')} most.`);
   if (!d.count) { p.push('Add assets to your watchlist to get a personalized read on what moved and what\'s coming up.'); p.push('Not investment advice.'); return p.join(' '); }
   const tone = d.avg > 0.3 ? 'mostly green' : d.avg < -0.3 ? 'mostly red' : 'mixed';
   p.push(`Your ${d.count} watched asset(s) are ${tone} today — ${d.up} up, ${d.down} down, ${d.avg >= 0 ? '+' : ''}${d.avg}% on average.`);
@@ -919,7 +921,7 @@ async function briefNarrative(d) {
   if (ANTHROPIC_KEY && Anthropic && AI_MODEL) {
     try {
       const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
-      const sys = 'You are Quantra AI writing a short, personalized market brief for a user, based ONLY on the supplied data (their watchlist moves, broader-market breadth, upcoming earnings). 4-6 warm but factual sentences with concrete numbers. No buy/sell advice, no markdown, no price targets.';
+      const sys = 'You are Quantra AI writing a short, personalized market brief for a user, based ONLY on the supplied data (their watchlist moves, broader-market breadth, upcoming earnings). If a non-empty "watching" list is present, open by acknowledging the assets they follow most. 4-6 warm but factual sentences with concrete numbers. No buy/sell advice, no markdown, no price targets.';
       const msg = await client.messages.create({ model: AI_MODEL, max_tokens: 420, system: sys, messages: [{ role: 'user', content: 'Brief data:\n' + JSON.stringify(d) }] });
       const t = (msg.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
       if (t) return { text: t, source: 'ai' };
@@ -1510,6 +1512,11 @@ async function authRoute(req, res, u) {
     }
     if (p === '/api/brief' && m === 'POST') {
       if (tooMany(res, 'brief:' + clientIp(req), 20, 3600000)) return;   // 20 briefs / hour / IP
+      try {   // personalize: tell the brief which assets this user follows most
+        const s = await sessionUser(req);
+        if (s) { const ud = await store.getUserData(s.user.id); const aff = ud.affinity && ud.affinity.symbols;
+          if (aff) body.affinity = Object.values(aff).sort((a, b) => (b.n - a.n) || ((b.t || 0) - (a.t || 0))).slice(0, 4).map((x) => x.symbol); }
+      } catch {}
       return send(res, 200, await api['brief'](Object.fromEntries(u.searchParams.entries()), body));
     }
     // ---- community: shared trade ideas + paper-return leaderboard ----
