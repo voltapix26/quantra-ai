@@ -835,9 +835,12 @@ const api = {
     });
   },
 
-  /* ---- live config: tells the client which live sources are available ---- */
+  /* ---- live config: tells the client which live sources are available ----
+     Booleans only (never key values) so the UI — and the operator — can see at a
+     glance which real-time feeds are actually loaded: crypto (always), US
+     (finnhub), international incl. India/NSE (twelvedata), US fallback (polygon). */
   async config() {
-    return { cryptoStream: true, finnhub: !!FINNHUB_KEY };
+    return { cryptoStream: true, finnhub: !!FINNHUB_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY };
   },
 
   /* ---- Finnhub real-time US stock quote (key stays server-side) ---- */
