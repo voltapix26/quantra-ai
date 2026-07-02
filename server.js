@@ -150,7 +150,9 @@ async function rapidQuote(yh) {
   if (!RAPIDAPI_KEY) return null;
   const rs = rapidSymbol(yh); if (!rs) return null;
   try {
-    const d = await cached(`rapid:q:${rs}`, 15000, () => getJSON(
+    // 60s TTL (not 15s): RapidAPI free tiers have tight monthly quotas — a longer cache
+    // keeps international prices "live enough" while burning ~4x fewer requests.
+    const d = await cached(`rapid:q:${rs}`, 60000, () => getJSON(
       `https://${RAPIDAPI_HOST}/stock-quote?symbol=${encodeURIComponent(rs)}&language=en`, rapidHeaders()));
     const q = (d && d.data) || d; if (!q) return null;
     const price = +((q.price != null) ? q.price : q.last);
@@ -928,7 +930,7 @@ const api = {
     if (!q.symbol) return { ok: false, reason: 'no-symbol' };
     const rs = rapidSymbol(q.symbol) || (String(q.symbol).includes(':') ? q.symbol : `${q.symbol}:NASDAQ`);
     try {
-      const d = await cached(`rapid:news:${rs}`, 5 * 60 * 1000, () => getJSON(
+      const d = await cached(`rapid:news:${rs}`, 30 * 60 * 1000, () => getJSON(
         `https://${RAPIDAPI_HOST}/stock-news?symbol=${encodeURIComponent(rs)}&language=en`, rapidHeaders()));
       const raw = (d && d.data && (d.data.news || d.data)) || d.news || [];
       const news = (Array.isArray(raw) ? raw : []).slice(0, 12).map((n) => ({
