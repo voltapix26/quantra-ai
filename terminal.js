@@ -878,10 +878,28 @@
     const rows = fc.horizons.map((h) => {
       const d = projDateFor(lastIso, h.bars, interval, isCrypto);
       const proj = p0 * (1 + h.move), lo = p0 * (1 + h.lo), hi = p0 * (1 + h.hi), up = h.move >= 0;
-      const st = projStatus(hist, d.toISOString().slice(0, 10), p0, proj, lo, hi);
+      const st = projStatus(hist, d.toISOString(), p0, proj, lo, hi);
       return `<tr><td>${fmtD(d)}<small>+${h.bars} ${interval === '1wk' ? 'wk' : interval === '60m' ? 'h' : interval === '1m' ? 'm' : 'sessions'}</small></td><td class="proj-px">${money(proj, curBase)}</td><td class="proj-rng">${money(lo, curBase)} – ${money(hi, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${(h.move * 100).toFixed(1)}%</td><td>${st}</td></tr>`;
     }).join('');
-    $('projTable').innerHTML = '<tr><th>Date</th><th>Projected (P50)</th><th>Range (P10–P90)</th><th>Δ vs now</th><th>Status</th></tr>' + rows;
+    // Matured checkpoints from earlier visits — the "did it go or not" rows, shown right
+    // in the projection list: past projection vs the price that actually happened.
+    let verified = '';
+    try {
+      const log = JSON.parse(localStorage.getItem('quantra.projlog') || '{}');
+      const past = [];
+      for (const e of (log[akey(item)] || [])) for (const c of e.checks) {
+        const actual = actualAt(hist, c.date);
+        if (actual == null) continue;
+        const v = projVerdict(e.p0, c.lo, c.hi, c.p50, actual);
+        past.push({ made: e.made, date: c.date, p50: c.p50, lo: c.lo, hi: c.hi, actual, v });
+      }
+      if (past.length) {
+        past.sort((a, b) => (a.date < b.date ? 1 : -1));
+        verified = `<tr><td colspan="5" class="proj-sep">Verified — projected earlier, graded against the real price</td></tr>` +
+          past.slice(0, 3).map((r) => `<tr class="proj-past"><td>${r.date.slice(0, 10)}<small>made ${r.made.slice(0, 10)}</small></td><td class="proj-px">${money(r.p50, curBase)}</td><td class="proj-rng">${money(r.lo, curBase)} – ${money(r.hi, curBase)}</td><td class="proj-px">${money(r.actual, curBase)}<small>actual</small></td><td class="proj-d ${r.v.c === 'up' ? 'up' : r.v.c === 'down' ? 'down' : ''}">${r.v.t}</td></tr>`).join('');
+      }
+    } catch {}
+    $('projTable').innerHTML = '<tr><th>Date</th><th>Projected (P50)</th><th>Range (P10–P90)</th><th>Δ vs now</th><th>Status</th></tr>' + rows + verified;
     const calNote = (liveCal && liveCal.coverage != null)
       ? ` <b>Self-calibrating:</b> measured live coverage is ${Math.round(liveCal.coverage * 100)}% over ${liveCal.n.toLocaleString()} matured projections, so band width runs ×${liveCal.scale.toFixed(2)} to converge on a true 80%.`
       : ' Bands auto-calibrate against the live track record as projections mature.';
@@ -892,10 +910,18 @@
     logProjection(item, fc, hist, interval, isCrypto, lastIso);
     renderProjScorecard(item, hist);
   }
-  // actual close at or just after a date (from the loaded history)
-  function actualAt(hist, dateStr) {
+  // actual close at or just after a target date/time (from the loaded history).
+  // Timestamp-aware: intraday targets (full ISO) grade against the bar AT/after the
+  // target time — not the first bar of that day, which silently mis-graded 1m/60m
+  // projections. Date-only targets keep grading at the daily boundary as before.
+  function actualAt(hist, target) {
     if (!hist || !hist.dates) return null;
-    for (let i = 0; i < hist.dates.length; i++) if (hist.dates[i].slice(0, 10) >= dateStr) return hist.closes[i];
+    const tMs = Date.parse(String(target).length <= 10 ? target + 'T00:00:00Z' : target);
+    if (!isFinite(tMs)) return null;
+    for (let i = 0; i < hist.dates.length; i++) {
+      const bMs = Date.parse(hist.dates[i]);
+      if (isFinite(bMs) && bMs >= tMs && hist.closes[i] != null) return hist.closes[i];
+    }
     return null;   // target still in the future / beyond loaded data
   }
   // verdict for one projection checkpoint vs the realised price. The P10–P90 band
@@ -914,11 +940,14 @@
   }
   function logProjection(item, fc, hist, interval, isCrypto, lastIso) {
     if (interval === 'sec' || !fc.horizons) return;
-    const k = akey(item), made = (lastIso || new Date().toISOString()).slice(0, 10), id = made + ':' + interval;
+    const intraday = interval === '1m' || interval === '60m';
+    const k = akey(item), made = (lastIso || new Date().toISOString()).slice(0, intraday ? 16 : 10), id = made + ':' + interval;
     let log = {}; try { log = JSON.parse(localStorage.getItem('quantra.projlog') || '{}'); } catch {}
     log[k] = log[k] || [];
     if (!log[k].some((e) => e.id === id)) {
-      log[k].push({ id, made, interval, p0: fc.p0, checks: fc.horizons.map((h) => ({ date: projDateFor(lastIso, h.bars, interval, isCrypto).toISOString().slice(0, 10), p50: fc.p0 * (1 + h.move), lo: fc.p0 * (1 + h.lo), hi: fc.p0 * (1 + h.hi) })) });
+      // intraday targets keep the full timestamp so grading happens at the target TIME,
+      // not against the first bar of the day (which silently mis-scored 1m/60m checks)
+      log[k].push({ id, made, interval, p0: fc.p0, checks: fc.horizons.map((h) => { const d = projDateFor(lastIso, h.bars, interval, isCrypto).toISOString(); return { date: intraday ? d : d.slice(0, 10), p50: fc.p0 * (1 + h.move), lo: fc.p0 * (1 + h.lo), hi: fc.p0 * (1 + h.hi) }; }) });
       if (log[k].length > 16) log[k] = log[k].slice(-16);
       try { localStorage.setItem('quantra.projlog', JSON.stringify(log)); } catch {}
     }

@@ -343,6 +343,8 @@ button{font-family:inherit}
 .proj-rng{color:var(--muted-2)}
 .proj-d.up{color:var(--mint);font-weight:600}
 .proj-d.down{color:var(--rose);font-weight:600}
+.proj-sep{color:var(--muted-2);font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;padding-top:.9rem !important;border-bottom:1px solid var(--line)}
+.proj-past td{background:rgba(255,255,255,.015)}
 .proj-hit{color:var(--fg);font-weight:600}
 .proj-hit small{display:inline;color:var(--muted-2);font-size:.68rem;font-weight:400;margin-left:.25rem}
 .proj-wait{color:var(--muted-2);font-weight:400}
