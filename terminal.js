@@ -388,7 +388,8 @@
     const total = histSlice.length + fcMid.length;
     const x = (i) => PAD + (i / (total - 1)) * (W - PAD * 2);
     const y = (v) => H - PAD - ((v - min) / rng) * (H - PAD * 2);
-    const path = (arr, off) => arr.map((v, i) => v == null ? '' : `${i ? 'L' : 'M'}${x((off || 0) + i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ').replace(/L(?=M)/g, '');
+    // started-flag so a leading-null array still opens with 'M' (a path starting 'L' is invalid SVG)
+    const path = (arr, off) => { let st = false; return arr.map((v, i) => { if (v == null) { st = false; return ''; } const cmd = st ? 'L' : 'M'; st = true; return `${cmd}${x((off || 0) + i).toFixed(1)} ${y(v).toFixed(1)}`; }).join(' '); };
     const lineFrom = (arr) => { let started = false; return arr.map((v, i) => { if (v == null) { started = false; return ''; } const cmd = started ? 'L' : 'M'; started = true; return `${cmd}${x(i).toFixed(1)} ${y(v).toFixed(1)}`; }).join(' '); };
 
     const priceLine = histSlice.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
@@ -504,7 +505,9 @@
     const PH = 64, lo = opt.lo, hi = opt.hi, rng = (hi - lo) || 1;
     const y = (v) => PH - 5 - ((Math.max(lo, Math.min(hi, v)) - lo) / rng) * (PH - 12);
     const arr = C.slice(-hl);
-    const line = arr.map((v, i) => v == null ? '' : `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ').replace(/L(?=M)/g, '');
+    // started-flag: a leading-null series (short intraday windows) must still open with 'M'
+    let stq = false;
+    const line = arr.map((v, i) => { if (v == null) { stq = false; return ''; } const cmd = stq ? 'L' : 'M'; stq = true; return `${cmd}${px(i).toFixed(1)} ${y(v).toFixed(1)}`; }).join(' ');
     const lvls = (opt.levels || []).map((lv) => `<line x1="${PAD}" x2="${xEnd}" y1="${y(lv)}" y2="${y(lv)}" stroke="rgba(231,236,245,.18)" stroke-width="1" stroke-dasharray="3 3"/>`).join('');
     const last = arr[arr.length - 1];
     svg.innerHTML = lvls + `<path d="${line}" fill="none" stroke="${opt.col}" stroke-width="1.5"/>` + (last != null ? `<circle cx="${px(arr.length - 1).toFixed(1)}" cy="${y(last).toFixed(1)}" r="2.6" fill="${opt.col}"/>` : '');
@@ -523,7 +526,7 @@
     const dd = k.map((_, i) => (i < 2 || k[i] == null || k[i - 1] == null || k[i - 2] == null) ? null : (k[i] + k[i - 1] + k[i - 2]) / 3);
     const kS = k.slice(-hl), dS = dd.slice(-hl);
     const y = (v) => PH - 5 - (Math.max(0, Math.min(100, v)) / 100) * (PH - 12);
-    const lineOf = (arr, col) => `<path d="${arr.map((v, i) => v == null ? '' : `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ').replace(/L(?=M)/g, '')}" fill="none" stroke="${col}" stroke-width="1.4"/>`;
+    const lineOf = (arr, col) => { let st = false; const d = arr.map((v, i) => { if (v == null) { st = false; return ''; } const cmd = st ? 'L' : 'M'; st = true; return `${cmd}${px(i).toFixed(1)} ${y(v).toFixed(1)}`; }).join(' '); return `<path d="${d}" fill="none" stroke="${col}" stroke-width="1.4"/>`; };
     svg.innerHTML =
       `<line x1="${PAD}" x2="${xEnd}" y1="${y(80)}" y2="${y(80)}" stroke="rgba(251,113,133,.28)" stroke-width="1" stroke-dasharray="3 3"/>` +
       `<line x1="${PAD}" x2="${xEnd}" y1="${y(20)}" y2="${y(20)}" stroke="rgba(52,211,153,.28)" stroke-width="1" stroke-dasharray="3 3"/>` +
@@ -533,7 +536,8 @@
     const svg = $('svgRsi'); if (!svg) return;
     const PH = 64, rsi = (Q.series(hist.closes).rsi14 || []).slice(-hl);
     const y = (v) => PH - 5 - (Math.max(0, Math.min(100, v)) / 100) * (PH - 12);
-    const line = rsi.map((v, i) => v == null ? '' : `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ').replace(/L(?=M)/g, '');
+    let stR = false;
+    const line = rsi.map((v, i) => { if (v == null) { stR = false; return ''; } const cmd = stR ? 'L' : 'M'; stR = true; return `${cmd}${px(i).toFixed(1)} ${y(v).toFixed(1)}`; }).join(' ');
     const lastV = rsi[rsi.length - 1];
     svg.innerHTML =
       `<line x1="${PAD}" x2="${xEnd}" y1="${y(70)}" y2="${y(70)}" stroke="rgba(251,113,133,.28)" stroke-width="1" stroke-dasharray="3 3"/>` +
@@ -550,8 +554,8 @@
     const slot = (xEnd - PAD) / Math.max(1, hl), bw = Math.max(1, slot * 0.6);
     let bars = '';
     for (let i = 0; i < h.length; i++) { const yy = y(h[i]); bars += `<rect x="${(px(i) - bw / 2).toFixed(1)}" y="${Math.min(yy, y0).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0.6, Math.abs(yy - y0)).toFixed(1)}" fill="${h[i] >= 0 ? '#34D399' : '#FB7185'}" opacity=".6"/>`; }
-    const mLine = m.map((v, i) => `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
-    const sLine = sg.map((v, i) => `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+    const safeLine = (arr) => { let st = false; return arr.map((v, i) => { if (v == null || !isFinite(v)) { st = false; return ''; } const cmd = st ? 'L' : 'M'; st = true; return `${cmd}${px(i).toFixed(1)} ${y(v).toFixed(1)}`; }).join(' '); };
+    const mLine = safeLine(m), sLine = safeLine(sg);
     svg.innerHTML = `<line x1="${PAD}" x2="${xEnd}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="rgba(255,255,255,.12)" stroke-width="1"/>${bars}<path d="${mLine}" fill="none" stroke="#22D3EE" stroke-width="1.3"/><path d="${sLine}" fill="none" stroke="#FBBF24" stroke-width="1.2"/>`;
   }
   function renderVolPane(hist, hl, px) {
@@ -1401,7 +1405,10 @@
       }
       curBase = (item.type === 'crypto') ? 'USD' : (hist.currency || (fund && fund.currency) || 'USD');
       const sent = Q.sentiment(news);
-      const cal = await getLiveCal();
+      // Non-blocking calibration: use whatever we already have (default ×1) and refresh in
+      // the background — awaiting /api/track-record here stalled EVERY asset click (and in
+      // seconds mode made the live chart feel like it "wasn't coming up" on cold starts).
+      const cal = liveCal || { scale: 1 }; getLiveCal();
       const res = Q.analyze(hist, item.name || item.symbol, fund, sent, { cal: cal.scale });
       if (!res) { $('dText').textContent = 'Not enough history to analyse this asset yet.'; return; }
 
@@ -1778,6 +1785,7 @@
   loadFX().then(() => { if (board.length) renderBoard(); if (current) select(current); });
   // start live streams once we know which sources are available (covers any load ordering)
   loadLiveConfig().then(() => { if (assetClass === 'crypto' && board.length) startArr(); if (current) startLive(current); });
+  getLiveCal();   // prefetch the band-calibration factor so the first analysis already has it
   setInterval(refreshBoardPrices, 8000);   // keep non-crypto board prices current
   setInterval(tickMarketStatus, 20000);     // flip open/closed dots live at session boundaries
   if ($('askqSend')) $('askqSend').addEventListener('click', () => askSend());
