@@ -291,7 +291,7 @@ window.Quantra = (function () {
   }
   const scoreGrade = (q) => (q == null ? '—' : q >= 70 ? 'Strong' : q >= 56 ? 'Bullish' : q >= 45 ? 'Neutral' : q >= 30 ? 'Bearish' : 'Weak');
 
-  function forecast(closes, horizon = 30, bias = 0) {
+  function forecast(closes, horizon = 30, bias = 0, opts = null) {
     const c = closes.filter((v) => v != null);
     if (c.length < 18) return null;
     const rets = [];
@@ -304,13 +304,21 @@ window.Quantra = (function () {
     // persists, so shrink it hard toward 0 and cap it (this removes the directional
     // bias that pushed the old cone off and made the band under-cover).
     const driftShrunk = Math.max(-0.5 * sigma, Math.min(0.5 * sigma, mu * 0.25)) + (bias || 0) * 0.0004;
-    // Calibration factor on the resampled shocks. 1.0 lands the nominal 80% band at
-    // ~80% realised coverage on a 5-year, 10-symbol backtest (stocks, indices, crypto).
-    const VOL_INFLATE = 1.0;
-    const dem = pool.map((x) => (x - mu) * VOL_INFLATE);   // de-meaned, inflated shock pool
+    // Regime-aware volatility (EWMA, RiskMetrics λ=0.94): markets cluster — if the
+    // last couple of weeks are calmer/wilder than the 120-day average, the cone should
+    // be too. Scaling the resampled shocks by (current EWMA vol / pool vol) tightens
+    // bands in calm regimes and widens them in turmoil, instead of one flat width.
+    let ew = sigma * sigma;
+    for (const x of pool) { const d = x - mu; ew = 0.94 * ew + 0.06 * d * d; }
+    const regimeScale = Math.max(0.6, Math.min(1.8, Math.sqrt(ew) / sigma || 1));
+    // Live calibration factor (from the measured track record via opts.cal): if the
+    // realised 80%-band coverage runs hot/cold, the caller passes a corrective width
+    // multiplier so the band converges to true 80% on real forward outcomes.
+    const calScale = Math.max(0.8, Math.min(1.35, (opts && +opts.cal) || 1));
+    const dem = pool.map((x) => (x - mu) * regimeScale * calScale);   // de-meaned, regime+calibration-scaled shocks
     const p0 = last(c);
     // Monte Carlo via block-free bootstrap of real shocks → probability + percentile cone
-    const SIMS = 800;
+    const SIMS = 1200;
     const stepVals = Array.from({ length: horizon }, () => new Array(SIMS));
     const ends = new Array(SIMS);
     for (let s = 0; s < SIMS; s++) {
@@ -329,12 +337,12 @@ window.Quantra = (function () {
     const probUp = ends.filter((e) => e > p0).length / SIMS;
     const cps = [...new Set([Math.max(1, Math.round(horizon / 3)), Math.max(2, Math.round((2 * horizon) / 3)), horizon])];
     const horizons = cps.map((h) => ({ bars: h, move: (mcMid[h - 1] - p0) / p0, lo: (lo[h - 1] - p0) / p0, hi: (hi[h - 1] - p0) / p0 }));
-    return { p0, horizon, mu, sigma, mid, lo, hi, mcMid, probUp, horizons,
+    return { p0, horizon, mu, sigma, mid, lo, hi, mcMid, probUp, horizons, regimeScale, calScale,
       expReturn: (last(mid) - p0) / p0, expMoveMC: (last(mcMid) - p0) / p0, annualVol: sigma * Math.sqrt(252) };
   }
 
   /* ---------------- combined verdict ---------------- */
-  function analyze(ohlc, label, fundamentals, news) {
+  function analyze(ohlc, label, fundamentals, news, opts) {
     const t = technical(ohlc);
     if (!t) return null;
     const closesClean = ohlc.closes.filter((v) => v != null);
@@ -368,7 +376,7 @@ window.Quantra = (function () {
     conf = Math.max(38, Math.min(92, conf));
 
     const trendLabel = bullish ? (t.slp > 1 ? 'Strong bullish' : 'Bullish') : bearish ? (t.slp < -1 ? 'Strong bearish' : 'Bearish') : 'Ranging';
-    const fc = forecast(ohlc.closes, 30, newsScore);
+    const fc = forecast(ohlc.closes, 30, newsScore, opts);
     const up = sum(t.signals.filter((s) => s.dir === 'up').map((s) => 1));
     const down = sum(t.signals.filter((s) => s.dir === 'down').map((s) => 1));
 

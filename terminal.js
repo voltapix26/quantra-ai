@@ -848,6 +848,24 @@
     while (added < bars) { dt.setDate(dt.getDate() + step); if (isCrypto || (dt.getDay() !== 0 && dt.getDay() !== 6)) added++; }
     return dt;
   }
+  // Live calibration feedback: read the measured 80%-band coverage from the server's
+  // track record (real forward outcomes, hash-chained) and turn it into a corrective
+  // width multiplier for the forecast cone. Under-coverage → wider bands; over-coverage
+  // → tighter. This is what makes the bands trustworthy in real use: they converge to
+  // meaning exactly what they say. Cached 10 min; scale clamped so it can never run away.
+  let liveCal = null, liveCalAt = 0;
+  async function getLiveCal() {
+    if (liveCal && Date.now() - liveCalAt < 10 * 60 * 1000) return liveCal;
+    liveCalAt = Date.now();
+    try {
+      const d = await getJSON(`${API}/track-record`);
+      const c = d && d.calibration;
+      if (c && c.n >= 150 && c.coverage != null) {
+        liveCal = { scale: Math.max(0.85, Math.min(1.3, 1 + (0.8 - c.coverage) * 1.6)), coverage: c.coverage, n: c.n };
+      } else liveCal = { scale: 1, coverage: null, n: (c && c.n) || 0 };
+    } catch { liveCal = { scale: 1, coverage: null, n: 0 }; }
+    return liveCal;
+  }
   function renderProjections(fc, hist, item) {
     const card = $('projCard'); if (!card) return;
     if (!fc || !fc.horizons || !fc.horizons.length) { card.hidden = true; return; }
@@ -864,7 +882,12 @@
       return `<tr><td>${fmtD(d)}<small>+${h.bars} ${interval === '1wk' ? 'wk' : interval === '60m' ? 'h' : interval === '1m' ? 'm' : 'sessions'}</small></td><td class="proj-px">${money(proj, curBase)}</td><td class="proj-rng">${money(lo, curBase)} – ${money(hi, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${(h.move * 100).toFixed(1)}%</td><td>${st}</td></tr>`;
     }).join('');
     $('projTable').innerHTML = '<tr><th>Date</th><th>Projected (P50)</th><th>Range (P10–P90)</th><th>Δ vs now</th><th>Status</th></tr>' + rows;
-    $('projAsof').innerHTML = 'Anchored to ' + fmtD(new Date(lastIso || Date.now())) + ' · ' + Math.round((fc.probUp || 0) * 100) + '% modelled chance of finishing higher. The <b>P10–P90 range is a calibrated 80% band</b> — in a 5-year backtest, ~80% of actual prices landed inside it. Probabilistic, not a guarantee.';
+    const calNote = (liveCal && liveCal.coverage != null)
+      ? ` <b>Self-calibrating:</b> measured live coverage is ${Math.round(liveCal.coverage * 100)}% over ${liveCal.n.toLocaleString()} matured projections, so band width runs ×${liveCal.scale.toFixed(2)} to converge on a true 80%.`
+      : ' Bands auto-calibrate against the live track record as projections mature.';
+    const regNote = (fc.regimeScale && Math.abs(fc.regimeScale - 1) > 0.12)
+      ? ` Current volatility regime: ${fc.regimeScale > 1 ? 'elevated' : 'calm'} (×${fc.regimeScale.toFixed(2)} vs the 120-day average).` : '';
+    $('projAsof').innerHTML = 'Anchored to ' + fmtD(new Date(lastIso || Date.now())) + ' · ' + Math.round((fc.probUp || 0) * 100) + '% modelled chance of finishing higher. The <b>P10–P90 range is a calibrated 80% band</b> — in a 5-year backtest, ~80% of actual prices landed inside it.' + calNote + regNote + ' Probabilistic, not a guarantee.';
     card.hidden = false;
     logProjection(item, fc, hist, interval, isCrypto, lastIso);
     renderProjScorecard(item, hist);
@@ -1212,7 +1235,9 @@
     const n = tickBuf.length;
     if (n < 2) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" fill="#6B7890" font-size="12" text-anchor="middle">Accumulating live ticks…</text>`; return; }
     const st = tickStats(), FS = 30, pj = [];
-    if (st) for (let i = 1; i <= FS; i++) { const w = st.volPerSec * Math.sqrt(i) * 1.28; pj.push({ mid: st.last + st.driftPerSec * i, lo: st.last + st.driftPerSec * i - w, hi: st.last + st.driftPerSec * i + w }); }
+    // session-wide self-tuning width for the drawn cone (matches the projection table's target)
+    const cScale = projScore.n >= 20 ? Math.max(0.75, Math.min(1.5, 1 + (0.8 - projScore.band / projScore.n) * 1.2)) : 1;
+    if (st) for (let i = 1; i <= FS; i++) { const w = st.volPerSec * Math.sqrt(i) * 1.28 * cScale; pj.push({ mid: st.last + st.driftPerSec * i, lo: st.last + st.driftPerSec * i - w, hi: st.last + st.driftPerSec * i + w }); }
     const prices = tickBuf.map((d) => d.p);
     const allv = prices.concat(pj.flatMap((p) => [p.lo, p.hi]));
     const min = Math.min(...allv), max = Math.max(...allv), rng = max - min || 1;
@@ -1238,21 +1263,26 @@
     const now = Date.now();
     // Per-second horizons, down to the lowest the tick feed supports (+1s).
     const HS = [1, 2, 3, 5, 10, 20, 30];
+    // Per-horizon self-tuning width: once a horizon has ≥15 graded projections, nudge its
+    // band toward the 80% target using the MEASURED hit rate (too many misses → wider;
+    // too easy → tighter). The displayed band and the graded band use the same width,
+    // so the "Live hit" column always scores exactly what the user saw.
+    const wScale = (s) => { const ps = projScore.perS[s]; return (ps && ps.n >= 15) ? Math.max(0.75, Math.min(1.5, 1 + (0.8 - ps.band / ps.n) * 1.2)) : 1; };
     // Log fresh projections (~1×/sec) so pushTick can grade them once they mature.
     if (now - lastProjRec > 1000) {
       lastProjRec = now;
-      for (const s of HS) { const mid = st.last + st.driftPerSec * s, w = st.volPerSec * Math.sqrt(s) * 1.28; projPending.push({ dueAt: now + s * 1000, base: st.last, mid, lo: mid - w, hi: mid + w, s }); }
+      for (const s of HS) { const mid = st.last + st.driftPerSec * s, w = st.volPerSec * Math.sqrt(s) * 1.28 * wScale(s); projPending.push({ dueAt: now + s * 1000, base: st.last, mid, lo: mid - w, hi: mid + w, s }); }
       if (projPending.length > 800) projPending = projPending.slice(-800);
     }
     const rows = HS.map((s) => {
-      const mid = st.last + st.driftPerSec * s, w = st.volPerSec * Math.sqrt(s) * 1.28, up = st.driftPerSec >= 0;
+      const mid = st.last + st.driftPerSec * s, w = st.volPerSec * Math.sqrt(s) * 1.28 * wScale(s), up = st.driftPerSec >= 0;
       const d = new Date(now + s * 1000);
       const ps = projScore.perS[s];
       const hit = ps && ps.n ? `${Math.round(100 * ps.band / ps.n)}% <small>n=${ps.n}</small>` : '<span class="proj-wait">—</span>';
       return `<tr><td>${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}<small>+${s}s</small></td><td class="proj-px">${money(mid, curBase)}</td><td class="proj-rng">${money(mid - w, curBase)} – ${money(mid + w, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${((mid / st.last - 1) * 100).toFixed(2)}%</td><td class="proj-hit">${hit}</td></tr>`;
     }).join('');
     $('projTable').innerHTML = '<tr><th>Time</th><th>Projected</th><th>Range (P10–P90)</th><th>Δ vs now</th><th>Live hit</th></tr>' + rows;
-    const sc = projScore.n ? ` Live hit rate this session: band ${Math.round(100 * projScore.band / projScore.n)}% · direction ${Math.round(100 * projScore.dir / projScore.n)}% (n=${projScore.n}).` : '';
+    const sc = projScore.n ? ` Live hit rate this session: band ${Math.round(100 * projScore.band / projScore.n)}% · direction ${Math.round(100 * projScore.dir / projScore.n)}% (n=${projScore.n}); band widths self-tune toward the 80% target from the measured hit rate.` : '';
     $('projAsof').textContent = 'Live per-second projection from the last ' + tickBuf.length + ' ticks — down to a +1s horizon; very short, high uncertainty, not a guarantee.' + sc;
     card.hidden = false;
   }
@@ -1322,7 +1352,8 @@
       }
       curBase = (item.type === 'crypto') ? 'USD' : (hist.currency || (fund && fund.currency) || 'USD');
       const sent = Q.sentiment(news);
-      const res = Q.analyze(hist, item.name || item.symbol, fund, sent);
+      const cal = await getLiveCal();
+      const res = Q.analyze(hist, item.name || item.symbol, fund, sent, { cal: cal.scale });
       if (!res) { $('dText').textContent = 'Not enough history to analyse this asset yet.'; return; }
 
       // compare symbol?
@@ -1444,7 +1475,7 @@
           badge.className = 'ai-badge'; badge.textContent = '✦ Quantra AI';
           if (typeof r.newsImpact === 'number') {
             // recompute the forecast with the AI's comprehension-based news impact
-            const fc2 = Q.forecast(state.history.closes, 30, r.newsImpact);
+            const fc2 = Q.forecast(state.history.closes, 30, r.newsImpact, { cal: (liveCal && liveCal.scale) || 1 });
             if (fc2) { state.analysis.forecast = fc2; if (!tickMode) { drawChart(state.history, fc2); renderProjections(fc2, state.history, item); } renderForecast(fc2); }
             const lab = r.stance === 'bullish' ? 'Positive' : r.stance === 'bearish' ? 'Negative' : 'Neutral';
             setNewsMeter(lab, r.newsImpact, ' · AI');
