@@ -700,8 +700,17 @@ const api = {
     const topLosers = priced.slice(-3).reverse().map((x) => ({ symbol: x.symbol, change: x.change }));
     const date = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const watching = (body && Array.isArray(body.affinity)) ? body.affinity.slice(0, 4) : [];
-    const narrative = await briefNarrative({ date, count: priced.length, up, down, avg, topGainers, topLosers, market, earnings, watching });
-    return { ok: true, date, count: priced.length, up, down, avg, rows: priced, topGainers, topLosers, market, earnings, watching, text: narrative.text, source: narrative.source };
+    // Research headlines for what they follow most (RapidAPI-keyed; empty otherwise) —
+    // lets the narrative cite actual coverage, not just price moves.
+    let headlines = [];
+    if (RAPIDAPI_KEY && watching.length) {
+      try {
+        const hs = await Promise.all(watching.slice(0, 2).map((sym) => api.research({ symbol: sym }).catch(() => null)));
+        headlines = hs.flatMap((r, i) => (r && r.ok && r.news.length) ? [{ symbol: watching[i], title: r.news[0].title, publisher: r.news[0].publisher }] : []);
+      } catch {}
+    }
+    const narrative = await briefNarrative({ date, count: priced.length, up, down, avg, topGainers, topLosers, market, earnings, watching, headlines });
+    return { ok: true, date, count: priced.length, up, down, avg, rows: priced, topGainers, topLosers, market, earnings, watching, headlines, text: narrative.text, source: narrative.source };
   },
   // Universal current price for any held asset (portfolio tracker).
   async 'price'(q) {
@@ -874,17 +883,31 @@ const api = {
     return localAnswer(question, ctx);
   },
 
-  /* ---- latest news for a stock ---- */
+  /* ---- latest news for a stock ----
+     Merges the RapidAPI research feed (when keyed) with Yahoo's search news: RapidAPI
+     first (fresher + source-attributed, esp. international/NSE), deduped by title.
+     Everything downstream — news panel, sentiment meter, AI "read", Ask-Quantra
+     context — consumes this one endpoint, so they all inherit the research feed. */
   async 'stock/news'(q) {
     if (!q.symbol) return [];
     return cached(`news:${q.symbol}`, 5 * 60 * 1000, async () => {
-      const d = await getJSON(`${YF}/v1/finance/search?q=${encodeURIComponent(q.symbol)}&newsCount=20&quotesCount=1&enableFuzzyQuery=false`);
-      return (d.news || []).map((n) => ({
+      const [rapid, yahoo] = await Promise.all([
+        api.research({ symbol: q.symbol }).catch(() => null),
+        getJSON(`${YF}/v1/finance/search?q=${encodeURIComponent(q.symbol)}&newsCount=20&quotesCount=1&enableFuzzyQuery=false`).catch(() => null),
+      ]);
+      const out = [], seen = new Set();
+      const add = (n) => { const k = String(n.title || '').toLowerCase().slice(0, 60); if (!n.title || seen.has(k)) return; seen.add(k); out.push(n); };
+      if (rapid && rapid.ok) for (const n of rapid.news) {
+        const t = n.time ? Date.parse(n.time) : NaN;
+        add({ title: n.title, publisher: n.publisher, link: n.link, time: isFinite(t) ? new Date(t).toISOString() : null, thumb: n.thumb, tickers: [q.symbol] });
+      }
+      if (yahoo) for (const n of (yahoo.news || [])) add({
         title: n.title, publisher: n.publisher, link: n.link,
         time: n.providerPublishTime ? new Date(n.providerPublishTime * 1000).toISOString() : null,
         thumb: (n.thumbnail && n.thumbnail.resolutions && n.thumbnail.resolutions[0] && n.thumbnail.resolutions[0].url) || null,
         tickers: n.relatedTickers || [],
-      }));
+      });
+      return out.slice(0, 20);
     });
   },
 
@@ -1035,6 +1058,7 @@ function localBrief(d) {
   if (losers.length) p.push(`Lagging: ${losers.map((x) => `${x.symbol} ${x.change.toFixed(1)}%`).join(', ')}.`);
   if (d.market) p.push(`Broader market: ${d.market.up} advancing vs ${d.market.down} declining (${d.market.avg >= 0 ? '+' : ''}${d.market.avg}% avg) — a ${d.market.avg >= 0 ? 'risk-on' : 'risk-off'} tone.`);
   if (d.earnings && d.earnings.length) p.push(`On your calendar: ${d.earnings.slice(0, 3).map((x) => x.symbol).join(', ')} report soon (next: ${d.earnings[0].symbol} on ${d.earnings[0].date}).`);
+  if (d.headlines && d.headlines.length) p.push(`In the news: ${d.headlines.map((h) => `"${h.title}" (${h.publisher || 'press'}) on ${h.symbol}`).join('; ')}.`);
   p.push('Not investment advice.');
   return p.join(' ');
 }
@@ -1042,7 +1066,7 @@ async function briefNarrative(d) {
   if (ANTHROPIC_KEY && Anthropic && AI_MODEL) {
     try {
       const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
-      const sys = 'You are Quantra AI writing a short, personalized market brief for a user, based ONLY on the supplied data (their watchlist moves, broader-market breadth, upcoming earnings). If a non-empty "watching" list is present, open by acknowledging the assets they follow most. 4-6 warm but factual sentences with concrete numbers. No buy/sell advice, no markdown, no price targets.';
+      const sys = 'You are Quantra AI writing a short, personalized market brief for a user, based ONLY on the supplied data (their watchlist moves, broader-market breadth, upcoming earnings, and research headlines). If a non-empty "watching" list is present, open by acknowledging the assets they follow most. If "headlines" are present, weave one or two into the story with attribution (publisher), connecting them to the price action where sensible. 4-6 warm but factual sentences with concrete numbers. No buy/sell advice, no markdown, no price targets.';
       const msg = await client.messages.create({ model: AI_MODEL, max_tokens: 420, system: sys, messages: [{ role: 'user', content: 'Brief data:\n' + JSON.stringify(d) }] });
       const t = (msg.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
       if (t) return { text: t, source: 'ai' };
