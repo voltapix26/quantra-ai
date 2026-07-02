@@ -183,6 +183,7 @@
           `<div class="strow"><span>Finnhub (US real-time)</span><b>${on(s2.finnhub)}</b></div>` +
           `<div class="strow"><span>Twelve Data (global real-time)</span><b>${on(s2.twelvedata)}</b></div>` +
           `<div class="strow"><span>Polygon (US real-time)</span><b>${on(s2.polygon)}</b></div>` +
+          `<div class="strow"><span>RapidAPI (global incl. NSE/BSE)</span><b>${on(s2.rapidapi)}</b></div>` +
           `<div class="strow"><span>FMP (economic calendar)</span><b>${on(s2.fmp)}</b></div>` +
           `<div class="strow"><span>marketaux (premium news)</span><b>${on(s2.marketaux)}</b></div>` +
           `<div class="strow"><span>Crypto live stream</span><b>${on(s2.cryptoStream)}</b></div>` +
@@ -198,7 +199,7 @@
            </div><div id="mailTestOut" style="font-size:.78rem;color:var(--muted-2);margin-top:.5rem"></div>
            <div style="margin-top:.8rem;border-top:1px solid var(--line);padding-top:.7rem">
              <button class="abtn ok" id="dataTestBtn">Test data feeds</button>
-             <span style="font-size:.72rem;color:var(--muted-2);margin-left:.5rem">checks Twelve Data (NSE), Polygon &amp; Finnhub</span>
+             <span style="font-size:.72rem;color:var(--muted-2);margin-left:.5rem">checks Twelve Data (NSE), Polygon, Finnhub &amp; RapidAPI</span>
              <div id="dataTestOut" style="font-size:.8rem;margin-top:.5rem"></div>
            </div>`;
         const dbtn = $('dataTestBtn');
@@ -210,7 +211,7 @@
           try {
             const r = await api('/api/admin/datatest');
             out.style.color = 'var(--muted)';
-            out.innerHTML = line('Twelve Data (RELIANCE.NS)', r.twelvedata) + line('Polygon (AAPL)', r.polygon) + line('Finnhub (AAPL)', r.finnhub);
+            out.innerHTML = line('Twelve Data (RELIANCE.NS)', r.twelvedata) + line('Polygon (AAPL)', r.polygon) + line('Finnhub (AAPL)', r.finnhub) + line('RapidAPI (RELIANCE.NS)', r.rapidapi);
           } catch (e) { out.style.color = 'var(--rose)'; out.textContent = '✗ ' + e.message; }
           dbtn.disabled = false;
         });

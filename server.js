@@ -43,6 +43,11 @@ const FMP_KEY = process.env.FMP_API_KEY || '';         // Financial Modeling Pre
 const MARKETAUX_KEY = process.env.MARKETAUX_API_KEY || ''; // marketaux — premium multi-source news (free tier)
 const TWELVEDATA_KEY = process.env.TWELVEDATA_API_KEY || ''; // Twelve Data — fresher global quotes incl. Gulf/Asia
 const POLYGON_KEY = process.env.POLYGON_API_KEY || '';  // Polygon.io — US stocks (real-time needs the Advanced tier; lower tiers are 15-min delayed). US-only.
+// RapidAPI — Real-Time Finance Data (Google-Finance-sourced): global quotes incl. NSE/BSE
+// + Gulf/Asia, plus news. Fills the international/India gap that Twelve Data's tier misses.
+// Key + host stay server-side; host is overridable if you subscribe to a different RapidAPI feed.
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || '';
+const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST || 'real-time-finance-data.p.rapidapi.com';
 // Map a Yahoo suffix → Twelve Data exchange code so international quotes resolve.
 const TD_EXCH = { NS: 'NSE', BO: 'BSE', L: 'LSE', HK: 'HKEX', T: 'XTKS', KS: 'KRX', TW: 'TWSE', SI: 'SGX', AX: 'ASX', SR: 'Tadawul', AE: 'DFM', AD: 'ADX', JO: 'JSE', SS: 'SSE', SZ: 'SZSE', DE: 'XETR', PA: 'Euronext', AS: 'Euronext', MI: 'MTA', MC: 'BME', SW: 'SIX', ST: 'OMX', OL: 'OSL', CO: 'OMXC', TO: 'TSX', SA: 'B3', MX: 'BMV', JK: 'IDX', BK: 'SET', KL: 'Bursa' };
 function tdSymbol(yh) {
@@ -51,6 +56,19 @@ function tdSymbol(yh) {
   const ex = TD_EXCH[yh.slice(i + 1)];
   return ex ? { symbol: yh.slice(0, i), exchange: ex } : { symbol: yh };
 }
+// Map a Yahoo suffix → the Google-Finance exchange code Real-Time Finance Data expects
+// (symbol format is TICKER:EXCHANGE, e.g. RELIANCE:NSE, 7203:TYO). US plain tickers are
+// already covered by Finnhub, so we return null for them (RapidAPI serves international only).
+const RAPID_EXCH = { NS: 'NSE', BO: 'BOM', L: 'LON', DE: 'ETR', PA: 'EPA', AS: 'AMS', MI: 'BIT', MC: 'BME', SW: 'SWX', ST: 'STO', OL: 'OSL', CO: 'CPH', HE: 'HEL', T: 'TYO', HK: 'HKG', SS: 'SHA', SZ: 'SHE', KS: 'KRX', TW: 'TPE', SI: 'SGX', AX: 'ASX', TO: 'TSE', SA: 'BVMF', MX: 'BMV', SR: 'TADAWUL', JK: 'JKT', BK: 'BKK', KL: 'KLSE' };
+function rapidSymbol(yh) {
+  const s = String(yh);
+  if (s.includes(':')) return s;                        // already TICKER:EXCH
+  const i = s.lastIndexOf('.');
+  if (i < 0) return null;                                // US / plain ticker → Finnhub handles it
+  const ex = RAPID_EXCH[s.slice(i + 1)];
+  return ex ? `${s.slice(0, i)}:${ex}` : null;
+}
+const rapidHeaders = () => ({ 'X-RapidAPI-Key': RAPIDAPI_KEY, 'X-RapidAPI-Host': RAPIDAPI_HOST });
 // Real-time US quote from Finnhub (free tier covers US stocks/ETFs only). Excludes
 // exchange-suffixed, futures (=), index (^), FX (=X). Returns null → fall back.
 const fhEligible = (s) => FINNHUB_KEY && !/[.\^=]/.test(String(s));
@@ -125,6 +143,29 @@ async function polyQuote(sym) {
     };
   } catch { return null; }
 }
+// Real-time-ish quote from RapidAPI (Real-Time Finance Data). International only — US is
+// served by Finnhub. Google-Finance-sourced, so it covers NSE/BSE and most world exchanges.
+// Defensive field parsing (the feed nests the quote under `data`). Returns null → fall back.
+async function rapidQuote(yh) {
+  if (!RAPIDAPI_KEY) return null;
+  const rs = rapidSymbol(yh); if (!rs) return null;
+  try {
+    const d = await cached(`rapid:q:${rs}`, 15000, () => getJSON(
+      `https://${RAPIDAPI_HOST}/stock-quote?symbol=${encodeURIComponent(rs)}&language=en`, rapidHeaders()));
+    const q = (d && d.data) || d; if (!q) return null;
+    const price = +((q.price != null) ? q.price : q.last);
+    if (!isFinite(price)) return null;
+    const prev = +((q.previous_close != null) ? q.previous_close : q.prev_close);
+    const pct = (q.change_percent != null) ? +q.change_percent : (q.percent_change != null ? +q.percent_change : null);
+    return {
+      price, prev: isFinite(prev) ? prev : null,
+      change: isFinite(+q.change) ? +q.change : (isFinite(prev) ? +(price - prev).toFixed(4) : null),
+      changePct: isFinite(pct) ? pct : (isFinite(prev) && prev ? +(((price - prev) / prev) * 100).toFixed(2) : null),
+      currency: q.currency || null,
+      asOf: q.last_update_utc ? (Date.parse(q.last_update_utc) || null) : null,
+    };
+  } catch { return null; }
+}
 // Verbose provider self-tests for the admin diagnostic — surface the RAW success/error
 // (e.g. "symbol not found", "requires a paid plan", "out of credits") so the operator can
 // tell instantly whether a data key works and covers a given market.
@@ -152,11 +193,22 @@ async function fhTest(sym) {
     return { configured: true, ok: false, symbol: sym, error: 'no data returned' };
   } catch (e) { return { configured: true, ok: false, symbol: sym, error: e.message }; }
 }
+async function rapidTest(yh) {
+  if (!RAPIDAPI_KEY) return { configured: false };
+  const rs = rapidSymbol(yh) || (String(yh).includes(':') ? yh : yh);
+  try { const d = await getJSON(`https://${RAPIDAPI_HOST}/stock-quote?symbol=${encodeURIComponent(rs)}&language=en`, rapidHeaders());
+    const q = (d && d.data) || d, price = q && ((q.price != null) ? +q.price : +q.last);
+    if (price > 0) return { configured: true, ok: true, symbol: rs, price, host: RAPIDAPI_HOST };
+    return { configured: true, ok: false, symbol: rs, error: (d && (d.message || d.error || d.status)) || 'no data returned', host: RAPIDAPI_HOST };
+  } catch (e) { return { configured: true, ok: false, symbol: rs, error: e.message, host: RAPIDAPI_HOST }; }
+}
 // Turn a raw provider error into a concrete fix the operator can act on.
 function feedHint(provider, r) {
   if (!r || !r.configured || r.ok) return null;
   const e = String(r.error || '').toLowerCase();
-  const varName = provider === 'twelvedata' ? 'TWELVEDATA_API_KEY' : provider === 'polygon' ? 'POLYGON_API_KEY' : 'FINNHUB_API_KEY';
+  const varName = provider === 'twelvedata' ? 'TWELVEDATA_API_KEY' : provider === 'polygon' ? 'POLYGON_API_KEY' : provider === 'rapidapi' ? 'RAPIDAPI_KEY' : 'FINNHUB_API_KEY';
+  if (provider === 'rapidapi' && /403|not subscribed|not.*subscrib|you are not subscribed/.test(e)) return '→ Not subscribed on RapidAPI — subscribe to the API (free tier is fine) so the key can call this host.';
+  if (provider === 'rapidapi' && /429|rate|quota|exceeded|limit/.test(e)) return '→ RapidAPI monthly quota hit — wait for reset or bump the plan.';
   if (/401|403|unauthor|invalid.*key|api ?key|forbidden/.test(e)) return `→ Key looks invalid — recheck ${varName} (exact spelling + value) on Render, then redeploy.`;
   if (/credit|quota|out of|429|too many|rate.?limit|run out/.test(e)) return '→ Out of API credits or rate-limited — wait, or move to a higher plan.';
   if (/plan|upgrade|not available|grow|\bpro\b|premium|subscription|access/.test(e)) return provider === 'twelvedata'
@@ -680,12 +732,13 @@ const api = {
     const fh = await fhQuote(idv);
     const pg = fh ? null : await polyQuote(idv);
     const td = (fh || pg) ? null : await tdQuote(idv);
-    const rt = fh || pg || td;
+    const rapid = (fh || pg || td) ? null : await rapidQuote(idv);   // RapidAPI: intl incl. NSE/BSE
+    const rt = fh || pg || td || rapid;
     if (rt && rt.price != null) {
       return { ok: true, price: rt.price, change: rt.changePct != null ? +rt.changePct.toFixed(2) : (base ? base.change : null),
         changeAbs: rt.change != null ? rt.change : (base ? base.changeAbs : null),
         currency: (rt.currency) || (base ? base.currency : 'USD'), asOf: rt.asOf || (base ? base.asOf : null),
-        tp: base ? base.tp : null, mktOpen, holiday, source: fh ? 'finnhub' : pg ? 'polygon' : 'twelvedata' };
+        tp: base ? base.tp : null, mktOpen, holiday, source: fh ? 'finnhub' : pg ? 'polygon' : td ? 'twelvedata' : 'rapidapi' };
     }
     if (base && base.price != null) return { ok: true, ...base, mktOpen, holiday, source: 'yahoo' };
     return { ok: false };
@@ -840,7 +893,30 @@ const api = {
      glance which real-time feeds are actually loaded: crypto (always), US
      (finnhub), international incl. India/NSE (twelvedata), US fallback (polygon). */
   async config() {
-    return { cryptoStream: true, finnhub: !!FINNHUB_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY };
+    return { cryptoStream: true, finnhub: !!FINNHUB_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY };
+  },
+
+  /* ---- RapidAPI research: analyst-grade news + market analytics for a symbol ----
+     Feeds the analysis view (and, downstream, the AI brief) with fresher, source-attributed
+     coverage than the Yahoo search feed — especially for international names. Key-gated:
+     returns {ok:false, reason:'no-rapidapi'} until RAPIDAPI_KEY is set, so nothing breaks. */
+  async research(q) {
+    if (!RAPIDAPI_KEY) return { ok: false, reason: 'no-rapidapi' };
+    if (!q.symbol) return { ok: false, reason: 'no-symbol' };
+    const rs = rapidSymbol(q.symbol) || (String(q.symbol).includes(':') ? q.symbol : `${q.symbol}:NASDAQ`);
+    try {
+      const d = await cached(`rapid:news:${rs}`, 5 * 60 * 1000, () => getJSON(
+        `https://${RAPIDAPI_HOST}/stock-news?symbol=${encodeURIComponent(rs)}&language=en`, rapidHeaders()));
+      const raw = (d && d.data && (d.data.news || d.data)) || d.news || [];
+      const news = (Array.isArray(raw) ? raw : []).slice(0, 12).map((n) => ({
+        title: n.article_title || n.title || n.headline || '',
+        link: n.article_url || n.url || n.link || null,
+        publisher: n.source || n.source_name || n.publisher || null,
+        time: n.post_time_utc || n.published_at || n.time || null,
+        thumb: n.article_photo_url || n.thumbnail || null,
+      })).filter((n) => n.title);
+      return { ok: true, source: 'rapidapi', symbol: q.symbol, resolved: rs, count: news.length, news };
+    } catch (e) { return { ok: false, reason: e.message }; }
   },
 
   /* ---- Finnhub real-time US stock quote (key stays server-side) ---- */
@@ -1398,11 +1474,12 @@ async function authRoute(req, res, u) {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
       const nse = String(u.searchParams.get('symbol') || 'RELIANCE.NS');
-      const [twelvedata, polygon, finnhub] = await Promise.all([tdTest(nse), polyTest('AAPL'), fhTest('AAPL')]);
+      const [twelvedata, polygon, finnhub, rapidapi] = await Promise.all([tdTest(nse), polyTest('AAPL'), fhTest('AAPL'), rapidTest(nse)]);
       twelvedata.hint = feedHint('twelvedata', twelvedata);
       polygon.hint = feedHint('polygon', polygon);
       finnhub.hint = feedHint('finnhub', finnhub);
-      return send(res, 200, { twelvedata, polygon, finnhub });
+      rapidapi.hint = feedHint('rapidapi', rapidapi);
+      return send(res, 200, { twelvedata, polygon, finnhub, rapidapi });
     }
     if (p === '/api/admin/mail-test' && m === 'POST') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
@@ -1458,7 +1535,7 @@ async function authRoute(req, res, u) {
       return send(res, 200, {
         today: td, days, topPages,
         users: { total: users.length, verified, paid }, signups,
-        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, push: PUSH_ENABLED, cryptoStream: true, mail: mailConfig(), uptimeSec: Math.round(process.uptime()), node: process.version },
+        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY, push: PUSH_ENABLED, cryptoStream: true, mail: mailConfig(), uptimeSec: Math.round(process.uptime()), node: process.version },
       });
     }
     if (p === '/api/org' && m === 'GET') {
