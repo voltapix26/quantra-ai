@@ -332,12 +332,18 @@ window.Quantra = (function () {
     }
     const lo = stepVals.map((v) => pctile(v, 0.1));
     const hi = stepVals.map((v) => pctile(v, 0.9));
+    // Tighter central band (interquartile, P25–P75): a genuinely narrower range for
+    // precision-focused use — honestly labeled as the 50% "likely" band. Narrowing a
+    // band lowers its hit odds; that's probability, not a tuning knob, so both bands
+    // are shown with their true confidence levels instead of one pretending.
+    const lo25 = stepVals.map((v) => pctile(v, 0.25));
+    const hi75 = stepVals.map((v) => pctile(v, 0.75));
     const mcMid = stepVals.map((v) => pctile(v, 0.5));
     const mid = mcMid;   // central path = MC median, so chart line and projection table agree
     const probUp = ends.filter((e) => e > p0).length / SIMS;
     const cps = [...new Set([Math.max(1, Math.round(horizon / 3)), Math.max(2, Math.round((2 * horizon) / 3)), horizon])];
-    const horizons = cps.map((h) => ({ bars: h, move: (mcMid[h - 1] - p0) / p0, lo: (lo[h - 1] - p0) / p0, hi: (hi[h - 1] - p0) / p0 }));
-    return { p0, horizon, mu, sigma, mid, lo, hi, mcMid, probUp, horizons, regimeScale, calScale,
+    const horizons = cps.map((h) => ({ bars: h, move: (mcMid[h - 1] - p0) / p0, lo: (lo[h - 1] - p0) / p0, hi: (hi[h - 1] - p0) / p0, lo25: (lo25[h - 1] - p0) / p0, hi75: (hi75[h - 1] - p0) / p0 }));
+    return { p0, horizon, mu, sigma, mid, lo, hi, lo25, hi75, mcMid, probUp, horizons, regimeScale, calScale,
       expReturn: (last(mid) - p0) / p0, expMoveMC: (last(mcMid) - p0) / p0, annualVol: sigma * Math.sqrt(252) };
   }
 

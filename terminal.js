@@ -397,18 +397,23 @@
     const sma50Line = areaOnly ? '' : lineFrom(s.sma50.slice(start));
     const overlays = studyOverlaySVG(closes, hist.highs, hist.lows, hist.volumes, start, x, y, histSlice);
 
-    let fcBand = '', fcLine = '';
+    let fcBand = '', fcBandIn = '', fcLine = '';
     if (fc) {
       const off = histSlice.length;
       const hiPath = fcHi.map((v, i) => `${i ? 'L' : 'M'}${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
-      const loPath = fcLo.map((v, i) => `L${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).reverse().join(' ');
       fcBand = `${hiPath} ${fcLo.map((v, i) => `L${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).reverse().join(' ')} Z`;
+      // inner 50% band (P25–P75): the tighter "likely" cone drawn darker inside the 80% cone
+      if (fc.hi75 && fc.lo25) {
+        const hiIn = fc.hi75.map((v, i) => `${i ? 'L' : 'M'}${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+        fcBandIn = `${hiIn} ${fc.lo25.map((v, i) => `L${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).reverse().join(' ')} Z`;
+      }
       fcLine = `M${x(off - 1).toFixed(1)} ${y(histSlice[histSlice.length - 1]).toFixed(1)} ` + fcMid.map((v, i) => `L${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
     }
     svg.innerHTML = `
       <defs><linearGradient id="pf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34D399" stop-opacity=".22"/><stop offset="1" stop-color="#34D399" stop-opacity="0"/></linearGradient></defs>
       <path d="${area}" fill="url(#pf)"/>
       ${fc ? `<path d="${fcBand}" fill="#22D3EE" opacity=".12"/>` : ''}
+      ${fcBandIn ? `<path d="${fcBandIn}" fill="#22D3EE" opacity=".14"/>` : ''}
       ${sma50Line ? `<path d="${sma50Line}" fill="none" stroke="#FBBF24" stroke-width="1.4" opacity=".85"/>` : ''}
       ${sma20Line ? `<path d="${sma20Line}" fill="none" stroke="#818CF8" stroke-width="1.4" opacity=".9"/>` : ''}
       ${overlays}
@@ -443,15 +448,20 @@
     const lineFrom = (arr) => { let st = false; return arr.map((v, i) => { if (v == null) { st = false; return ''; } const cmd = st ? 'L' : 'M'; st = true; return `${cmd}${x(i).toFixed(1)} ${y(v).toFixed(1)}`; }).join(' '); };
     const sma20Line = lineFrom(s.sma20.slice(start)), sma50Line = lineFrom(s.sma50.slice(start));
     const overlays = studyOverlaySVG(ohlc.closes, ohlc.highs, ohlc.lows, ohlc.volumes, start, x, y, c);
-    let fcBand = '', fcLine = '';
+    let fcBand = '', fcBandIn = '', fcLine = '';
     if (fc) {
       const off = c.length;
       const hiPath = fcHi.map((v, i) => `${i ? 'L' : 'M'}${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
       fcBand = `${hiPath} ${fcLo.map((v, i) => `L${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).reverse().join(' ')} Z`;
+      if (fc.hi75 && fc.lo25) {
+        const hiIn = fc.hi75.map((v, i) => `${i ? 'L' : 'M'}${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+        fcBandIn = `${hiIn} ${fc.lo25.map((v, i) => `L${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).reverse().join(' ')} Z`;
+      }
       fcLine = `M${x(off - 1).toFixed(1)} ${y(c[c.length - 1]).toFixed(1)} ` + fcMid.map((v, i) => `L${x(off + i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
     }
     svg.innerHTML = `
       ${fc ? `<path d="${fcBand}" fill="#22D3EE" opacity=".12"/>` : ''}
+      ${fcBandIn ? `<path d="${fcBandIn}" fill="#22D3EE" opacity=".14"/>` : ''}
       ${sma50Line ? `<path d="${sma50Line}" fill="none" stroke="#FBBF24" stroke-width="1.3" opacity=".8"/>` : ''}
       ${sma20Line ? `<path d="${sma20Line}" fill="none" stroke="#818CF8" stroke-width="1.3" opacity=".85"/>` : ''}
       ${overlays}
@@ -832,7 +842,10 @@
     const pEl = $('fcProb');
     if (pEl && fc.probUp != null) { pEl.textContent = Math.round(fc.probUp * 100) + '%'; pEl.style.color = fc.probUp >= 0.55 ? 'var(--mint)' : fc.probUp <= 0.45 ? 'var(--rose)' : 'var(--amber)'; }
     $('fcTarget').textContent = money(fc.mid[fc.mid.length - 1], curBase);
-    $('fcRange').textContent = money(fc.lo[fc.lo.length - 1], curBase) + ' – ' + money(fc.hi[fc.hi.length - 1], curBase);
+    // lead with the tight 50% band when available; fall back to the 80% band
+    $('fcRange').textContent = (fc.lo25 && fc.hi75)
+      ? money(fc.lo25[fc.lo25.length - 1], curBase) + ' – ' + money(fc.hi75[fc.hi75.length - 1], curBase)
+      : money(fc.lo[fc.lo.length - 1], curBase) + ' – ' + money(fc.hi[fc.hi.length - 1], curBase);
     $('fcVol').textContent = (fc.annualVol * 100).toFixed(0) + '%';
     const hz = $('fcHorizons');
     if (hz) hz.innerHTML = (fc.horizons || []).map((h) => `<span class="fch"><i>+${h.bars} bars</i> <b class="${h.move >= 0 ? 'up' : 'down'}">${h.move >= 0 ? '+' : ''}${(h.move * 100).toFixed(1)}%</b> <em>${(h.lo * 100).toFixed(0)}…${(h.hi * 100).toFixed(0)}%</em></span>`).join('');
@@ -878,8 +891,13 @@
     const rows = fc.horizons.map((h) => {
       const d = projDateFor(lastIso, h.bars, interval, isCrypto);
       const proj = p0 * (1 + h.move), lo = p0 * (1 + h.lo), hi = p0 * (1 + h.hi), up = h.move >= 0;
-      const st = projStatus(hist, d.toISOString(), p0, proj, lo, hi);
-      return `<tr><td>${fmtD(d)}<small>+${h.bars} ${interval === '1wk' ? 'wk' : interval === '60m' ? 'h' : interval === '1m' ? 'm' : 'sessions'}</small></td><td class="proj-px">${money(proj, curBase)}</td><td class="proj-rng">${money(lo, curBase)} – ${money(hi, curBase)}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${(h.move * 100).toFixed(1)}%</td><td>${st}</td></tr>`;
+      // tighter central band (P25–P75, 50%) leads; the wider 80% band sits beneath it
+      const tl = h.lo25 != null ? p0 * (1 + h.lo25) : null, th = h.hi75 != null ? p0 * (1 + h.hi75) : null;
+      const rng = (tl != null)
+        ? `${money(tl, curBase)} – ${money(th, curBase)}<small>50% likely · 80%: ${money(lo, curBase)} – ${money(hi, curBase)}</small>`
+        : `${money(lo, curBase)} – ${money(hi, curBase)}`;
+      const st = projStatus(hist, d.toISOString(), p0, proj, lo, hi, tl, th);
+      return `<tr><td>${fmtD(d)}<small>+${h.bars} ${interval === '1wk' ? 'wk' : interval === '60m' ? 'h' : interval === '1m' ? 'm' : 'sessions'}</small></td><td class="proj-px">${money(proj, curBase)}</td><td class="proj-rng">${rng}</td><td class="proj-d ${up ? 'up' : 'down'}">${up ? '+' : ''}${(h.move * 100).toFixed(1)}%</td><td>${st}</td></tr>`;
     }).join('');
     // Matured checkpoints from earlier visits — the "did it go or not" rows, shown right
     // in the projection list: past projection vs the price that actually happened.
@@ -890,7 +908,7 @@
       for (const e of (log[akey(item)] || [])) for (const c of e.checks) {
         const actual = actualAt(hist, c.date);
         if (actual == null) continue;
-        const v = projVerdict(e.p0, c.lo, c.hi, c.p50, actual);
+        const v = projVerdict(e.p0, c.lo, c.hi, c.p50, actual, c.tl, c.th);
         past.push({ made: e.made, date: c.date, p50: c.p50, lo: c.lo, hi: c.hi, actual, v });
       }
       if (past.length) {
@@ -899,13 +917,13 @@
           past.slice(0, 3).map((r) => `<tr class="proj-past"><td>${r.date.slice(0, 10)}<small>made ${r.made.slice(0, 10)}</small></td><td class="proj-px">${money(r.p50, curBase)}</td><td class="proj-rng">${money(r.lo, curBase)} – ${money(r.hi, curBase)}</td><td class="proj-px">${money(r.actual, curBase)}<small>actual</small></td><td class="proj-d ${r.v.c === 'up' ? 'up' : r.v.c === 'down' ? 'down' : ''}">${r.v.t}</td></tr>`).join('');
       }
     } catch {}
-    $('projTable').innerHTML = '<tr><th>Date</th><th>Projected (P50)</th><th>Range (P10–P90)</th><th>Δ vs now</th><th>Status</th></tr>' + rows + verified;
+    $('projTable').innerHTML = '<tr><th>Date</th><th>Projected (P50)</th><th>Likely range (P25–P75)</th><th>Δ vs now</th><th>Status</th></tr>' + rows + verified;
     const calNote = (liveCal && liveCal.coverage != null)
       ? ` <b>Self-calibrating:</b> measured live coverage is ${Math.round(liveCal.coverage * 100)}% over ${liveCal.n.toLocaleString()} matured projections, so band width runs ×${liveCal.scale.toFixed(2)} to converge on a true 80%.`
       : ' Bands auto-calibrate against the live track record as projections mature.';
     const regNote = (fc.regimeScale && Math.abs(fc.regimeScale - 1) > 0.12)
       ? ` Current volatility regime: ${fc.regimeScale > 1 ? 'elevated' : 'calm'} (×${fc.regimeScale.toFixed(2)} vs the 120-day average).` : '';
-    $('projAsof').innerHTML = 'Anchored to ' + fmtD(new Date(lastIso || Date.now())) + ' · ' + Math.round((fc.probUp || 0) * 100) + '% modelled chance of finishing higher. The <b>P10–P90 range is a calibrated 80% band</b> — in a 5-year backtest, ~80% of actual prices landed inside it.' + calNote + regNote + ' Probabilistic, not a guarantee.';
+    $('projAsof').innerHTML = 'Anchored to ' + fmtD(new Date(lastIso || Date.now())) + ' · ' + Math.round((fc.probUp || 0) * 100) + '% modelled chance of finishing higher. The headline <b>P25–P75 range is the tight 50% band</b> — the price lands inside it about half the time; the small <b>80% band</b> beneath catches ~4 in 5. A narrower range always means lower odds — that\'s probability, not a setting.' + calNote + regNote + ' Probabilistic, not a guarantee.';
     card.hidden = false;
     logProjection(item, fc, hist, interval, isCrypto, lastIso);
     renderProjScorecard(item, hist);
@@ -927,15 +945,17 @@
   // verdict for one projection checkpoint vs the realised price. The P10–P90 band
   // is volatility-scaled by the Monte-Carlo sigma, so this stays fair on calm
   // indices and wild crypto alike.
-  function projVerdict(p0, lo, hi, proj, actual) {
+  function projVerdict(p0, lo, hi, proj, actual, tl, th) {
     if (actual == null) return null;
-    if (actual >= lo && actual <= hi) return { c: 'up', t: '✓ in range' };
+    // grade against the tight 50% band first when it was recorded, then the 80% band
+    if (tl != null && actual >= tl && actual <= th) return { c: 'up', t: '✓ in 50% band' };
+    if (actual >= lo && actual <= hi) return { c: 'up', t: tl != null ? '✓ in 80% band' : '✓ in range' };
     return ((proj >= p0) === (actual >= p0)) ? { c: 'neut', t: (actual >= p0 ? '↗' : '↘') + ' direction' } : { c: 'down', t: '✗ missed' };
   }
-  function projStatus(hist, dateStr, p0, proj, lo, hi) {
+  function projStatus(hist, dateStr, p0, proj, lo, hi, tl, th) {
     const a = actualAt(hist, dateStr);
     if (a == null) return '<span class="proj-pending">⏳ pending</span>';
-    const v = projVerdict(p0, lo, hi, proj, a);
+    const v = projVerdict(p0, lo, hi, proj, a, tl, th);
     return `<span class="proj-d ${v.c === 'up' ? 'up' : v.c === 'down' ? 'down' : ''}">${v.t}</span>`;
   }
   function logProjection(item, fc, hist, interval, isCrypto, lastIso) {
@@ -947,7 +967,7 @@
     if (!log[k].some((e) => e.id === id)) {
       // intraday targets keep the full timestamp so grading happens at the target TIME,
       // not against the first bar of the day (which silently mis-scored 1m/60m checks)
-      log[k].push({ id, made, interval, p0: fc.p0, checks: fc.horizons.map((h) => { const d = projDateFor(lastIso, h.bars, interval, isCrypto).toISOString(); return { date: intraday ? d : d.slice(0, 10), p50: fc.p0 * (1 + h.move), lo: fc.p0 * (1 + h.lo), hi: fc.p0 * (1 + h.hi) }; }) });
+      log[k].push({ id, made, interval, p0: fc.p0, checks: fc.horizons.map((h) => { const d = projDateFor(lastIso, h.bars, interval, isCrypto).toISOString(); return { date: intraday ? d : d.slice(0, 10), p50: fc.p0 * (1 + h.move), lo: fc.p0 * (1 + h.lo), hi: fc.p0 * (1 + h.hi), tl: h.lo25 != null ? fc.p0 * (1 + h.lo25) : null, th: h.hi75 != null ? fc.p0 * (1 + h.hi75) : null }; }) });
       if (log[k].length > 16) log[k] = log[k].slice(-16);
       try { localStorage.setItem('quantra.projlog', JSON.stringify(log)); } catch {}
     }
@@ -958,12 +978,12 @@
     const out = [];
     for (const e of (log[akey(item)] || [])) for (const c of e.checks) {
       const actual = actualAt(hist, c.date); if (actual == null) continue;
-      const v = projVerdict(e.p0, c.lo, c.hi, c.p50, actual);
+      const v = projVerdict(e.p0, c.lo, c.hi, c.p50, actual, c.tl, c.th);
       out.push({ made: e.made, date: c.date, p50: c.p50, lo: c.lo, hi: c.hi, actual, v });
     }
     if (!out.length) { card.hidden = true; return; }
     out.sort((a, b) => (a.date < b.date ? 1 : -1));
-    const inRange = out.filter((r) => r.v.t.includes('range')).length, dirOk = out.filter((r) => r.v.c !== 'down').length;
+    const inRange = out.filter((r) => r.v.c === 'up').length, dirOk = out.filter((r) => r.v.c !== 'down').length;
     $('projScoreTable').innerHTML = '<tr><th>Made</th><th>Target</th><th>Projected</th><th>Actual</th><th>Result</th></tr>' +
       out.slice(0, 8).map((r) => `<tr><td><small>${r.made}</small></td><td>${r.date}</td><td class="proj-px">${money(r.p50, curBase)}</td><td class="proj-px">${money(r.actual, curBase)}</td><td class="proj-d ${r.v.c === 'up' ? 'up' : r.v.c === 'down' ? 'down' : ''}">${r.v.t}</td></tr>`).join('');
     $('projScoreSum').textContent = `${inRange}/${out.length} landed inside the P10–P90 band · ${dirOk}/${out.length} got the direction right`;

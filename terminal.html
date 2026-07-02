@@ -259,10 +259,10 @@
             <div><span class="label">Prob. up</span><b id="fcProb">—</b></div>
             <div><span class="label">Regime</span><b id="fcRegime">—</b></div>
             <div><span class="label">Target (mid)</span><b id="fcTarget">—</b></div>
-            <div><span class="label">Range (P10–P90)</span><b id="fcRange">—</b></div>
+            <div><span class="label">Likely range (P25–P75)</span><b id="fcRange">—</b></div>
             <div><span class="label">Annualised vol</span><b id="fcVol">—</b></div>
             <div class="fc-horizons" id="fcHorizons"></div>
-            <small>Monte-Carlo simulation (500 paths) — an 80%-calibrated probabilistic forecast (P10–P90 band).</small>
+            <small>Monte-Carlo simulation (1,200 paths) — the tight P25–P75 band is the 50% "likely" range; the chart's outer cone is the 80% band. Narrower range = lower odds, by definition.</small>
           </div>
 
           <div class="proj" id="projCard" hidden>
@@ -384,9 +384,9 @@
   </p>
 
   <script src="auth.js?v=46"></script>
-  <script src="analysis.js?v=46"></script>
+  <script src="analysis.js?v=47"></script>
   <script src="report.js?v=45"></script>
-  <script src="terminal.js?v=53"></script>
+  <script src="terminal.js?v=54"></script>
   <script src="pwa.js?v=45" defer></script>
 </body>
 </html>
