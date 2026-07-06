@@ -58,6 +58,11 @@ const ok = (cond, name, detail) => {
     ok(bad.status === 401 || (bad.body && bad.body.error), 'bad login rejected');
     const adm = await j('/api/admin/users');
     ok(adm.status === 401, 'admin endpoints gated (401 unauthenticated)');
+    // regression: /api/org/* must be ROUTED (401 = reached auth), not 404 (dispatcher miss)
+    for (const ep of ['/api/org/watch', '/api/org/members']) {
+      const r = await j(ep);
+      ok(r.status === 401, `${ep} routed + gated (401)`, r.status);
+    }
     const su = await j('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'smoke@test.local', password: 'S8k#pQ2m!xZr', name: 'Smoke', consent: true }) });
     ok(su.status === 200 && su.body && (su.body.token || su.body.ok), 'signup succeeds on isolated store', JSON.stringify(su.body).slice(0, 80));
     const weak = await j('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'weak@test.local', password: 'password123', name: 'W', consent: true }) });

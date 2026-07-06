@@ -1,0 +1,12 @@
+{
+  "appId": "com.quantra.ai",
+  "appName": "Quantra AI",
+  "webDir": "www",
+  "server": {
+    "url": "https://quantra-ai.onrender.com",
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
