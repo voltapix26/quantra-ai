@@ -9,6 +9,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 // Resilience: a stray async error should degrade one request, never take the
 // whole web server down. Log and keep serving instead of crashing the process.
@@ -69,6 +70,18 @@ function rapidSymbol(yh) {
   return ex ? `${s.slice(0, i)}:${ex}` : null;
 }
 const rapidHeaders = () => ({ 'X-RapidAPI-Key': RAPIDAPI_KEY, 'X-RapidAPI-Host': RAPIDAPI_HOST });
+// M4: quota guard — daily call counter + a 30-min circuit breaker on 429 so a burned
+// free-tier quota fails FAST to the Yahoo fallback instead of burning more calls (and
+// the operator can see today's burn in /admin → System status).
+const rapidState = { day: '', calls: 0, breakerUntil: 0 };
+async function rapidGet(url) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (rapidState.day !== today) { rapidState.day = today; rapidState.calls = 0; }
+  if (Date.now() < rapidState.breakerUntil) throw new Error('rapidapi breaker open (last 429)');
+  rapidState.calls++;
+  try { return await getJSON(url, rapidHeaders()); }
+  catch (e) { if (/429/.test(String(e.message))) rapidState.breakerUntil = Date.now() + 30 * 60 * 1000; throw e; }
+}
 // Real-time US quote from Finnhub (free tier covers US stocks/ETFs only). Excludes
 // exchange-suffixed, futures (=), index (^), FX (=X). Returns null → fall back.
 const fhEligible = (s) => FINNHUB_KEY && !/[.\^=]/.test(String(s));
@@ -152,8 +165,8 @@ async function rapidQuote(yh) {
   try {
     // 60s TTL (not 15s): RapidAPI free tiers have tight monthly quotas — a longer cache
     // keeps international prices "live enough" while burning ~4x fewer requests.
-    const d = await cached(`rapid:q:${rs}`, 60000, () => getJSON(
-      `https://${RAPIDAPI_HOST}/stock-quote?symbol=${encodeURIComponent(rs)}&language=en`, rapidHeaders()));
+    const d = await cached(`rapid:q:${rs}`, 60000, () => rapidGet(
+      `https://${RAPIDAPI_HOST}/stock-quote?symbol=${encodeURIComponent(rs)}&language=en`));
     const q = (d && d.data) || d; if (!q) return null;
     const price = +((q.price != null) ? q.price : q.last);
     if (!isFinite(price)) return null;
@@ -930,8 +943,8 @@ const api = {
     if (!q.symbol) return { ok: false, reason: 'no-symbol' };
     const rs = rapidSymbol(q.symbol) || (String(q.symbol).includes(':') ? q.symbol : `${q.symbol}:NASDAQ`);
     try {
-      const d = await cached(`rapid:news:${rs}`, 30 * 60 * 1000, () => getJSON(
-        `https://${RAPIDAPI_HOST}/stock-news?symbol=${encodeURIComponent(rs)}&language=en`, rapidHeaders()));
+      const d = await cached(`rapid:news:${rs}`, 30 * 60 * 1000, () => rapidGet(
+        `https://${RAPIDAPI_HOST}/stock-news?symbol=${encodeURIComponent(rs)}&language=en`));
       const raw = (d && d.data && (d.data.news || d.data)) || d.news || [];
       const news = (Array.isArray(raw) ? raw : []).slice(0, 12).map((n) => ({
         title: n.article_title || n.title || n.headline || '',
@@ -1158,11 +1171,21 @@ function serveStatic(req, res) {
     const ext = path.extname(fp);
     // Never let the browser serve a stale app shell or script — always revalidate
     // HTML/JS/CSS so code fixes take effect on the next load. Other assets may cache.
+    // M8: ?v=-versioned assets are content-addressed by convention (we bump v on every
+    // change), so they can cache forever — repeat page loads skip re-downloading the
+    // big JS/CSS bundles entirely.
+    const versioned = /[?&]v=\d/.test(req.url);
     const noCache = ext === '.html' || ext === '.js' || ext === '.css';
-    res.writeHead(200, {
+    const headers = {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': noCache ? 'no-store, must-revalidate' : 'public, max-age=3600',
-    });
+      'Cache-Control': versioned ? 'public, max-age=31536000, immutable' : noCache ? 'no-store, must-revalidate' : 'public, max-age=3600',
+    };
+    // M8: gzip text responses (~70% smaller on the ~150 KB terminal.js) when accepted
+    const texty = ext === '.html' || ext === '.js' || ext === '.css' || ext === '.svg' || ext === '.json' || ext === '.webmanifest';
+    if (texty && buf.length > 1024 && /\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
+      try { buf = zlib.gzipSync(buf); headers['Content-Encoding'] = 'gzip'; headers['Vary'] = 'Accept-Encoding'; } catch {}
+    }
+    res.writeHead(200, headers);
     res.end(buf);
   });
 }
@@ -1317,11 +1340,24 @@ async function authRoute(req, res, u) {
       const wk = weakPassword(pw, email); if (wk) return send(res, 400, { error: wk });
       if (!body.consent) return send(res, 400, { error: 'Please accept the Terms and Privacy Policy.' });
       if (await store.getUserByEmail(email)) return send(res, 409, { error: 'An account with that email already exists.' });
-      const userId = newId('usr'), orgId = newId('org');
-      await store.putOrg({ id: orgId, name: String(body.orgName || '').trim() || `${name}'s workspace`, plan: 'free', apiKey: 'qk_live_' + crypto.randomBytes(16).toString('hex'), ownerId: userId, createdAt: Date.now() });
-      const user = { id: userId, email, name, passHash: hashPw(pw), orgId, role: 'owner', verified: false, createdAt: Date.now() };
+      const userId = newId('usr');
+      // M7: invited signups join the inviter's workspace as members instead of
+      // getting their own org (token from POST /api/org/invite, 7-day expiry).
+      let orgId = null, role = 'owner';
+      if (body.invite) {
+        const inv = await store.getToken(String(body.invite));
+        if (inv && inv.type === 'invite' && inv.exp > Date.now() && (await store.getOrg(inv.orgId))) {
+          orgId = inv.orgId; role = 'member';
+          await store.delToken(String(body.invite));
+        }
+      }
+      if (!orgId) {
+        orgId = newId('org');
+        await store.putOrg({ id: orgId, name: String(body.orgName || '').trim() || `${name}'s workspace`, plan: 'free', apiKey: 'qk_live_' + crypto.randomBytes(16).toString('hex'), ownerId: userId, createdAt: Date.now() });
+      }
+      const user = { id: userId, email, name, passHash: hashPw(pw), orgId, role, verified: false, createdAt: Date.now() };
       await store.putUser(user);
-      audit('signup', req, email, { orgId });
+      audit('signup', req, email, { orgId, invited: role === 'member' });
       emailVerify(user).catch(() => {});
       const tok = await createSession(email);
       return sendC(res, 200, { ok: true, user: await userPublic(user), token: tok }, cookieFor(tok, req));
@@ -1565,13 +1601,79 @@ async function authRoute(req, res, u) {
         today: td, days, topPages,
         users: { total: users.length, verified, paid }, signups,
         status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY, push: PUSH_ENABLED, cryptoStream: true, mail: mailConfig(), uptimeSec: Math.round(process.uptime()), node: process.version,
-          billing: { stripe: !!stripe, prices: !!(PRICES.pro && PRICES.ultimate), webhook: !!process.env.STRIPE_WEBHOOK_SECRET, enforcing: !FORCE_ULTIMATE } },
+          billing: { stripe: !!stripe, prices: !!(PRICES.pro && PRICES.ultimate), webhook: !!process.env.STRIPE_WEBHOOK_SECRET, enforcing: !FORCE_ULTIMATE },
+          rapidQuota: { callsToday: rapidState.calls, breaker: Date.now() < rapidState.breakerUntil } },
       });
     }
     if (p === '/api/org' && m === 'GET') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       const org = (await store.getOrg(s.user.orgId)) || {};
-      return send(res, 200, { id: org.id, name: org.name, plan: planFor(org, s.user.email), members: await store.countMembers(s.user.orgId), apiKey: s.user.role === 'owner' ? org.apiKey : undefined, billingEnabled: !!stripe, devBilling: !!process.env.QUANTRA_DEV_BILLING && !PROD });
+      return send(res, 200, { id: org.id, name: org.name, plan: planFor(org, s.user.email), members: await store.countMembers(s.user.orgId), role: s.user.role, apiKey: s.user.role === 'owner' ? org.apiKey : undefined, billingEnabled: !!stripe, devBilling: !!process.env.QUANTRA_DEV_BILLING && !PROD });
+    }
+
+    /* ---- M7: team workspaces — members, invites, shared watchlist ---- */
+    if (p === '/api/org/members' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const users = (await store.allUsers()).filter((u2) => u2.orgId === s.user.orgId);
+      return send(res, 200, { ok: true, members: users.map((u2) => ({ email: u2.email, name: u2.name, role: u2.role, verified: !!u2.verified, lastLogin: u2.lastLogin || null })) });
+    }
+    if (p === '/api/org/invite' && m === 'POST') {
+      if (tooMany(res, 'inv:' + clientIp(req), 20, 3600000)) return;
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      if (s.user.role !== 'owner') return send(res, 403, { error: 'Only the workspace owner can invite.' });
+      const t = crypto.randomBytes(18).toString('hex');
+      await store.putToken(t, { type: 'invite', orgId: s.user.orgId, invitedBy: s.user.email, exp: Date.now() + 7 * 24 * 3600 * 1000 });
+      const link = `${APP_URL}/terminal.html?invite=${t}`;
+      const toEmail = String(body.email || '').trim().toLowerCase();
+      let mailed = false;
+      if (toEmail && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(toEmail) && mailConfig().ok) {
+        const org = await store.getOrg(s.user.orgId);
+        try { const r = await sendMail(toEmail, `You're invited to ${(org && org.name) || 'a Quantra workspace'}`, shell('Workspace invite', `<p style="color:#93A0B8">${s.user.email} invited you to their Quantra AI workspace — shared team watchlist, synced markets terminal.</p>${btn(link, 'Join the workspace')}<p style="color:#5A6680;font-size:12px">The link expires in 7 days. ${link}</p>`)); mailed = !!(r && r.ok !== false); } catch {}
+      }
+      audit('org_invite', req, s.user.email, { to: toEmail || '(link only)' });
+      return send(res, 200, { ok: true, link, mailed });
+    }
+    if (p === '/api/org/members/remove' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      if (s.user.role !== 'owner') return send(res, 403, { error: 'Only the workspace owner can remove members.' });
+      const email = String(body.email || '').trim().toLowerCase();
+      const usr = await store.getUserByEmail(email);
+      if (!usr || usr.orgId !== s.user.orgId) return send(res, 404, { error: 'No such member in your workspace.' });
+      if (usr.email === s.user.email) return send(res, 400, { error: 'Owners cannot remove themselves.' });
+      // moved out, not deleted: they get a fresh personal workspace and keep their data
+      const newOrg = newId('org');
+      await store.putOrg({ id: newOrg, name: `${usr.name || usr.email.split('@')[0]}'s workspace`, plan: 'free', apiKey: 'qk_live_' + crypto.randomBytes(16).toString('hex'), ownerId: usr.id, createdAt: Date.now() });
+      usr.orgId = newOrg; usr.role = 'owner';
+      await store.putUser(usr);
+      audit('org_member_removed', req, s.user.email, { removed: email });
+      return send(res, 200, { ok: true });
+    }
+    if (p === '/api/org/watch' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const org = (await store.getOrg(s.user.orgId)) || {};
+      const items = (org.sharedWatch || []).slice(0, 20);
+      const priced = await Promise.all(items.map(async (it) => {
+        try { const pr = await api['price']({ id: it.id || it.symbol, symbol: it.symbol, type: it.type }); return { ...it, price: pr.ok ? pr.price : null, change24h: pr.ok ? pr.change : null, currency: (pr && pr.currency) || 'USD' }; }
+        catch { return { ...it, price: null, change24h: null }; }
+      }));
+      return send(res, 200, { ok: true, items: priced, count: (org.sharedWatch || []).length });
+    }
+    if (p === '/api/org/watch' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const org = await store.getOrg(s.user.orgId);
+      if (!org) return send(res, 404, { error: 'No workspace.' });
+      org.sharedWatch = org.sharedWatch || [];
+      const it = body.item || {};
+      const key = (x) => `${x.type}:${x.id || x.symbol}`;
+      if (body.action === 'remove') {
+        org.sharedWatch = org.sharedWatch.filter((x) => key(x) !== key(it));
+      } else {
+        if (!it.symbol || !it.type) return send(res, 400, { error: 'Bad item.' });
+        if (org.sharedWatch.length >= 50) return send(res, 400, { error: 'Team watchlist is full (50).' });
+        if (!org.sharedWatch.some((x) => key(x) === key(it))) org.sharedWatch.push({ type: String(it.type).slice(0, 12), id: String(it.id || it.symbol).slice(0, 40), symbol: String(it.symbol).slice(0, 20), name: String(it.name || it.symbol).slice(0, 80), by: s.user.email });
+      }
+      await store.putOrg(org);
+      return send(res, 200, { ok: true, count: org.sharedWatch.length });
     }
 
     /* ---- Bring-your-own-broker (user links their OWN broker; Quantra never holds funds) ---- */
@@ -1587,6 +1689,13 @@ async function authRoute(req, res, u) {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       const provider = String(body.provider || '').toLowerCase();
       const mode = body.mode === 'live' ? 'live' : 'paper';
+      // M6: live trading is gated twice — the operator must enable it deployment-wide
+      // (BROKER_LIVE_ENABLED=true, only after compliance review) AND the user must
+      // explicitly acknowledge the risk. Paper mode is always available.
+      if (mode === 'live') {
+        if (process.env.BROKER_LIVE_ENABLED !== 'true') return send(res, 200, { ok: false, error: 'Live trading is not enabled on this deployment yet — paper trading only for now.' });
+        if (body.acceptLiveRisk !== true) return send(res, 400, { error: 'Live mode requires ticking the risk acknowledgement.' });
+      }
       const keyId = String(body.keyId || '').trim(), secret = String(body.secret || '').trim();
       if (!broker.PROVIDERS[provider]) return send(res, 400, { error: 'Unsupported broker.' });
       if (!keyId || !secret) return send(res, 400, { error: 'Enter both the API key and secret.' });

@@ -75,11 +75,19 @@
       const f = await r.json();
       return (f.watched || []).map((w) => ({ type: w.type, id: w.id, symbol: w.symbol, name: w.name, price: w.price, change24h: w.change, currency: w.currency, spark: [] }));
     }
+    if (cls === 'team') {     // M7: the workspace's shared watchlist
+      if (!onServer || !signedIn()) return [];
+      const t = window.QuantraAuth && window.QuantraAuth.token;
+      const r = await fetch(`${API}/org/watch`, { headers: t ? { Authorization: 'Bearer ' + t } : {}, credentials: 'same-origin' });
+      if (!r.ok) return [];
+      const f = await r.json();
+      return (f.items || []).map((w) => ({ type: w.type, id: w.id, symbol: w.symbol, name: w.name, price: w.price, change24h: w.change24h, currency: w.currency, spark: [] }));
+    }
     if (!onServer) throw new Error('static');
     const q = cls === 'stock' ? `?market=${encodeURIComponent(stockMarket)}` : '';
     return getJSON(`${API}/${BOARD_EP[cls] || 'stock/board'}${q}`);
   }
-  function updateForYouTab() { const b = document.getElementById('segForYou'); if (b) b.hidden = !signedIn(); }
+  function updateForYouTab() { const b = document.getElementById('segForYou'); if (b) b.hidden = !signedIn(); const tm = document.getElementById('segTeam'); if (tm) tm.hidden = !signedIn(); const sh = document.getElementById('tShare'); if (sh) sh.hidden = !signedIn(); }
   // valid lookback ranges per interval (keeps Yahoo combos legal) + defaults
   const RANGES = {
     'sec': [['1m', '1m'], ['5m', '5m'], ['15m', '15m']],     // live tick window (crypto)
@@ -185,6 +193,7 @@
     $('list').innerHTML = '<div class="tempty" id="empty">Loading live markets…</div>';
     try { board = await loadBoard(cls); renderBoard(); (cls === 'crypto' ? startArr() : stopArr());
       if (cls === 'foryou' && !board.length) { const em = $('empty'); if (em) em.textContent = 'Open a few assets and they’ll appear here — Quantra learns what you follow.'; }
+      if (cls === 'team' && !board.length) { const em = $('empty'); if (em) em.textContent = 'Your team watchlist is empty — open an asset and press 👥 to share it with your workspace.'; }
       if (board[0]) select(board[0]); }
     catch (e) {
       const empty = $('empty');
@@ -1781,6 +1790,17 @@
   });
 
   $('wStar').addEventListener('click', () => { if (current) toggleWatch(current); });
+  // M7: share the open asset to the workspace's team watchlist
+  { const sh = $('tShare');
+    if (sh) sh.addEventListener('click', async () => {
+      if (!current || !signedIn()) return;
+      const t = window.QuantraAuth && window.QuantraAuth.token;
+      try {
+        const r = await fetch(`${API}/org/watch`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(t ? { Authorization: 'Bearer ' + t } : {}) }, body: JSON.stringify({ item: { type: current.type, id: current.id, symbol: current.symbol, name: current.name } }) });
+        const d = await r.json();
+        R.toast(d.ok ? `👥 Shared with your team (${d.count} on the list)` : (d.error || 'Could not share.'));
+      } catch { R.toast('Could not share.'); }
+    }); }
 
   loadFX().then(() => { if (board.length) renderBoard(); if (current) select(current); });
   // start live streams once we know which sources are available (covers any load ordering)

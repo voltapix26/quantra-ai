@@ -1,5 +1,5 @@
 /* Quantra AI — service worker: offline app-shell + web-push */
-const CACHE = 'quantra-v44';
+const CACHE = 'quantra-v45';
 const SHELL = [
   '/', '/index.html', '/terminal.html', '/discover.html', '/portfolio.html', '/calendar.html',
   '/styles.css?v=52', '/onboard.js?v=1', '/analysis.js', '/auth.js', '/terminal.js', '/pwa.js', '/hero.js',

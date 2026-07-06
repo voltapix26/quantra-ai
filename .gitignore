@@ -11,3 +11,4 @@ cloudflared.exe
 
 docs/_vh_export.docx
 docs/*.pdf
+.gstack/

@@ -191,6 +191,7 @@
           `<div class="strow"><span>Email (Resend)</span><b>${on(s2.mail && s2.mail.configured)}</b></div>` +
           (s2.mail ? `<div class="strow"><span>Mail from</span><b style="font-size:.78rem">${esc(s2.mail.from)}</b></div>` : '') +
           (s2.mail && s2.mail.sandbox ? `<div class="strow" style="color:var(--amber)"><span>⚠ Sandbox sender</span><b style="color:var(--amber);font-size:.72rem;text-align:right">delivers only to your Resend signup email — verify a domain &amp; set MAIL_FROM</b></div>` : '') +
+          (s2.rapidQuota ? `<div class="strow"><span>RapidAPI today</span><b>${s2.rapidQuota.calls != null ? s2.rapidQuota.calls : s2.rapidQuota.callsToday} calls${s2.rapidQuota.breaker ? ' · <span style="color:var(--amber)">⚠ breaker open (quota hit)</span>' : ''}</b></div>` : '') +
           (s2.billing ? `<div class="strow"><span>Billing (Stripe key · prices · webhook)</span><b>${on(s2.billing.stripe)} · ${on(s2.billing.prices)} · ${on(s2.billing.webhook)}</b></div>` +
           `<div class="strow"><span>Plan enforcement</span><b>${s2.billing.enforcing ? '<span class="dot on"></span>enforcing paid plans' : '<span class="dot off"></span>everyone Ultimate (set FORCE_ULTIMATE=false to go live)'}</b></div>` : '') +
           `<div class="strow"><span>Uptime</span><b>${Math.floor(s2.uptimeSec / 3600)}h ${Math.floor((s2.uptimeSec % 3600) / 60)}m</b></div>` +

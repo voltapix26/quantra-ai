@@ -35,11 +35,11 @@
 | M1 | ~~Onboarding & retention~~ ✅ DONE | first-run coach-mark tour (onboard.js), getting-started checklist (auto-detects real actions), daily-brief email digest opt-in (Brief page toggle + 07:00-08:59 UTC sender) | ✅ |
 | M2 | ~~Billing on~~ ✅ CODE DONE | FORCE_ULTIMATE now env-driven; Stripe checkout/portal/webhook verified wired; admin shows billing status; go-live = operator runs 07_BILLING_RUNBOOK.md (Stripe account + 5 env vars) | ✅ |
 | M3 | ~~Quality hardening~~ ✅ DONE | CI (GitHub Actions: syntax + 22 engine invariants + 14-check server smoke on isolated store), daily session pruning (both store backends), ops runbook 08_OPERATIONS.md (backups/restore/env/incidents) | ✅ |
-| M4 | India data decision | either Twelve Data Grow/Pro or keep RapidAPI (watch free-tier quota in /admin) | S/$ |
-| M5 | Mobile APK | Capacitor wrap (pattern exists from TradeWatch project) | M |
-| M6 | Broker GA | live-trading gating, compliance text, per-broker adapters beyond Alpaca | L |
-| M7 | Team workspaces | multi-seat orgs, shared watchlists/screens | L |
-| M8 | Scale | CDN for static, WS fan-out service, Bloomberg tier (investor funding) | L/$ |
+| M4 | ~~India data~~ ✅ ENGINEERED | RapidAPI quota guard: daily call counter in /admin + 30-min circuit breaker on 429 (fails fast to Yahoo). Money decision documented in 09_SCALE_PLAN.md — buy RapidAPI paid tier at first Indian paying user | ✅ |
+| M5 | Mobile APK 🟡 | Capacitor Android shell (mobile/), remote-URL wrap of the live PWA; build with `cd mobile && npm run apk` (needs Android SDK — pattern + SDK path from TradeWatch) | 🟡 scaffolded |
+| M6 | ~~Broker gating~~ ✅ ENGINEERED | live mode double-gated: BROKER_LIVE_ENABLED=true (operator, post-compliance) + per-user risk acknowledgement checkbox; paper always available. Legal/compliance review is the remaining (non-code) step | ✅ |
+| M7 | ~~Team workspaces~~ ✅ DONE | owner invites (email or link, 7-day tokens) → invited signups join the org as members; members list/remove APIs; shared team watchlist (👥 share button + Team board tab, 50 items, priced live) | ✅ |
+| M8 | ~~Scale~~ ✅ ENGINEERED | gzip (~70% smaller transfers) + immutable caching for versioned assets; buy-thresholds table (CDN, tick fan-out, Bloomberg, DB tier) in 09_SCALE_PLAN.md | ✅ |
 
 ## Recommended AI workflow (template step 1–8) — audit
 | Step | Status |

@@ -133,13 +133,14 @@
       const seg = $('cMode');
       seg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.m;
         [...seg.children].forEach((x) => x.classList.toggle('on', x === b)); $('cBtn').classList.toggle('on', false);
-        $('liveWarn').innerHTML = mode === 'live' ? `<div class="warn">⚠ <b>Live mode places real orders with real money</b> in your Alpaca account. Make sure you understand the risks and your local regulations. We recommend testing in paper mode first.</div>` : ''; });
+        $('liveWarn').innerHTML = mode === 'live' ? `<div class="warn">⚠ <b>Live mode places real orders with real money</b> in your Alpaca account. Make sure you understand the risks and your local regulations. We recommend testing in paper mode first.<br/><label style="display:flex;gap:.45rem;align-items:flex-start;margin-top:.5rem;cursor:pointer"><input type="checkbox" id="liveAck" style="margin-top:.2em"/> I understand live mode trades real money, losses are possible, and Quantra provides no investment advice or guarantees.</label></div>` : ''; });
       $('cBtn').addEventListener('click', async () => {
         const keyId = $('cKey').value.trim(), secret = $('cSecret').value.trim(), msg = $('cMsg');
         if (!keyId || !secret) { msg.style.color = 'var(--rose)'; msg.textContent = 'Enter both the API key and secret.'; return; }
+        if (mode === 'live' && !($('liveAck') && $('liveAck').checked)) { msg.style.color = 'var(--rose)'; msg.textContent = 'Please tick the live-trading risk acknowledgement first.'; return; }
         $('cBtn').disabled = true; msg.style.color = 'var(--muted-2)'; msg.textContent = 'Verifying with the broker…';
         try {
-          const r = await api('/api/broker/connect', { method: 'POST', body: JSON.stringify({ provider: $('cProvider').value, mode, keyId, secret }) });
+          const r = await api('/api/broker/connect', { method: 'POST', body: JSON.stringify({ provider: $('cProvider').value, mode, keyId, secret, acceptLiveRisk: mode === 'live' ? true : undefined }) });
           if (!r.ok) { msg.style.color = 'var(--rose)'; msg.textContent = r.error; $('cBtn').disabled = false; return; }
           status = { connected: true, provider: r.provider, mode: r.mode, keyHint: r.keyHint }; renderConnected();
         } catch (e) { msg.style.color = 'var(--rose)'; msg.textContent = e.message; $('cBtn').disabled = false; }

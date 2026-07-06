@@ -80,8 +80,10 @@
     if (mode === 'signup' && !consent) { const ee = $('authErr'); ee.hidden = false; ee.style.color = ''; ee.textContent = 'Please accept the Terms and Privacy Policy.'; return; }
     const btn = $('authSubmit'), old = btn.textContent; btn.disabled = true; btn.textContent = '…';
     try {
-      const r = await api(mode === 'signup' ? '/auth/signup' : '/auth/login', { method: 'POST', body: JSON.stringify({ email, password, name, orgName, consent }) });
+      let invite; try { invite = sessionStorage.getItem('quantra.invite') || undefined; } catch {}
+      const r = await api(mode === 'signup' ? '/auth/signup' : '/auth/login', { method: 'POST', body: JSON.stringify({ email, password, name, orgName, consent, invite }) });
       if (r.token) setToken(r.token);
+      if (mode === 'signup' && invite) { try { sessionStorage.removeItem('quantra.invite'); } catch {} }
       user = r.user; renderBtn(); closeModal(); await syncOnLogin(); await loadLimits();
     } catch (err) { const ee = $('authErr'); ee.hidden = false; ee.style.color = ''; ee.textContent = err.message; }
     finally { btn.disabled = false; btn.textContent = old; }
@@ -116,8 +118,28 @@
     $('amVerify').hidden = user.verified !== false;
     $('amBilling').innerHTML = '';
     api('/org', {}).then((o) => {
-      $('amOrg').textContent = o.name || '—';
+      $('amOrg').textContent = (o.name || '—') + (o.members > 1 ? ` · ${o.members} members` : '');
       $('amPlan').textContent = cap(o.plan || 'free');
+      // M7: workspace owners can invite teammates (shared team watchlist + synced terminal)
+      let inv = $('amInvite');
+      if (o.role === 'owner') {
+        if (!inv) {
+          inv = document.createElement('button'); inv.id = 'amInvite'; inv.className = 'btn btn--ghost btn--block btn--sm'; inv.textContent = '👥 Invite teammate'; inv.style.margin = '.2rem 0 .4rem';
+          const anchor = $('amExport'); anchor.parentNode.insertBefore(inv, anchor);
+          inv.addEventListener('click', async () => {
+            const em = prompt('Teammate email (optional — leave blank to just copy an invite link):') || '';
+            try {
+              const r = await api('/org/invite', { method: 'POST', body: JSON.stringify({ email: em.trim() }) });
+              if (r.ok) {
+                try { await navigator.clipboard.writeText(r.link); } catch {}
+                const note = r.mailed ? 'Invite emailed ✓ (link also copied)' : 'Invite link copied — send it to your teammate';
+                if (window.QuantraReport) window.QuantraReport.toast(note); else alert(note + '\n' + r.link);
+              } else alert(r.error || 'Could not create invite.');
+            } catch (e) { alert(e.message); }
+          });
+        }
+        inv.hidden = false;
+      } else if (inv) inv.hidden = true;
       const wrap = $('amBilling');
       if (!o.billingEnabled) {
         if (o.devBilling) {
@@ -178,6 +200,14 @@
     // billing return
     const bp = new URLSearchParams(location.search).get('billing');
     if (bp && window.QuantraReport) { window.QuantraReport.toast(bp === 'success' ? 'Subscription active — welcome!' : 'Checkout cancelled'); history.replaceState(null, '', location.pathname); }
+    // M7: workspace invite link — stash the token, then open signup so the new
+    // account joins the inviter's workspace instead of creating its own.
+    const inv = new URLSearchParams(location.search).get('invite');
+    if (inv) {
+      try { sessionStorage.setItem('quantra.invite', inv); } catch {}
+      history.replaceState(null, '', location.pathname);
+      if (!user) { setTimeout(() => { openModal(); setMode('signup'); if (window.QuantraReport) window.QuantraReport.toast('👥 Workspace invite — sign up to join'); }, 800); }
+    }
   }
 
   if (onServer) { api('/auth/me', {}).then((r) => { user = r.user; if (!user && getToken()) setToken(''); renderBtn(); if (user) syncOnLogin(); }).catch(() => {}); loadLimits(); }
