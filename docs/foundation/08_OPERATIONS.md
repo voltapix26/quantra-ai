@@ -50,6 +50,7 @@ COINGECKO_API_KEY       crypto board (optional)
 FMP_API_KEY             economic calendar (now premium upstream)
 MARKETAUX_API_KEY       premium news (optional)
 ANTHROPIC_API_KEY       AI read/brief/ask (+ QUANTRA_AI_MODEL)
+DHAN_ACCESS_TOKEN / DHAN_CLIENT_ID   NSE F&O option chains (NIFTY/BANKNIFTY/FINNIFTY) via your Dhan broker account — token expires, renew in DhanHQ
 RESEND_API_KEY          email (+ MAIL_FROM after domain verify)
 VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT   web-push
 SUPER_ADMINS            comma-separated admin emails

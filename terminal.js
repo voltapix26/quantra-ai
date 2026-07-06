@@ -1005,8 +1005,11 @@
 
   /* ---------------- options chain (US-listed; delayed Yahoo) ---------------- */
   let optToken = 0;
+  const DHAN_SYMS = new Set(['NIFTY', 'BANKNIFTY', 'FINNIFTY', '^NSEI', '^NSEBANK']);
   function optEligible(item) {
-    return (item.type === 'stock' || item.type === 'etf') && !/[.^=]/.test(String(item.id || item.symbol));
+    if ((item.type === 'stock' || item.type === 'etf') && !/[.^=]/.test(String(item.id || item.symbol))) return true;
+    // NSE index chains (NIFTY/BANKNIFTY/FINNIFTY) — real exchange data via Dhan, key-gated
+    return !!(live.dhan && item.type === 'index' && (DHAN_SYMS.has(String(item.symbol).toUpperCase()) || DHAN_SYMS.has(String(item.id).toUpperCase())));
   }
   async function loadOptions(item, date) {
     const card = $('optCard'); if (!card) return;

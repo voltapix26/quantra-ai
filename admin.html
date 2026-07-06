@@ -214,7 +214,10 @@
           try {
             const r = await api('/api/admin/datatest');
             out.style.color = 'var(--muted)';
-            out.innerHTML = line('Twelve Data (RELIANCE.NS)', r.twelvedata) + line('Polygon (AAPL)', r.polygon) + line('Finnhub (AAPL)', r.finnhub) + line('RapidAPI (RELIANCE.NS)', r.rapidapi);
+            const dline = !r.dhan ? '' : !r.dhan.configured ? `<div class="strow"><span>Dhan (NSE F&amp;O)</span><b style="color:var(--muted-2);font-weight:400">not configured</b></div>`
+              : r.dhan.ok ? `<div class="strow"><span><span class="dot on"></span>Dhan (NSE F&amp;O)</span><b style="color:var(--mint);font-weight:400">live · NIFTY chain, ${r.dhan.expiries} expiries</b></div>`
+              : `<div class="strow"><span><span class="dot" style="background:var(--rose)"></span>Dhan (NSE F&amp;O)</span><b style="color:var(--rose);font-weight:400;font-size:.78rem">${esc(r.dhan.error||'failed')}</b></div>${r.dhan.hint ? `<div style="color:var(--amber);font-size:.76rem;margin:-.1rem 0 .3rem 1rem">${esc(r.dhan.hint)}</div>` : ''}`;
+            out.innerHTML = line('Twelve Data (RELIANCE.NS)', r.twelvedata) + line('Polygon (AAPL)', r.polygon) + line('Finnhub (AAPL)', r.finnhub) + line('RapidAPI (RELIANCE.NS)', r.rapidapi) + dline;
           } catch (e) { out.style.color = 'var(--rose)'; out.textContent = '✗ ' + e.message; }
           dbtn.disabled = false;
         });

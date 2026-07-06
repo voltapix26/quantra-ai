@@ -70,6 +70,69 @@ function rapidSymbol(yh) {
   return ex ? `${s.slice(0, i)}:${ex}` : null;
 }
 const rapidHeaders = () => ({ 'X-RapidAPI-Key': RAPIDAPI_KEY, 'X-RapidAPI-Host': RAPIDAPI_HOST });
+/* ---- Dhan (NSE F&O — real exchange data via the user's own broker account) ----
+   Free API with a Dhan account: dhan.co → DhanHQ → generate access token, then set
+   DHAN_ACCESS_TOKEN + DHAN_CLIENT_ID on Render. Powers real NIFTY/BANKNIFTY/FINNIFTY
+   option chains in the existing Options card. Rate limit: chain ≈ 1 req/3 s → cached. */
+const DHAN_TOKEN = process.env.DHAN_ACCESS_TOKEN || '';
+const DHAN_CLIENT = process.env.DHAN_CLIENT_ID || '';
+const DHAN_ON = !!(DHAN_TOKEN && DHAN_CLIENT);
+// NSE index underlyings (Dhan security ids, IDX_I segment)
+const DHAN_UNDERLYINGS = {
+  NIFTY: { scrip: 13, name: 'NIFTY 50' }, '^NSEI': { scrip: 13, name: 'NIFTY 50' },
+  BANKNIFTY: { scrip: 25, name: 'NIFTY BANK' }, '^NSEBANK': { scrip: 25, name: 'NIFTY BANK' },
+  FINNIFTY: { scrip: 27, name: 'NIFTY FIN SERVICE' },
+};
+async function dhanPost(pathn, bodyObj) {
+  const r = await fetch(`https://api.dhan.co/v2${pathn}`, {
+    method: 'POST',
+    headers: { 'access-token': DHAN_TOKEN, 'client-id': DHAN_CLIENT, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(bodyObj),
+  });
+  if (!r.ok) throw new Error(`dhan ${r.status}`);
+  return r.json();
+}
+// Full option chain for an NSE index → same shape the Options card already renders.
+async function dhanChain(sym, dateEpoch) {
+  const u = DHAN_UNDERLYINGS[sym]; if (!u || !DHAN_ON) return null;
+  const exps = await cached(`dhan:exp:${u.scrip}`, 10 * 60 * 1000, async () => {
+    const d = await dhanPost('/optionchain/expirylist', { UnderlyingScrip: u.scrip, UnderlyingSeg: 'IDX_I' });
+    return (d && d.data) || [];
+  });
+  if (!exps.length) return null;
+  let expiry = exps[0];
+  if (dateEpoch) { const want = new Date(dateEpoch * 1000).toISOString().slice(0, 10); if (exps.includes(want)) expiry = want; }
+  const chain = await cached(`dhan:oc:${u.scrip}:${expiry}`, 60 * 1000, async () => {
+    const d = await dhanPost('/optionchain', { UnderlyingScrip: u.scrip, UnderlyingSeg: 'IDX_I', Expiry: expiry });
+    return (d && d.data) || null;
+  });
+  if (!chain || !chain.oc) return null;
+  const spot = chain.last_price != null ? +chain.last_price : null;
+  const calls = [], puts = [];
+  for (const [k, v] of Object.entries(chain.oc)) {
+    const strike = +k; if (!isFinite(strike)) continue;
+    const side = (o, arr, itm) => { if (!o) return; arr.push({ strike,
+      last: o.last_price != null ? +o.last_price : null,
+      bid: o.top_bid_price != null ? +o.top_bid_price : null,
+      ask: o.top_ask_price != null ? +o.top_ask_price : null,
+      iv: o.implied_volatility != null ? +(+o.implied_volatility).toFixed(1) : null,
+      vol: o.volume != null ? +o.volume : null, oi: o.oi != null ? +o.oi : null, itm }); };
+    side(v.ce, calls, spot != null && strike < spot);
+    side(v.pe, puts, spot != null && strike > spot);
+  }
+  calls.sort((a, b) => a.strike - b.strike); puts.sort((a, b) => a.strike - b.strike);
+  const toEpoch = (d) => Math.round(Date.parse(d + 'T10:00:00Z') / 1000);
+  return { ok: true, symbol: sym, source: 'dhan', spot, currency: 'INR',
+    expirations: exps.slice(0, 24).map(toEpoch), expiry: toEpoch(expiry), calls, puts };
+}
+async function dhanTest() {
+  if (!DHAN_ON) return { configured: false };
+  try { const d = await dhanPost('/optionchain/expirylist', { UnderlyingScrip: 13, UnderlyingSeg: 'IDX_I' });
+    const n = (d && d.data && d.data.length) || 0;
+    return n ? { configured: true, ok: true, symbol: 'NIFTY', expiries: n }
+      : { configured: true, ok: false, symbol: 'NIFTY', error: 'no expiries returned' };
+  } catch (e) { return { configured: true, ok: false, symbol: 'NIFTY', error: e.message }; }
+}
 // M4: quota guard — daily call counter + a 30-min circuit breaker on 429 so a burned
 // free-tier quota fails FAST to the Yahoo fallback instead of burning more calls (and
 // the operator can see today's burn in /admin → System status).
@@ -601,6 +664,12 @@ const api = {
   async 'options'(q) {
     const sym = String(q.symbol || '').trim().toUpperCase();
     if (!sym || !/^[A-Z0-9.^-]{1,12}$/.test(sym)) return { ok: false, reason: 'bad-symbol' };
+    // NSE index F&O via the operator's Dhan broker keys (real exchange data)
+    if (DHAN_UNDERLYINGS[sym]) {
+      if (!DHAN_ON) return { ok: false, reason: 'no-dhan', hint: 'NSE option chains need Dhan broker keys — set DHAN_ACCESS_TOKEN + DHAN_CLIENT_ID on Render.' };
+      try { const c = await dhanChain(sym, /^\d+$/.test(String(q.date || '')) ? +q.date : null); if (c) return c; } catch (e) { noteError(); }
+      return { ok: false, reason: 'dhan-failed' };
+    }
     const date = /^\d+$/.test(String(q.date || '')) ? '&date=' + q.date : '';
     return cached(`opt:${sym}:${q.date || 'front'}`, 3 * 60 * 1000, async () => {
       await ensureCrumb();
@@ -964,7 +1033,7 @@ const api = {
      glance which real-time feeds are actually loaded: crypto (always), US
      (finnhub), international incl. India/NSE (twelvedata), US fallback (polygon). */
   async config() {
-    return { cryptoStream: true, finnhub: !!FINNHUB_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY };
+    return { cryptoStream: true, finnhub: !!FINNHUB_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY, dhan: DHAN_ON };
   },
 
   /* ---- RapidAPI research: analyst-grade news + market analytics for a symbol ----
@@ -1572,12 +1641,13 @@ async function authRoute(req, res, u) {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
       const nse = String(u.searchParams.get('symbol') || 'RELIANCE.NS');
-      const [twelvedata, polygon, finnhub, rapidapi] = await Promise.all([tdTest(nse), polyTest('AAPL'), fhTest('AAPL'), rapidTest(nse)]);
+      const [twelvedata, polygon, finnhub, rapidapi, dhan] = await Promise.all([tdTest(nse), polyTest('AAPL'), fhTest('AAPL'), rapidTest(nse), dhanTest()]);
       twelvedata.hint = feedHint('twelvedata', twelvedata);
       polygon.hint = feedHint('polygon', polygon);
       finnhub.hint = feedHint('finnhub', finnhub);
       rapidapi.hint = feedHint('rapidapi', rapidapi);
-      return send(res, 200, { twelvedata, polygon, finnhub, rapidapi });
+      if (dhan.configured && !dhan.ok) dhan.hint = /401|403/.test(String(dhan.error)) ? '→ Dhan token invalid or expired — regenerate the access token in DhanHQ and update DHAN_ACCESS_TOKEN on Render (tokens expire; renew monthly).' : '→ Check the DhanHQ dashboard / API status.';
+      return send(res, 200, { twelvedata, polygon, finnhub, rapidapi, dhan });
     }
     if (p === '/api/admin/mail-test' && m === 'POST') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
