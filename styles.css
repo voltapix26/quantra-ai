@@ -700,3 +700,35 @@ button{font-family:inherit}
 .tick-live b{color:var(--text);font-weight:600}
 .tick-live .tl-dot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 3px rgba(52,211,153,.18);animation:pulse 1.4s infinite}
 .tick-live .tl-gap{color:var(--cyan)}
+
+/* ---------------- onboarding: tour + getting-started ---------------- */
+.tour-dim{display:none;position:fixed;inset:0;background:rgba(4,7,14,.55);z-index:220;backdrop-filter:blur(1px)}
+.tour-ring{display:none;position:fixed;z-index:221;border:2px solid var(--cyan);border-radius:14px;box-shadow:0 0 0 6px rgba(34,211,238,.15),0 0 40px rgba(34,211,238,.25);pointer-events:none;transition:all .25s ease}
+.tour-card{display:none;position:fixed;z-index:222;background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--r);padding:1rem 1.1rem;box-shadow:var(--shadow)}
+.tour-card .tour-step{font-size:.68rem;color:var(--cyan);letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+.tour-card h4{font-size:1.02rem;margin:.25rem 0 .3rem}
+.tour-card p{font-size:.84rem;color:var(--muted);line-height:1.5}
+.tour-btns{display:flex;justify-content:space-between;align-items:center;margin-top:.7rem}
+.tour-next{background:var(--grad);color:#06251c;font-weight:700;border:0;border-radius:9px;padding:.45em 1em;cursor:pointer;font-size:.84rem}
+.tour-skip{background:none;border:0;color:var(--muted-2);cursor:pointer;font-size:.8rem}
+.tour-skip:hover{color:var(--text)}
+.gs-card{position:fixed;right:14px;bottom:14px;z-index:210;width:min(272px,calc(100vw - 28px));background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.gs-head{display:flex;align-items:center;gap:.5rem;padding:.65rem .8rem .5rem;cursor:pointer}
+.gs-title{font-family:'Space Grotesk';font-weight:600;font-size:.9rem}
+.gs-count{margin-left:auto;font-size:.74rem;color:var(--cyan);font-weight:700}
+.gs-x{background:none;border:0;color:var(--muted-2);font-size:1rem;cursor:pointer;line-height:1;padding:0 .1rem}
+.gs-x:hover{color:var(--rose)}
+.gs-bar{height:3px;background:rgba(255,255,255,.07)}
+.gs-bar i{display:block;height:100%;background:var(--grad);transition:width .4s ease}
+.gs-body{padding:.55rem .8rem .75rem}
+.gs-item{display:flex;gap:.55rem;align-items:flex-start;padding:.3rem 0}
+.gs-item b{font-size:.8rem;font-weight:600;display:block}
+.gs-item small{font-size:.7rem;color:var(--muted-2)}
+.gs-item.is-done b{text-decoration:line-through;color:var(--muted-2)}
+.gs-tick{color:var(--muted-2);font-size:.85rem;width:1em}
+.gs-item.is-done .gs-tick{color:var(--mint)}
+.gs-replay{margin-top:.4rem;background:none;border:1px solid var(--line-2);border-radius:8px;color:var(--muted);font-size:.74rem;padding:.3em .7em;cursor:pointer}
+.gs-replay:hover{color:var(--text);border-color:var(--cyan)}
+@media (max-width:600px){.gs-card{bottom:10px;right:10px}}
+.br-digest{display:inline-flex;align-items:center;gap:.4rem;margin-left:auto;font-size:.8rem;color:var(--muted);cursor:pointer;user-select:none}
+.br-digest input{accent-color:#34D399}

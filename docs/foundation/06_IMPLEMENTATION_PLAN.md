@@ -32,7 +32,7 @@
 ## Milestones LEFT (proposed order)
 | # | Milestone | Contents | Effort |
 |---|---|---|---|
-| M1 | Onboarding & retention | first-run tour, empty-state checklist, email digests opt-in | S |
+| M1 | ~~Onboarding & retention~~ ✅ DONE | first-run coach-mark tour (onboard.js), getting-started checklist (auto-detects real actions), daily-brief email digest opt-in (Brief page toggle + 07:00-08:59 UTC sender) | ✅ |
 | M2 | Billing on | re-enable Stripe plans (Free/Pro/Ultimate limits), refund flow already documented | M |
 | M3 | Quality hardening | CI (GitHub Actions): node --check, engine invariant tests, Playwright smoke; session pruning; DB backup runbook | M |
 | M4 | India data decision | either Twelve Data Grow/Pro or keep RapidAPI (watch free-tier quota in /admin) | S/$ |

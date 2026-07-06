@@ -2000,6 +2000,44 @@ async function selfCheck() {
   return healthLast;
 }
 
+/* ============================================================
+   Daily brief digest — one morning email to users who opted in
+   (prefs.digestEmail, set on the Brief page). Sends in the
+   07:00–08:59 UTC window, once per user per day (d.digestDay).
+   ============================================================ */
+let digestBusy = false;
+async function sendDigests() {
+  if (digestBusy || !mailConfig().ok) return;
+  const hour = new Date().getUTCHours();
+  if (hour < 7 || hour > 8) return;
+  const today = new Date().toISOString().slice(0, 10);
+  digestBusy = true;
+  try {
+    const users = await store.allUsers();
+    for (const u of users.slice(0, 500)) {
+      try {
+        if (!u.verified) continue;
+        const d = await store.getUserData(u.id);
+        if (!d || !d.prefs || !d.prefs.digestEmail || d.digestDay === today) continue;
+        const items = (d.watchlist || []).slice(0, 40);
+        if (!items.length) continue;
+        const affinity = (d.affinity || []).slice().sort((a, b) => (b.n || 0) - (a.n || 0)).slice(0, 4).map((a) => a.symbol);
+        const br = await api['brief']({}, { items, affinity });
+        if (!br || !br.ok || !br.text) continue;
+        const movers = (br.rows || []).slice(0, 6).map((r) =>
+          `<tr><td style="padding:4px 10px 4px 0"><b>${r.symbol}</b></td><td style="padding:4px 10px 4px 0">${r.price != null ? r.price : '—'}</td><td style="padding:4px 0;color:${r.change >= 0 ? '#0E9F6E' : '#E02424'}">${r.change != null ? (r.change >= 0 ? '+' : '') + r.change.toFixed(2) + '%' : '—'}</td></tr>`).join('');
+        await sendMail(u.email, `☀ Your Quantra brief — ${br.date}`, shell('Your daily brief', `
+          <p style="font-size:15px;line-height:1.6">${br.text}</p>
+          ${movers ? `<table style="border-collapse:collapse;font-size:14px;margin:12px 0">${movers}</table>` : ''}
+          ${btn(APP_URL + '/brief.html', 'Open the full brief')}
+          <p style="color:#8A93A6;font-size:12px">You get this because you turned on the daily digest on your Brief page — untick it there any time. Not investment advice.</p>`));
+        d.digestDay = today;
+        await store.putUserData(u.id, d);
+      } catch {}
+    }
+  } catch (e) { console.warn('[digest]', e.message); } finally { digestBusy = false; }
+}
+
 store.ready().then(() => {
   snapshotToday();
   setInterval(snapshotToday, 2 * 60 * 60 * 1000).unref(); // every 2h so the new day's snapshot lands promptly; no-ops if today is done
@@ -2008,6 +2046,7 @@ store.ready().then(() => {
   hydrateAlerts();                                        // rebuild active-alert index from accounts
   setInterval(monitorAlerts, 60000).unref();             // check alert prices every 60s (fires + emails)
   setTimeout(selfCheck, 20000); setInterval(selfCheck, 12 * 60 * 1000).unref(); // self-diagnostics every 12 min
+  sendDigests(); setInterval(sendDigests, 20 * 60 * 1000).unref();   // daily brief emails (07:00–08:59 UTC window, once/user/day)
   // Keep-warm: free hosts sleep after ~15 min idle, so the first visit then takes
   // ~50s to wake. A self-ping every few minutes keeps it hot → the app loads in <1s.
   const SELF_URL = (process.env.RENDER_EXTERNAL_URL || process.env.APP_URL || '').replace(/\/$/, '');

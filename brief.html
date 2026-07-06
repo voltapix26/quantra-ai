@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0A0F1C" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=51" />
+  <link rel="stylesheet" href="styles.css?v=52" />
   <style>
     .br{max-width:860px;margin:0 auto;padding:1.3rem 0 4rem}
     .br h1{font-size:1.9rem;margin-bottom:.15rem}
@@ -69,6 +69,9 @@
     <div class="br-actions">
       <button class="btn btn--primary btn--sm" id="brRefresh">↻ Regenerate</button>
       <span style="color:var(--muted-2);font-size:.82rem" id="brSrc"></span>
+      <label class="br-digest" id="brDigestWrap" hidden title="One email every morning with this brief — unsubscribe any time">
+        <input type="checkbox" id="brDigest" /> 📧 Email me this brief every morning
+      </label>
     </div>
     <div id="brForYou"></div>
     <div id="brBody"></div>
@@ -141,8 +144,24 @@
         $('brForYou').innerHTML = `<div class="br-card" style="margin-bottom:1.3rem"><h3>✦ For you — the assets you follow most${f.favoriteClass ? ' · mostly ' + esc(f.favoriteClass) : ''}</h3>${rows}</div>`;
       } catch {}
     }
+    // Daily-digest email opt-in (signed-in users): prefs.digestEmail synced via /api/me/data
+    async function initDigest() {
+      if (!onServer || !tok) return;
+      const wrap = $('brDigestWrap'), box = $('brDigest');
+      try {
+        const d = await (await fetch('/api/me/data', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'same-origin' })).json();
+        box.checked = !!(d && d.prefs && d.prefs.digestEmail);
+        wrap.hidden = false;
+      } catch { return; }
+      box.addEventListener('change', async () => {
+        try {
+          await fetch('/api/me/data', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, credentials: 'same-origin', body: JSON.stringify({ prefs: { digestEmail: box.checked } }) });
+          wrap.style.color = box.checked ? 'var(--mint)' : '';
+        } catch { box.checked = !box.checked; }
+      });
+    }
     $('brRefresh').addEventListener('click', load);
-    load(); loadForYou();
+    load(); loadForYou(); initDigest();
   </script>
 </body>
 </html>
