@@ -4,7 +4,11 @@
   "private": true,
   "description": "Quantra AI Terminal — live technical + fundamental market analysis.",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node -e \"const cp=require('child_process');['analysis','auth','broker','globe','hero','mailer','news','onboard','plans','pwa','report','screener','server','store','sw','terminal'].forEach(f=>cp.execSync('node --check '+f+'.js',{stdio:'inherit'}));console.log('syntax: all OK')\"",
+    "test:engine": "node test/engine.test.js",
+    "test:smoke": "node test/smoke.test.js",
+    "test": "npm run check && npm run test:engine && npm run test:smoke"
   },
   "engines": {
     "node": ">=22"

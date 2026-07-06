@@ -1,0 +1,23 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # deps are optional at runtime (pg/stripe/anthropic are lazy-required);
+      # the smoke test runs on the file store so no install is needed.
+      - name: Syntax check (all modules)
+        run: npm run check
+      - name: Engine invariant tests
+        run: npm run test:engine
+      - name: Server smoke test (isolated file store)
+        run: npm run test:smoke

@@ -8,7 +8,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA = path.join(__dirname, 'data');
+// QUANTRA_DATA_DIR override keeps tests/CI on an isolated throwaway store
+const DATA = process.env.QUANTRA_DATA_DIR || path.join(__dirname, 'data');
 
 function fileStore() {
   fs.mkdirSync(path.join(DATA, 'users'), { recursive: true });
@@ -58,6 +59,7 @@ function fileStore() {
     async deleteUserData(uid) { try { fs.unlinkSync(path.join(DATA, 'users', uid + '.json')); } catch {} },
     async deleteOrg(id) { delete orgs[id]; sv(F('orgs.json'), orgs); },
     async delSessionsForEmail(email) { let ch = false; for (const t of Object.keys(sessions)) { if (sessions[t] && sessions[t].email === email) { delete sessions[t]; ch = true; } } if (ch) sv(F('sessions.json'), sessions); },
+    async pruneSessions(now) { let n = 0; for (const t of Object.keys(sessions)) { const s = sessions[t]; if (!s || (s.exp && s.exp < now)) { delete sessions[t]; n++; } } if (n) sv(F('sessions.json'), sessions); return n; },
   };
 }
 
@@ -120,6 +122,7 @@ function pgStore() {
     async deleteUserData(uid) { await q('delete from userdata where uid=$1', [uid]); },
     async deleteOrg(id) { await q('delete from orgs where id=$1', [id]); },
     async delSessionsForEmail(email) { await q("delete from sessions where data->>'email'=$1", [email]); },
+    async pruneSessions(now) { const r = await q("delete from sessions where (data->>'exp') is not null and (data->>'exp')::bigint < $1", [now]); return r.rowCount || 0; },
   };
 }
 

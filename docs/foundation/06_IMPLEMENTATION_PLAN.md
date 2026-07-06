@@ -33,8 +33,8 @@
 | # | Milestone | Contents | Effort |
 |---|---|---|---|
 | M1 | ~~Onboarding & retention~~ ✅ DONE | first-run coach-mark tour (onboard.js), getting-started checklist (auto-detects real actions), daily-brief email digest opt-in (Brief page toggle + 07:00-08:59 UTC sender) | ✅ |
-| M2 | Billing on | re-enable Stripe plans (Free/Pro/Ultimate limits), refund flow already documented | M |
-| M3 | Quality hardening | CI (GitHub Actions): node --check, engine invariant tests, Playwright smoke; session pruning; DB backup runbook | M |
+| M2 | ~~Billing on~~ ✅ CODE DONE | FORCE_ULTIMATE now env-driven; Stripe checkout/portal/webhook verified wired; admin shows billing status; go-live = operator runs 07_BILLING_RUNBOOK.md (Stripe account + 5 env vars) | ✅ |
+| M3 | ~~Quality hardening~~ ✅ DONE | CI (GitHub Actions: syntax + 22 engine invariants + 14-check server smoke on isolated store), daily session pruning (both store backends), ops runbook 08_OPERATIONS.md (backups/restore/env/incidents) | ✅ |
 | M4 | India data decision | either Twelve Data Grow/Pro or keep RapidAPI (watch free-tier quota in /admin) | S/$ |
 | M5 | Mobile APK | Capacitor wrap (pattern exists from TradeWatch project) | M |
 | M6 | Broker GA | live-trading gating, compliance text, per-broker adapters beyond Alpaca | L |

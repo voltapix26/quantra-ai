@@ -1186,8 +1186,11 @@ const store = require('./store');
 const { planOf } = require('./plans');
 // For now every signed-in user is granted the top "ultimate" plan, and super-admins always are.
 // Anonymous (not signed in) stays on "free" — so a user must at least sign in to get it.
-// Flip FORCE_ULTIMATE to false to restore per-org billing plans.
-const FORCE_ULTIMATE = true;
+// Billing go-live switch (M2): defaults to TRUE (everyone gets Ultimate) so nothing
+// changes until the operator finishes the Stripe setup (docs/foundation/07_BILLING_RUNBOOK.md)
+// and sets FORCE_ULTIMATE=false on Render. Then plans enforce per-org limits and the
+// Upgrade buttons in the account menu run real Stripe checkout.
+const FORCE_ULTIMATE = process.env.FORCE_ULTIMATE !== 'false';
 const planFor = (org, email) => isSuperAdmin(email) ? 'ultimate' : (FORCE_ULTIMATE ? (org ? 'ultimate' : 'free') : ((org && org.plan) || 'free'));
 const maskKey = (k) => { k = String(k || ''); return k.length <= 6 ? '••••' : k.slice(0, 4) + '…' + k.slice(-2); };
 const { sendMail, mailConfig, shell, btn, APP_URL } = require('./mailer');
@@ -1561,7 +1564,8 @@ async function authRoute(req, res, u) {
       return send(res, 200, {
         today: td, days, topPages,
         users: { total: users.length, verified, paid }, signups,
-        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY, push: PUSH_ENABLED, cryptoStream: true, mail: mailConfig(), uptimeSec: Math.round(process.uptime()), node: process.version },
+        status: { storage: store.kind, finnhub: !!FINNHUB_KEY, coingecko: !!COINGECKO_KEY, ai: !!ANTHROPIC_KEY, fmp: !!FMP_KEY, marketaux: !!MARKETAUX_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY, push: PUSH_ENABLED, cryptoStream: true, mail: mailConfig(), uptimeSec: Math.round(process.uptime()), node: process.version,
+          billing: { stripe: !!stripe, prices: !!(PRICES.pro && PRICES.ultimate), webhook: !!process.env.STRIPE_WEBHOOK_SECRET, enforcing: !FORCE_ULTIMATE } },
       });
     }
     if (p === '/api/org' && m === 'GET') {
@@ -2047,6 +2051,9 @@ store.ready().then(() => {
   setInterval(monitorAlerts, 60000).unref();             // check alert prices every 60s (fires + emails)
   setTimeout(selfCheck, 20000); setInterval(selfCheck, 12 * 60 * 1000).unref(); // self-diagnostics every 12 min
   sendDigests(); setInterval(sendDigests, 20 * 60 * 1000).unref();   // daily brief emails (07:00–08:59 UTC window, once/user/day)
+  // prune expired sessions daily (30-day TTL rows otherwise accumulate forever)
+  setInterval(() => { store.pruneSessions(Date.now()).then((n) => { if (n) console.log(`[sessions] pruned ${n} expired`); }).catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+  setTimeout(() => { store.pruneSessions(Date.now()).catch(() => {}); }, 60000);
   // Keep-warm: free hosts sleep after ~15 min idle, so the first visit then takes
   // ~50s to wake. A self-ping every few minutes keeps it hot → the app loads in <1s.
   const SELF_URL = (process.env.RENDER_EXTERNAL_URL || process.env.APP_URL || '').replace(/\/$/, '');
