@@ -344,6 +344,19 @@ const STOCK_MARKETS = {
    symbol (used for charts/quotes), s = display ticker, n = friendly name.
    ETFs, commodities, indices and FX all flow through the same Yahoo chart
    pipeline as stocks, so the analysis engine scores them with no extra code. */
+/* Futures — CME-group contracts, freely quoted via Yahoo (=F). This is the honest
+   free universe: global equity-index futures (incl. Nikkei), rates, energy, metals,
+   ags. Exchange-local F&O (e.g. NSE NIFTY futures) needs a paid exchange feed. */
+const FUTURES = [
+  { y: 'ES=F', s: 'ES', n: 'S&P 500 E-mini' }, { y: 'NQ=F', s: 'NQ', n: 'Nasdaq 100 E-mini' },
+  { y: 'YM=F', s: 'YM', n: 'Dow E-mini' }, { y: 'RTY=F', s: 'RTY', n: 'Russell 2000 E-mini' },
+  { y: 'NKD=F', s: 'NKD', n: 'Nikkei 225 (CME)' },
+  { y: 'ZN=F', s: 'ZN', n: '10-Yr T-Note' }, { y: 'ZB=F', s: 'ZB', n: '30-Yr T-Bond' }, { y: 'ZF=F', s: 'ZF', n: '5-Yr T-Note' },
+  { y: 'CL=F', s: 'CL', n: 'Crude Oil WTI' }, { y: 'BZ=F', s: 'BZ', n: 'Brent Crude' }, { y: 'NG=F', s: 'NG', n: 'Natural Gas' }, { y: 'RB=F', s: 'RB', n: 'RBOB Gasoline' },
+  { y: 'GC=F', s: 'GC', n: 'Gold' }, { y: 'SI=F', s: 'SI', n: 'Silver' }, { y: 'HG=F', s: 'HG', n: 'Copper' }, { y: 'PL=F', s: 'PL', n: 'Platinum' },
+  { y: 'ZC=F', s: 'ZC', n: 'Corn' }, { y: 'ZS=F', s: 'ZS', n: 'Soybeans' }, { y: 'ZW=F', s: 'ZW', n: 'Wheat' },
+  { y: 'KC=F', s: 'KC', n: 'Coffee' }, { y: 'SB=F', s: 'SB', n: 'Sugar' }, { y: 'CC=F', s: 'CC', n: 'Cocoa' }, { y: 'CT=F', s: 'CT', n: 'Cotton' }, { y: 'LE=F', s: 'LE', n: 'Live Cattle' },
+];
 const UNIV = {
   etf: [
     { y: 'SPY', s: 'SPY', n: 'S&P 500 ETF' }, { y: 'QQQ', s: 'QQQ', n: 'Nasdaq 100 ETF' },
@@ -583,6 +596,26 @@ const api = {
   async 'stock/markets'() { return Object.entries(STOCK_MARKETS).map(([id, m]) => ({ id, label: m.label, ccy: m.ccy })); },
   async 'etf/board'() { return cached('etfb', 15000, () => buildBoard(UNIV.etf, 'etf')); },
   async 'commodity/board'() { return cached('comb', 15000, () => buildBoard(UNIV.commodity, 'commodity')); },
+  async 'futures/board'() { return cached('futb', 15000, () => buildBoard(FUTURES, 'future')); },
+  /* ---- options chain (US-listed symbols; Yahoo v7 + crumb; delayed) ---- */
+  async 'options'(q) {
+    const sym = String(q.symbol || '').trim().toUpperCase();
+    if (!sym || !/^[A-Z0-9.^-]{1,12}$/.test(sym)) return { ok: false, reason: 'bad-symbol' };
+    const date = /^\d+$/.test(String(q.date || '')) ? '&date=' + q.date : '';
+    return cached(`opt:${sym}:${q.date || 'front'}`, 3 * 60 * 1000, async () => {
+      await ensureCrumb();
+      const d = await getJSON(`${YF2}/v7/finance/options/${encodeURIComponent(sym)}?crumb=${encodeURIComponent(yCrumb)}${date}`, { cookie: yCookie });
+      const r = d && d.optionChain && d.optionChain.result && d.optionChain.result[0];
+      if (!r || !r.options || !r.options[0]) return { ok: false, reason: 'no-chain' };
+      const o = r.options[0], spot = r.quote && r.quote.regularMarketPrice;
+      const row = (c) => ({ strike: c.strike, last: c.lastPrice ?? null, bid: c.bid ?? null, ask: c.ask ?? null,
+        iv: c.impliedVolatility != null ? +(c.impliedVolatility * 100).toFixed(1) : null,
+        vol: c.volume ?? null, oi: c.openInterest ?? null, itm: !!c.inTheMoney });
+      return { ok: true, symbol: sym, spot: spot ?? null, currency: (r.quote && r.quote.currency) || 'USD',
+        expirations: (r.expirationDates || []).slice(0, 24), expiry: o.expirationDate || null,
+        calls: (o.calls || []).map(row), puts: (o.puts || []).map(row) };
+    });
+  },
   async 'index/board'() { return cached('idxb', 15000, () => buildBoard(UNIV.index, 'index')); },
   async 'fx/board'() { return cached('fxb', 15000, () => buildBoard(UNIV.fx, 'fx')); },
 

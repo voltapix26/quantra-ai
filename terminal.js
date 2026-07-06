@@ -60,7 +60,7 @@
   async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }
 
   /* ---------------- data ---------------- */
-  const BOARD_EP = { stock: 'stock/board', etf: 'etf/board', commodity: 'commodity/board', index: 'index/board', fx: 'fx/board' };
+  const BOARD_EP = { stock: 'stock/board', etf: 'etf/board', commodity: 'commodity/board', future: 'futures/board', index: 'index/board', fx: 'fx/board' };
   async function loadBoard(cls) {
     if (cls === 'crypto') {
       if (onServer) return getJSON(`${API}/crypto/markets?page=1`);
@@ -1003,6 +1003,42 @@
     card.hidden = false;
   }
 
+  /* ---------------- options chain (US-listed; delayed Yahoo) ---------------- */
+  let optToken = 0;
+  function optEligible(item) {
+    return (item.type === 'stock' || item.type === 'etf') && !/[.^=]/.test(String(item.id || item.symbol));
+  }
+  async function loadOptions(item, date) {
+    const card = $('optCard'); if (!card) return;
+    if (!onServer || !optEligible(item)) { card.hidden = true; return; }
+    const my = ++optToken;
+    try {
+      const d = await getJSON(`${API}/options?symbol=${encodeURIComponent(item.symbol)}${date ? '&date=' + date : ''}`);
+      if (my !== optToken || !current || current.id !== item.id) return;   // user moved on
+      if (!d.ok) { card.hidden = true; return; }
+      card.hidden = false;
+      $('optSpot').textContent = d.spot != null ? `· spot ${money(d.spot, d.currency)}` : '';
+      const sel = $('optExp');
+      sel.innerHTML = (d.expirations || []).map((e) => `<option value="${e}" ${e === d.expiry ? 'selected' : ''}>${new Date(e * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</option>`).join('');
+      sel.onchange = () => loadOptions(item, sel.value);
+      // strikes around the money: index of first strike >= spot in the union of strikes
+      const strikes = [...new Set([...(d.calls || []).map((c) => c.strike), ...(d.puts || []).map((p) => p.strike)])].sort((a, b) => a - b);
+      const spot = d.spot != null ? d.spot : (strikes[Math.floor(strikes.length / 2)] || 0);
+      let atm = strikes.findIndex((s) => s >= spot); if (atm < 0) atm = strikes.length - 1;
+      const view = strikes.slice(Math.max(0, atm - 8), atm + 8);
+      const cBy = new Map((d.calls || []).map((c) => [c.strike, c])), pBy = new Map((d.puts || []).map((p) => [p.strike, p]));
+      const f = (v, dg) => v == null ? '—' : (+v).toFixed(dg != null ? dg : 2);
+      const rows = view.map((s) => {
+        const c = cBy.get(s), p = pBy.get(s), isAtm = s === strikes[atm];
+        return `<tr class="${isAtm ? 'opt-atm' : ''}">` +
+          `<td class="${c && c.itm ? 'opt-itm' : ''}">${c ? f(c.last) : '—'}</td><td>${c && c.iv != null ? c.iv + '%' : '—'}</td><td>${c && c.oi != null ? c.oi.toLocaleString() : '—'}</td>` +
+          `<td class="opt-strike">${f(s)}</td>` +
+          `<td>${p && p.oi != null ? p.oi.toLocaleString() : '—'}</td><td>${p && p.iv != null ? p.iv + '%' : '—'}</td><td class="${p && p.itm ? 'opt-itm' : ''}">${p ? f(p.last) : '—'}</td></tr>`;
+      }).join('');
+      $('optTable').innerHTML = '<tr><th colspan="3" class="opt-side">CALLS · last / IV / OI</th><th>Strike</th><th colspan="3" class="opt-side">OI / IV / last · PUTS</th></tr>' + rows;
+    } catch { if (my === optToken) card.hidden = true; }
+  }
+
   /* ---------------- Ask Quantra (conversational analyst) ---------------- */
   const ASK_CHIPS = ['Is this a good entry?', 'What do the indicators say?', 'What are the risks?', 'Summarize the news', 'Where might it go?'];
   let askAssetKey = null;
@@ -1443,7 +1479,7 @@
         chip.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%${absStr}`;
         chip.className = 'chip chip--' + (chg >= 0 ? 'up' : 'down');
       } else { chip.textContent = res.verdict.trend; chip.className = 'chip chip--' + (up ? 'up' : res.verdict.dir === 'down' ? 'down' : 'neutral'); }
-      const SUBS = { crypto: 'Cryptocurrency · 24/7 market', stock: 'Equity / stock', etf: 'Exchange-traded fund', commodity: 'Commodity / futures', index: 'Market index', fx: 'Foreign exchange pair' };
+      const SUBS = { crypto: 'Cryptocurrency · 24/7 market', stock: 'Equity / stock', etf: 'Exchange-traded fund', commodity: 'Commodity / futures', future: 'Futures contract · CME group', index: 'Market index', fx: 'Foreign exchange pair' };
       $('dSub').textContent = SUBS[item.type] || '—';   // always set (fundamentals may refine it for stocks)
       // Market open/closed badge (per-exchange session window from Yahoo).
       renderDetailBadge();
@@ -1513,6 +1549,7 @@
       typeOut($('dText'), res.text);
       renderPeers(peers);
       renderNews(sent, item);
+      loadOptions(item);   // options chain (US-listed stocks/ETFs; hides itself otherwise)
       state.news = sent;
       setAskAsset(item);
       setAlertAsset(item);

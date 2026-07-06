@@ -732,3 +732,17 @@ button{font-family:inherit}
 @media (max-width:600px){.gs-card{bottom:10px;right:10px}}
 .br-digest{display:inline-flex;align-items:center;gap:.4rem;margin-left:auto;font-size:.8rem;color:var(--muted);cursor:pointer;user-select:none}
 .br-digest input{accent-color:#34D399}
+
+/* ---------------- options chain ---------------- */
+.opt-controls{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;margin:.4rem 0 .7rem}
+.opt-controls label{font-size:.78rem;color:var(--muted-2);display:flex;gap:.4rem;align-items:center}
+.opt-controls select{background:var(--panel-2);border:1px solid var(--line-2);border-radius:8px;color:var(--text);padding:.3em .5em;font-size:.82rem}
+.opt-note{font-size:.7rem;color:var(--muted-2)}
+.opt-table{width:100%;border-collapse:collapse;font-size:.8rem;font-variant-numeric:tabular-nums}
+.opt-table th{font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-2);padding:.35rem .45rem;border-bottom:1px solid var(--line);text-align:center}
+.opt-table td{padding:.32rem .45rem;border-bottom:1px solid var(--line);color:var(--muted);text-align:center;white-space:nowrap}
+.opt-table tr:last-child td{border-bottom:0}
+.opt-strike{font-weight:700;color:var(--text);background:rgba(255,255,255,.03)}
+.opt-itm{color:var(--mint);font-weight:600}
+.opt-atm td{background:rgba(34,211,238,.07)}
+.opt-atm .opt-strike{color:var(--cyan)}

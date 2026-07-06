@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0A0F1C" />
   <link rel="apple-touch-icon" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=52" />
+  <link rel="stylesheet" href="styles.css?v=53" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -106,6 +106,7 @@
           <button class="seg__btn" data-class="stock">Stocks</button>
           <button class="seg__btn" data-class="etf">ETFs</button>
           <button class="seg__btn" data-class="commodity">Commodities</button>
+          <button class="seg__btn" data-class="future">Futures</button>
           <button class="seg__btn" data-class="index">Indices</button>
           <button class="seg__btn" data-class="fx">Forex</button>
         </div>
@@ -285,6 +286,16 @@
           </div>
         </div>
 
+        <!-- OPTIONS CHAIN (US-listed symbols; delayed Yahoo data) -->
+        <div class="card opt" id="optCard" hidden>
+          <div class="section-title"><span>⛓ Options chain <span id="optSpot" style="color:var(--muted-2);font-weight:400;font-size:.82rem"></span></span></div>
+          <div class="opt-controls">
+            <label>Expiry <select id="optExp"></select></label>
+            <span class="opt-note">US-listed symbols · delayed data · IV = implied volatility · OI = open interest. Informational, not advice.</span>
+          </div>
+          <div class="proj-wrap"><table class="opt-table" id="optTable"></table></div>
+        </div>
+
         <!-- ASK QUANTRA — conversational analyst -->
         <div class="card askq" id="askqCard" hidden>
           <div class="askq-hdr">
@@ -388,7 +399,7 @@
   <script src="auth.js?v=46"></script>
   <script src="analysis.js?v=49"></script>
   <script src="report.js?v=45"></script>
-  <script src="terminal.js?v=56"></script>
+  <script src="terminal.js?v=57"></script>
   <script src="onboard.js?v=1" defer></script>
   <script src="pwa.js?v=45" defer></script>
 </body>
