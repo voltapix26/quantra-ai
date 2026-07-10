@@ -62,7 +62,16 @@
       <div class="w3-panel"><h3>DeFi TVL by chain</h3><div id="w3Chains" class="w3-state">Loading…</div></div>
       <div class="w3-panel"><h3>Top DeFi protocols</h3><div id="w3Protocols" class="w3-state">Loading…</div></div>
     </div>
-    <p class="w3-foot">Sources: DefiLlama (TVL), CoinGecko (global market), alternative.me (Fear &amp; Greed), Ethereum RPC (gas). Refreshed every 5 minutes. Informational, not investment advice.</p>
+    <div class="w3-panel" style="margin-top:1rem">
+      <h3>All coins &amp; tokens — live prices &amp; changes</h3>
+      <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap">
+        <input id="coinQ" type="search" placeholder="Filter loaded coins…" style="flex:1;min-width:160px;background:rgba(255,255,255,.04);border:1px solid var(--line-2);border-radius:8px;color:var(--text);padding:.45em .7em;font-size:.85rem" />
+        <span id="coinCount" style="font-size:.74rem;color:var(--muted-2)"></span>
+      </div>
+      <div style="overflow-x:auto"><table class="opt-table" id="coinT" style="min-width:640px"></table></div>
+      <button class="btn btn--ghost btn--sm" id="coinMore" style="margin-top:.7rem">Load 50 more</button>
+    </div>
+    <p class="w3-foot">Sources: DefiLlama (TVL), CoinGecko / CoinPaprika (coins &amp; global market), alternative.me (Fear &amp; Greed), Ethereum RPC (gas). Refreshed every 5 minutes. Informational, not investment advice.</p>
   </main>
 
   <script>
@@ -93,6 +102,39 @@
       } catch { $('w3AsOf').textContent = 'Could not load on-chain data right now.'; }
     }
     load(); setInterval(load, 5 * 60 * 1000);
+
+    /* ---- all coins & tokens: paged markets list (mcap-ranked), filter + load-more ---- */
+    const tok = (() => { try { return localStorage.getItem('quantra.sid') || ''; } catch { return ''; } })();
+    const hdr = tok ? { Authorization: 'Bearer ' + tok } : {};
+    let coins = [], coinPage = 0;
+    const px = (n) => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: Math.abs(n) >= 1 ? 2 : 6 });
+    const pc = (n) => n == null ? '—' : `<span class="${n >= 0 ? 'up' : 'down'}">${n >= 0 ? '+' : ''}${n.toFixed(2)}%</span>`;
+    function renderCoins() {
+      const q = ($('coinQ').value || '').toLowerCase();
+      const rows = coins.filter((c) => !q || c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q));
+      $('coinCount').textContent = `${rows.length} of ${coins.length} loaded — ranked by market cap · click a row to analyse`;
+      $('coinT').innerHTML = '<tr><th style="text-align:left">#</th><th style="text-align:left">Coin / token</th><th>Price</th><th>24h</th><th>7d</th><th>Market cap</th><th>Volume 24h</th></tr>' +
+        rows.map((c) => {
+          const w7 = c.spark && c.spark.length > 1 && c.spark[0] ? ((c.spark[c.spark.length - 1] - c.spark[0]) / c.spark[0]) * 100 : null;
+          return `<tr style="cursor:pointer" onclick="location.href='terminal.html?type=crypto&id=${encodeURIComponent(c.id)}&symbol=${encodeURIComponent(c.symbol)}&name=${encodeURIComponent(c.name)}'">
+            <td style="text-align:left;color:var(--muted-2)">${c.rank}</td>
+            <td style="text-align:left"><b>${esc(c.symbol)}</b> <span style="color:var(--muted-2);font-size:.76rem">${esc(c.name)}</span></td>
+            <td>${px(c.price)}</td><td>${pc(c.change24h)}</td><td>${pc(w7)}</td>
+            <td>${usd(c.marketCap)}</td><td>${usd(c.volume)}</td></tr>`;
+        }).join('');
+    }
+    async function moreCoins() {
+      coinPage++;
+      const btn = $('coinMore'); btn.disabled = true; btn.textContent = 'Loading…';
+      try {
+        const d = await (await fetch('/api/crypto/markets?page=' + coinPage, { headers: hdr, credentials: 'same-origin' })).json();
+        if (Array.isArray(d)) { const base = coins.length; d.forEach((c, i) => coins.push({ ...c, rank: base + i + 1 })); renderCoins(); }
+      } catch {}
+      btn.disabled = false; btn.textContent = 'Load 50 more';
+    }
+    $('coinQ').addEventListener('input', renderCoins);
+    $('coinMore').addEventListener('click', moreCoins);
+    moreCoins(); setTimeout(moreCoins, 900);   // start with the top 100
   </script>
 </body>
 </html>
