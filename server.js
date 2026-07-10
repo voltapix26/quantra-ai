@@ -675,15 +675,17 @@ const api = {
       UNIV.index.forEach((c) => universe.push({ type: 'index', id: c.y, symbol: c.s, name: c.n, ysym: c.y }));
       const THRESH = [2, 5, 10, 20, 40];
       const items = [];
-      await Promise.all(universe.map(async (u2) => {
+      // memory/CPU safety on the small instance: cache ONLY the closes arrays (never the
+      // raw chart JSON), and scan in small batches so ~95 assets can't spike RAM or
+      // starve the event loop (an unbounded Promise.all here 503'd the whole app).
+      const closesOf = (ys, range, interval) => cached(`radc:${ys}:${interval}`, 30 * 60 * 1000, async () => {
+        const d = await getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(ys)}?range=${range}&interval=${interval}`);
+        return (d.chart.result[0].indicators.quote[0].close || []).filter((v) => v != null && isFinite(v));
+      });
+      const scanOne = async (u2) => {
         try {
-          // hourly closes power the 1h–24h horizons; daily closes power 30 sessions
-          const [dh, dd] = await Promise.all([
-            cached(`radar60:${u2.ysym}`, 30 * 60 * 1000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(u2.ysym)}?range=1mo&interval=60m`)),
-            cached(`radarh:${u2.ysym}`, 30 * 60 * 1000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(u2.ysym)}?range=6mo&interval=1d`)),
-          ]);
-          const hc = (dh.chart.result[0].indicators.quote[0].close || []).filter((v) => v != null && isFinite(v));
-          const dc = (dd.chart.result[0].indicators.quote[0].close || []).filter((v) => v != null && isFinite(v));
+          const hc = await closesOf(u2.ysym, '1mo', '60m');
+          const dc = await closesOf(u2.ysym, '6mo', '1d');
           if (hc.length < 40 || dc.length < 40) return;   // validation: enough real bars for both scales
           const grid = {};
           for (const [key, closes, bars] of [['1h', hc, 1], ['4h', hc, 4], ['24h', hc, 24], ['30d', dc, 30]]) {
@@ -693,7 +695,11 @@ const api = {
           if (!grid['24h']) return;
           items.push({ type: u2.type, id: u2.id, symbol: u2.symbol, name: u2.name, price: dc[dc.length - 1], grid });
         } catch {}
-      }));
+      };
+      for (let i = 0; i < universe.length; i += 6) {
+        await Promise.all(universe.slice(i, i + 6).map(scanOne));
+        await new Promise((r) => setTimeout(r, 50));   // yield to the event loop between batches
+      }
       return { ok: true, asOf: Date.now(), thresholds: THRESH, horizons: ['1h', '4h', '24h', '30d'], count: items.length, items,
         note: 'Modeled probability the price is beyond ±X% at the horizon end (seeded Monte Carlo; 1h–24h from hourly closes — trading hours for stocks, literal for crypto; 30d from daily closes). Probabilities, not calls. Not investment advice.' };
     });
