@@ -671,7 +671,9 @@ const api = {
       const universe = [];
       try { const cs = await api['crypto/markets']({ page: '1' }); (cs || []).slice(0, 30).forEach((c) => universe.push({ type: 'crypto', id: c.id, symbol: c.symbol, name: c.name, ysym: c.symbol + '-USD' })); } catch {}
       DEFAULT_STOCKS.forEach((s) => universe.push({ type: 'stock', id: s, symbol: s, name: s, ysym: s }));
-      const THRESH = [2, 5, 10];
+      UNIV.commodity.forEach((c) => universe.push({ type: 'commodity', id: c.y, symbol: c.s, name: c.n, ysym: c.y }));
+      UNIV.index.forEach((c) => universe.push({ type: 'index', id: c.y, symbol: c.s, name: c.n, ysym: c.y }));
+      const THRESH = [2, 5, 10, 20, 40];
       const items = [];
       await Promise.all(universe.map(async (u2) => {
         try {
