@@ -1043,27 +1043,48 @@
   }
 
   /* ---------------- movers radar (±10% odds sidebar) ---------------- */
-  let radarTimer = null;
+  let radarTimer = null, radarData = null, radarH = '24h', radarT = 10;
+  // plain-English odds so "38.1%" reads as something a human can act on
+  const oddsPhrase = (p) => p <= 0 ? 'almost never' : p >= 99 ? 'almost certain' : p < 1 ? '<1 in 100' : `≈1 in ${Math.max(1, Math.round(100 / p))}`;
+  function renderRadar() {
+    const list = $('radarList'); if (!list || !radarData) return;
+    const items = (radarData.items || []).filter((it) => it.grid && it.grid[radarH]);
+    if (!items.length) { list.innerHTML = '<div class="radar__empty">Radar is warming up — try again in a minute.</div>'; return; }
+    items.sort((a, b) => (b.grid[radarH].u[radarT] || 0) - (a.grid[radarH].u[radarT] || 0));
+    const age = Math.round((Date.now() - radarData.asOf) / 60000);
+    list.innerHTML = items.slice(0, 14).map((it) => {
+      const up = it.grid[radarH].u[radarT] ?? 0, dn = it.grid[radarH].d[radarT] ?? 0;
+      return `<button class="radar__row" data-type="${it.type}" data-id="${escAttr(String(it.id))}" data-symbol="${escAttr(it.symbol)}" data-name="${escAttr(it.name || it.symbol)}">
+        <span class="radar__sym">${escHtml(it.symbol)}<small>${escHtml(it.type)}</small></span>
+        <span class="radar__odds ${up >= 50 ? 'is-hot' : ''}"><b>${up}%</b><small>${oddsPhrase(up)} to gain ${radarT}%+ in ${radarH === '30d' ? '30 sessions' : radarH}</small></span>
+        <span class="radar__down">−${radarT}%: ${dn}%</span>
+      </button>`;
+    }).join('');
+    const meta = $('radarAsOf'); if (meta) meta.textContent = `data ${age <= 1 ? 'just refreshed' : age + ' min old'} · hours = trading hours for stocks, literal for crypto`;
+    list.querySelectorAll('.radar__row').forEach((b) => b.addEventListener('click', () => {
+      select({ type: b.dataset.type, id: b.dataset.id, symbol: b.dataset.symbol, name: b.dataset.name });
+      if (window.innerWidth < 900) toggleRadar(false);
+    }));
+  }
   async function loadRadar() {
     const list = $('radarList'); if (!list || !onServer) return;
     try {
       const d = await getJSON(`${API}/movers/radar`);
-      if (!d.ok || !d.items || !d.items.length) { list.innerHTML = '<div class="radar__empty">Radar is warming up — try again in a minute.</div>'; return; }
-      list.innerHTML = d.items.map((it) => {
-        const hot = it.pUp10 >= 50, side = it.pUp10 >= it.pDown10;
-        return `<button class="radar__row" data-type="${it.type}" data-id="${escAttr(String(it.id))}" data-symbol="${escAttr(it.symbol)}" data-name="${escAttr(it.name || it.symbol)}">
-          <span class="radar__sym">${escHtml(it.symbol)}<small>${escHtml(it.type)}</small></span>
-          <span class="radar__odds ${hot ? 'is-hot' : ''}">+10%: <b>${it.pUp10}%</b></span>
-          <span class="radar__down">−10%: ${it.pDown10}%</span>
-        </button>`;
-      }).join('');
-      list.querySelectorAll('.radar__row').forEach((b) => b.addEventListener('click', () => {
-        const item = { type: b.dataset.type, id: b.dataset.id, symbol: b.dataset.symbol, name: b.dataset.name };
-        select(item);
-        if (window.innerWidth < 900) toggleRadar(false);
-      }));
+      if (!d.ok || !d.items) { list.innerHTML = '<div class="radar__empty">Radar is warming up — try again in a minute.</div>'; return; }
+      radarData = d; renderRadar();
     } catch { list.innerHTML = '<div class="radar__empty">Could not load the radar.</div>'; }
   }
+  // horizon + threshold controls: instant re-rank from the cached payload (no refetch)
+  document.querySelectorAll('#radarPanel [data-rh]').forEach((b) => b.addEventListener('click', () => {
+    radarH = b.dataset.rh;
+    document.querySelectorAll('#radarPanel [data-rh]').forEach((x) => x.classList.toggle('on', x === b));
+    renderRadar();
+  }));
+  document.querySelectorAll('#radarPanel [data-rt]').forEach((b) => b.addEventListener('click', () => {
+    radarT = +b.dataset.rt;
+    document.querySelectorAll('#radarPanel [data-rt]').forEach((x) => x.classList.toggle('on', x === b));
+    renderRadar();
+  }));
   function toggleRadar(on) {
     const p = $('radarPanel'); if (!p) return;
     const show = on != null ? on : p.hidden;

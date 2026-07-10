@@ -671,23 +671,29 @@ const api = {
       const universe = [];
       try { const cs = await api['crypto/markets']({ page: '1' }); (cs || []).slice(0, 30).forEach((c) => universe.push({ type: 'crypto', id: c.id, symbol: c.symbol, name: c.name, ysym: c.symbol + '-USD' })); } catch {}
       DEFAULT_STOCKS.forEach((s) => universe.push({ type: 'stock', id: s, symbol: s, name: s, ysym: s }));
+      const THRESH = [2, 5, 10];
       const items = [];
       await Promise.all(universe.map(async (u2) => {
         try {
-          const d = await cached(`radarh:${u2.ysym}`, 30 * 60 * 1000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(u2.ysym)}?range=6mo&interval=1d`));
-          const r = d.chart.result[0];
-          const closes = (r.indicators.quote[0].close || []).filter((v) => v != null);
-          if (closes.length < 40) return;
-          const fc = Q.forecast(closes, 30, 0);
-          if (!fc) return;
-          items.push({ type: u2.type, id: u2.id, symbol: u2.symbol, name: u2.name, price: closes[closes.length - 1],
-            pUp10: +(fc.probUp10 * 100).toFixed(1), pDown10: +(fc.probDown10 * 100).toFixed(1),
-            annualVol: +(fc.annualVol * 100).toFixed(0) });
+          // hourly closes power the 1h–24h horizons; daily closes power 30 sessions
+          const [dh, dd] = await Promise.all([
+            cached(`radar60:${u2.ysym}`, 30 * 60 * 1000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(u2.ysym)}?range=1mo&interval=60m`)),
+            cached(`radarh:${u2.ysym}`, 30 * 60 * 1000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(u2.ysym)}?range=6mo&interval=1d`)),
+          ]);
+          const hc = (dh.chart.result[0].indicators.quote[0].close || []).filter((v) => v != null && isFinite(v));
+          const dc = (dd.chart.result[0].indicators.quote[0].close || []).filter((v) => v != null && isFinite(v));
+          if (hc.length < 40 || dc.length < 40) return;   // validation: enough real bars for both scales
+          const grid = {};
+          for (const [key, closes, bars] of [['1h', hc, 1], ['4h', hc, 4], ['24h', hc, 24], ['30d', dc, 30]]) {
+            const fc = Q.forecast(closes, bars, 0, { thresholds: THRESH });
+            if (fc && fc.probs) grid[key] = { u: Object.fromEntries(THRESH.map((t) => [t, +(fc.probs.up[t] * 100).toFixed(1)])), d: Object.fromEntries(THRESH.map((t) => [t, +(fc.probs.down[t] * 100).toFixed(1)])) };
+          }
+          if (!grid['24h']) return;
+          items.push({ type: u2.type, id: u2.id, symbol: u2.symbol, name: u2.name, price: dc[dc.length - 1], grid });
         } catch {}
       }));
-      items.sort((a, b) => b.pUp10 - a.pUp10);
-      return { ok: true, asOf: Date.now(), horizon: 30, count: items.length, items: items.slice(0, 14),
-        note: 'Modeled probability that the price is >±10% from today in 30 sessions (seeded Monte Carlo on 6mo of daily closes). Probabilities, not calls — high-vol assets naturally rank higher. Not investment advice.' };
+      return { ok: true, asOf: Date.now(), thresholds: THRESH, horizons: ['1h', '4h', '24h', '30d'], count: items.length, items,
+        note: 'Modeled probability the price is beyond ±X% at the horizon end (seeded Monte Carlo; 1h–24h from hourly closes — trading hours for stocks, literal for crypto; 30d from daily closes). Probabilities, not calls. Not investment advice.' };
     });
   },
   /* ---- Web3 / on-chain overview (all free, keyless feeds) ---- */

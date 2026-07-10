@@ -769,3 +769,8 @@ button{font-family:inherit}
 .radar__empty{padding:1.2rem;text-align:center;color:var(--muted-2);font-size:.8rem}
 .radar__foot{font-size:.64rem;color:var(--muted-2);padding:.5rem .9rem .7rem;border-top:1px solid var(--line);line-height:1.45}
 @media (max-width:900px){.radar{top:auto;bottom:70px;transform:none}.radar-btn{top:auto;bottom:14px;transform:none}}
+.radar__ctl{display:flex;gap:.5rem;width:100%;margin:.35rem 0 .1rem;flex-wrap:wrap}
+.radar__seg{display:inline-flex;background:rgba(255,255,255,.05);border-radius:8px;padding:2px;gap:2px}
+.radar__seg button{background:none;border:0;color:var(--muted-2);font-size:.72rem;font-weight:600;padding:.25em .6em;border-radius:6px;cursor:pointer;font-family:inherit}
+.radar__seg button.on{background:var(--grad);color:#06251c}
+.radar__odds small{display:block;font-size:.62rem;color:var(--muted-2);font-weight:400}
