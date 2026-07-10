@@ -2338,6 +2338,18 @@ store.ready().then(() => {
   http.createServer(async (req, res) => {
     const u = new URL(req.url, `http://localhost:${PORT}`);
     try { track(req, u); } catch {}            // footfall analytics (non-blocking)
+    // HARD AUTH GATE: Quantra requires an account. Every data API needs a valid
+    // session; only sign-in/up flows, health, the Stripe webhook, the feature-flag
+    // config, and the public track-record transparency proof stay open.
+    // Escape hatch for the operator: OPEN_ACCESS=true restores anonymous access.
+    if (u.pathname.startsWith('/api/') && process.env.OPEN_ACCESS !== 'true') {
+      const open = u.pathname.startsWith('/api/auth/') || u.pathname === '/api/billing/webhook'
+        || u.pathname === '/api/config' || u.pathname.startsWith('/api/track-record');
+      if (!open) {
+        const s = await sessionUser(req).catch(() => null);
+        if (!s) return send(res, 401, { error: 'Sign in to use Quantra.', signin: true });
+      }
+    }
     // security headers on every response
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');

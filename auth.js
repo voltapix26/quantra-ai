@@ -210,6 +210,26 @@
     }
   }
 
-  if (onServer) { api('/auth/me', {}).then((r) => { user = r.user; if (!user && getToken()) setToken(''); renderBtn(); if (user) syncOnLogin(); }).catch(() => {}); loadLimits(); }
+  // HARD GATE: app pages are unusable until signed in (matches the server-side 401
+  // gate on all data APIs). Landing/verify/reset/legal pages stay public.
+  const GATE_EXEMPT = /(^\/$|index\.html|verify\.html|reset\.html|terms\.html|privacy\.html|refund\.html|track-record\.html)/.test(location.pathname || '/');
+  function authGate(show) {
+    let g = document.getElementById('authGate');
+    if (!show) { if (g) g.remove(); return; }
+    if (g || GATE_EXEMPT || !onServer) return;
+    g = document.createElement('div');
+    g.id = 'authGate';
+    g.style.cssText = 'position:fixed;inset:0;z-index:280;background:rgba(4,7,14,.88);backdrop-filter:blur(10px);display:grid;place-items:center;text-align:center;padding:1rem';
+    g.innerHTML = '<div style="max-width:400px"><div style="font-family:\'Space Grotesk\',sans-serif;font-size:1.7rem;font-weight:700;background:linear-gradient(100deg,#34D399,#22D3EE,#818CF8);-webkit-background-clip:text;background-clip:text;color:transparent">Quantra AI</div>' +
+      '<p style="color:#93A0B8;margin:.7rem 0 1.1rem;line-height:1.55">Quantra needs an account — <b style="color:#E7ECF5">sign in or create one free</b> to use the terminal, live data and analysis.</p>' +
+      '<button id="gateBtn" style="background:linear-gradient(100deg,#34D399,#22D3EE);border:0;border-radius:10px;padding:.7em 1.6em;font-weight:700;font-size:1rem;color:#06251c;cursor:pointer">Sign in / Create account</button>' +
+      '<p style="color:#5A6680;font-size:.74rem;margin-top:1rem"><a href="index.html" style="color:#5A6680;text-decoration:underline">← back to the homepage</a></p></div>';
+    document.body.appendChild(g);
+    // the sign-in modal must stack ABOVE the gate (its default z-index is lower)
+    const m = document.getElementById('authModal'); if (m) m.style.zIndex = '300';
+    g.querySelector('#gateBtn').addEventListener('click', () => { try { openModal(); } catch {} });
+  }
+  window.addEventListener('quantra:limits', (e) => { if (e.detail && e.detail.loggedIn) authGate(false); });
+  if (onServer) { api('/auth/me', {}).then((r) => { user = r.user; if (!user && getToken()) setToken(''); renderBtn(); if (user) { syncOnLogin(); authGate(false); } else authGate(true); }).catch(() => authGate(true)); loadLimits(); }
   if (document.readyState !== 'loading') wire(); else document.addEventListener('DOMContentLoaded', wire);
 })();
