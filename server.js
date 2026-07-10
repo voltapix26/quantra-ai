@@ -660,6 +660,58 @@ const api = {
   async 'etf/board'() { return cached('etfb', 15000, () => buildBoard(UNIV.etf, 'etf')); },
   async 'commodity/board'() { return cached('comb', 15000, () => buildBoard(UNIV.commodity, 'commodity')); },
   async 'futures/board'() { return cached('futb', 15000, () => buildBoard(FUTURES, 'future')); },
+  /* ---- movers radar: modeled odds of a ±10% move (30 sessions), whole-market scan ----
+     Runs the same seeded Monte Carlo used everywhere else over 6 months of daily
+     closes per asset, and reports P(+10%) / P(−10%) by horizon end. This is the
+     honest version of "will it go above 10%": a measured probability, not a call.
+     Cached 10 min + rebuilt on a timer so the sidebar loads instantly. */
+  async 'movers/radar'() {
+    return cached('radar', 10 * 60 * 1000, async () => {
+      if (!Q) return { ok: false, reason: 'engine' };
+      const universe = [];
+      try { const cs = await api['crypto/markets']({ page: '1' }); (cs || []).slice(0, 30).forEach((c) => universe.push({ type: 'crypto', id: c.id, symbol: c.symbol, name: c.name, ysym: c.symbol + '-USD' })); } catch {}
+      DEFAULT_STOCKS.forEach((s) => universe.push({ type: 'stock', id: s, symbol: s, name: s, ysym: s }));
+      const items = [];
+      await Promise.all(universe.map(async (u2) => {
+        try {
+          const d = await cached(`radarh:${u2.ysym}`, 30 * 60 * 1000, () => getJSON(`${YF}/v8/finance/chart/${encodeURIComponent(u2.ysym)}?range=6mo&interval=1d`));
+          const r = d.chart.result[0];
+          const closes = (r.indicators.quote[0].close || []).filter((v) => v != null);
+          if (closes.length < 40) return;
+          const fc = Q.forecast(closes, 30, 0);
+          if (!fc) return;
+          items.push({ type: u2.type, id: u2.id, symbol: u2.symbol, name: u2.name, price: closes[closes.length - 1],
+            pUp10: +(fc.probUp10 * 100).toFixed(1), pDown10: +(fc.probDown10 * 100).toFixed(1),
+            annualVol: +(fc.annualVol * 100).toFixed(0) });
+        } catch {}
+      }));
+      items.sort((a, b) => b.pUp10 - a.pUp10);
+      return { ok: true, asOf: Date.now(), horizon: 30, count: items.length, items: items.slice(0, 14),
+        note: 'Modeled probability that the price is >±10% from today in 30 sessions (seeded Monte Carlo on 6mo of daily closes). Probabilities, not calls — high-vol assets naturally rank higher. Not investment advice.' };
+    });
+  },
+  /* ---- Web3 / on-chain overview (all free, keyless feeds) ---- */
+  async 'web3/overview'() {
+    return cached('web3', 5 * 60 * 1000, async () => {
+      const out = { ok: true, asOf: Date.now() };
+      // crypto Fear & Greed (alternative.me)
+      try { const f = await getJSON('https://api.alternative.me/fng/?limit=1'); const d = f && f.data && f.data[0]; if (d) out.fearGreed = { value: +d.value, label: d.value_classification }; } catch {}
+      // global market: total mcap, BTC/ETH dominance (CoinGecko, keyless tier)
+      try { const g = await getJSON('https://api.coingecko.com/api/v3/global', cgHeaders()); const d = g && g.data;
+        if (d) out.global = { mcapUsd: d.total_market_cap && d.total_market_cap.usd, vol24hUsd: d.total_volume && d.total_volume.usd, btcDom: d.market_cap_percentage && +d.market_cap_percentage.btc.toFixed(1), ethDom: d.market_cap_percentage && +d.market_cap_percentage.eth.toFixed(1), mcapChange24h: d.market_cap_change_percentage_24h_usd != null ? +d.market_cap_change_percentage_24h_usd.toFixed(2) : null }; } catch {}
+      // DeFi TVL by chain + top protocols (DefiLlama, free)
+      try { const ch = await getJSON('https://api.llama.fi/v2/chains');
+        if (Array.isArray(ch)) { const top = ch.filter((c) => c.tvl > 0).sort((a, b) => b.tvl - a.tvl); out.defi = { totalTvl: top.reduce((s, c) => s + c.tvl, 0), chains: top.slice(0, 10).map((c) => ({ name: c.name, tvl: c.tvl })) }; } } catch {}
+      try { const pr = await getJSON('https://api.llama.fi/protocols');
+        if (Array.isArray(pr)) out.protocols = pr.sort((a, b) => (b.tvl || 0) - (a.tvl || 0)).slice(0, 12).map((p2) => ({ name: p2.name, tvl: p2.tvl, chain: p2.chain, change7d: p2.change_7d != null ? +(+p2.change_7d).toFixed(1) : null, category: p2.category })); } catch {}
+      // ETH gas via public RPC (keyless)
+      try {
+        const r = await fetch('https://cloudflare-eth.com', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_gasPrice', params: [], id: 1 }) });
+        const d = await r.json(); if (d && d.result) out.gasGwei = +(parseInt(d.result, 16) / 1e9).toFixed(2);
+      } catch {}
+      return out;
+    });
+  },
   /* ---- options chain (US-listed symbols; Yahoo v7 + crumb; delayed) ---- */
   async 'options'(q) {
     const sym = String(q.symbol || '').trim().toUpperCase();
@@ -2263,6 +2315,9 @@ store.ready().then(() => {
   setInterval(monitorAlerts, 60000).unref();             // check alert prices every 60s (fires + emails)
   setTimeout(selfCheck, 20000); setInterval(selfCheck, 12 * 60 * 1000).unref(); // self-diagnostics every 12 min
   sendDigests(); setInterval(sendDigests, 20 * 60 * 1000).unref();   // daily brief emails (07:00–08:59 UTC window, once/user/day)
+  // movers radar: warm at boot + refresh on a timer so the sidebar is always instant
+  setTimeout(() => api['movers/radar']().catch(() => {}), 30000);
+  setInterval(() => { cache.delete('radar'); api['movers/radar']().catch(() => {}); }, 10 * 60 * 1000).unref();
   // prune expired sessions daily (30-day TTL rows otherwise accumulate forever)
   setInterval(() => { store.pruneSessions(Date.now()).then((n) => { if (n) console.log(`[sessions] pruned ${n} expired`); }).catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
   setTimeout(() => { store.pruneSessions(Date.now()).catch(() => {}); }, 60000);

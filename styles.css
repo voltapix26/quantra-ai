@@ -746,3 +746,26 @@ button{font-family:inherit}
 .opt-itm{color:var(--mint);font-weight:600}
 .opt-atm td{background:rgba(34,211,238,.07)}
 .opt-atm .opt-strike{color:var(--cyan)}
+
+/* ---------------- movers radar sidebar ---------------- */
+.radar-btn{position:fixed;right:14px;top:50%;transform:translateY(-50%);z-index:205;width:44px;height:44px;border-radius:50%;border:1px solid var(--line-2);background:var(--panel-2);font-size:1.15rem;cursor:pointer;box-shadow:var(--shadow)}
+.radar-btn:hover{border-color:var(--cyan)}
+.radar{position:fixed;right:14px;top:50%;transform:translateY(-50%);z-index:206;width:min(300px,calc(100vw - 28px));max-height:min(560px,80vh);display:flex;flex-direction:column;background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--r-lg);box-shadow:var(--shadow);overflow:hidden}
+.radar__head{display:flex;align-items:center;gap:.5rem;padding:.7rem .9rem .5rem;flex-wrap:wrap}
+.radar__head b{font-family:'Space Grotesk';font-size:.95rem}
+.radar__sub{font-size:.66rem;color:var(--muted-2);width:100%}
+.radar__x{position:absolute;top:.5rem;right:.6rem;background:none;border:0;color:var(--muted-2);font-size:1.1rem;cursor:pointer}
+.radar__x:hover{color:var(--rose)}
+.radar__list{overflow-y:auto;padding:.2rem .5rem}
+.radar__row{display:flex;align-items:center;gap:.55rem;width:100%;background:none;border:0;border-bottom:1px solid var(--line);padding:.45rem .35rem;cursor:pointer;color:var(--muted);font-family:inherit;font-size:.8rem;text-align:left}
+.radar__row:hover{background:rgba(255,255,255,.04)}
+.radar__row:last-child{border-bottom:0}
+.radar__sym{font-family:'Space Grotesk';font-weight:700;color:var(--text);min-width:64px}
+.radar__sym small{display:block;font-weight:400;font-size:.62rem;color:var(--muted-2);text-transform:uppercase}
+.radar__odds{font-variant-numeric:tabular-nums}
+.radar__odds b{color:var(--cyan)}
+.radar__odds.is-hot b{color:var(--mint)}
+.radar__down{margin-left:auto;font-size:.7rem;color:var(--muted-2);font-variant-numeric:tabular-nums}
+.radar__empty{padding:1.2rem;text-align:center;color:var(--muted-2);font-size:.8rem}
+.radar__foot{font-size:.64rem;color:var(--muted-2);padding:.5rem .9rem .7rem;border-top:1px solid var(--line);line-height:1.45}
+@media (max-width:900px){.radar{top:auto;bottom:70px;transform:none}.radar-btn{top:auto;bottom:14px;transform:none}}

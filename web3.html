@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Web3 / On-chain</title>
+  <meta name="description" content="On-chain crypto dashboard — DeFi TVL by chain, top protocols, ETH gas, market dominance and the Fear & Greed index." />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0A0F1C" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=54" />
+  <style>
+    .w3{max-width:1020px;margin:0 auto;padding:1.3rem 0 4rem}
+    .w3 h1{font-size:1.9rem;margin-bottom:.15rem}
+    .w3-sub{color:var(--muted-2);margin-bottom:1.2rem;font-size:.9rem}
+    .w3-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.8rem;margin-bottom:1.2rem}
+    .w3-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.9rem 1rem}
+    .w3-card .v{font-family:'Space Grotesk';font-size:1.5rem;font-weight:700;color:var(--text);line-height:1.15}
+    .w3-card .l{font-size:.7rem;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;margin-top:.25rem}
+    .w3-card .v.mint{color:var(--mint)} .w3-card .v.rose{color:var(--rose)} .w3-card .v.amber{color:var(--amber)} .w3-card .v.cyan{color:var(--cyan)}
+    .w3-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+    @media(max-width:760px){.w3-grid{grid-template-columns:1fr}}
+    .w3-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:1rem 1.1rem}
+    .w3-panel h3{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-2);margin:0 0 .7rem}
+    .w3-row{display:flex;align-items:center;gap:.6rem;padding:.35rem 0;border-bottom:1px solid var(--line);font-size:.85rem}
+    .w3-row:last-child{border-bottom:0}
+    .w3-row b{color:var(--text);min-width:110px;font-family:'Space Grotesk'}
+    .w3-bar{flex:1;height:8px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}
+    .w3-bar i{display:block;height:100%;background:var(--grad)}
+    .w3-num{font-variant-numeric:tabular-nums;color:var(--muted);min-width:76px;text-align:right}
+    .up{color:var(--mint)}.down{color:var(--rose)}
+    .w3-state{padding:2.2rem;text-align:center;color:var(--muted)}
+    .w3-foot{font-size:.72rem;color:var(--muted-2);margin-top:1.1rem}
+  </style>
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand"><span class="brand__mark">
+        <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true"><defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs><path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/><path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="82" cy="16" r="6" fill="#34D399"/></svg>
+      </span><span class="brand__name">Quantra<span class="brand__ai">AI</span></span></a>
+      <span class="bar__tag">Web3 · on-chain</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links">
+        <a href="terminal.html">Terminal</a>
+        <a href="web3.html" class="is-active">Web3</a>
+        <a href="discover.html">Discover</a>
+        <a href="brief.html">Brief</a>
+        <a href="track-record.html">Track record</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container w3">
+    <h1>Web3 · on-chain dashboard</h1>
+    <div class="w3-sub" id="w3AsOf">Loading on-chain data…</div>
+    <div class="w3-cards" id="w3Cards"></div>
+    <div class="w3-grid">
+      <div class="w3-panel"><h3>DeFi TVL by chain</h3><div id="w3Chains" class="w3-state">Loading…</div></div>
+      <div class="w3-panel"><h3>Top DeFi protocols</h3><div id="w3Protocols" class="w3-state">Loading…</div></div>
+    </div>
+    <p class="w3-foot">Sources: DefiLlama (TVL), CoinGecko (global market), alternative.me (Fear &amp; Greed), Ethereum RPC (gas). Refreshed every 5 minutes. Informational, not investment advice.</p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const usd = (n) => n == null ? '—' : n >= 1e12 ? '$' + (n / 1e12).toFixed(2) + 'T' : n >= 1e9 ? '$' + (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + (n / 1e6).toFixed(1) + 'M' : '$' + Math.round(n).toLocaleString();
+    async function load() {
+      try {
+        const d = await (await fetch('/api/web3/overview')).json();
+        if (!d.ok) throw new Error('unavailable');
+        $('w3AsOf').textContent = 'As of ' + new Date(d.asOf).toLocaleTimeString();
+        const fgCls = d.fearGreed ? (d.fearGreed.value >= 60 ? 'mint' : d.fearGreed.value <= 35 ? 'rose' : 'amber') : '';
+        $('w3Cards').innerHTML =
+          (d.fearGreed ? `<div class="w3-card"><div class="v ${fgCls}">${d.fearGreed.value}</div><div class="l">Fear &amp; Greed · ${esc(d.fearGreed.label)}</div></div>` : '') +
+          (d.global ? `<div class="w3-card"><div class="v">${usd(d.global.mcapUsd)}</div><div class="l">Crypto market cap ${d.global.mcapChange24h != null ? `· <span class="${d.global.mcapChange24h >= 0 ? 'up' : 'down'}">${d.global.mcapChange24h >= 0 ? '+' : ''}${d.global.mcapChange24h}% 24h</span>` : ''}</div></div>` : '') +
+          (d.global && d.global.btcDom != null ? `<div class="w3-card"><div class="v cyan">${d.global.btcDom}%</div><div class="l">BTC dominance · ETH ${d.global.ethDom}%</div></div>` : '') +
+          (d.defi ? `<div class="w3-card"><div class="v">${usd(d.defi.totalTvl)}</div><div class="l">DeFi total value locked</div></div>` : '') +
+          (d.gasGwei != null ? `<div class="w3-card"><div class="v ${d.gasGwei < 10 ? 'mint' : d.gasGwei > 40 ? 'rose' : 'amber'}">${d.gasGwei}</div><div class="l">ETH gas (gwei)</div></div>` : '');
+        if (d.defi && d.defi.chains) {
+          const max = d.defi.chains[0].tvl || 1;
+          $('w3Chains').className = '';
+          $('w3Chains').innerHTML = d.defi.chains.map((c) => `<div class="w3-row"><b>${esc(c.name)}</b><span class="w3-bar"><i style="width:${Math.max(2, (c.tvl / max) * 100).toFixed(1)}%"></i></span><span class="w3-num">${usd(c.tvl)}</span></div>`).join('');
+        }
+        if (d.protocols && d.protocols.length) {
+          $('w3Protocols').className = '';
+          $('w3Protocols').innerHTML = d.protocols.map((p) => `<div class="w3-row"><b>${esc(p.name)}</b><span style="flex:1;color:var(--muted-2);font-size:.72rem">${esc(p.category || '')}${p.chain ? ' · ' + esc(p.chain) : ''}</span><span class="w3-num">${usd(p.tvl)}</span><span class="w3-num ${p.change7d >= 0 ? 'up' : 'down'}" style="min-width:56px">${p.change7d != null ? (p.change7d >= 0 ? '+' : '') + p.change7d + '%' : '—'}</span></div>`).join('');
+        }
+      } catch { $('w3AsOf').textContent = 'Could not load on-chain data right now.'; }
+    }
+    load(); setInterval(load, 5 * 60 * 1000);
+  </script>
+</body>
+</html>

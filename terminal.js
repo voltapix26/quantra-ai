@@ -1042,6 +1042,43 @@
     } catch { if (my === optToken) card.hidden = true; }
   }
 
+  /* ---------------- movers radar (±10% odds sidebar) ---------------- */
+  let radarTimer = null;
+  async function loadRadar() {
+    const list = $('radarList'); if (!list || !onServer) return;
+    try {
+      const d = await getJSON(`${API}/movers/radar`);
+      if (!d.ok || !d.items || !d.items.length) { list.innerHTML = '<div class="radar__empty">Radar is warming up — try again in a minute.</div>'; return; }
+      list.innerHTML = d.items.map((it) => {
+        const hot = it.pUp10 >= 50, side = it.pUp10 >= it.pDown10;
+        return `<button class="radar__row" data-type="${it.type}" data-id="${escAttr(String(it.id))}" data-symbol="${escAttr(it.symbol)}" data-name="${escAttr(it.name || it.symbol)}">
+          <span class="radar__sym">${escHtml(it.symbol)}<small>${escHtml(it.type)}</small></span>
+          <span class="radar__odds ${hot ? 'is-hot' : ''}">+10%: <b>${it.pUp10}%</b></span>
+          <span class="radar__down">−10%: ${it.pDown10}%</span>
+        </button>`;
+      }).join('');
+      list.querySelectorAll('.radar__row').forEach((b) => b.addEventListener('click', () => {
+        const item = { type: b.dataset.type, id: b.dataset.id, symbol: b.dataset.symbol, name: b.dataset.name };
+        select(item);
+        if (window.innerWidth < 900) toggleRadar(false);
+      }));
+    } catch { list.innerHTML = '<div class="radar__empty">Could not load the radar.</div>'; }
+  }
+  function toggleRadar(on) {
+    const p = $('radarPanel'); if (!p) return;
+    const show = on != null ? on : p.hidden;
+    p.hidden = !show;
+    if (show) { loadRadar(); if (!radarTimer) radarTimer = setInterval(loadRadar, 5 * 60 * 1000); }
+    else if (radarTimer) { clearInterval(radarTimer); radarTimer = null; }
+    try { localStorage.setItem('quantra.radar', show ? '1' : '0'); } catch {}
+  }
+  { const rb = $('radarBtn'), rc = $('radarClose');
+    if (rb) rb.addEventListener('click', () => toggleRadar());
+    if (rc) rc.addEventListener('click', () => toggleRadar(false));
+    let open = false; try { open = localStorage.getItem('quantra.radar') === '1'; } catch {}
+    if (open && window.innerWidth >= 900) setTimeout(() => toggleRadar(true), 1500);
+  }
+
   /* ---------------- Ask Quantra (conversational analyst) ---------------- */
   const ASK_CHIPS = ['Is this a good entry?', 'What do the indicators say?', 'What are the risks?', 'Summarize the news', 'Where might it go?'];
   let askAssetKey = null;

@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0A0F1C" />
   <link rel="apple-touch-icon" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=53" />
+  <link rel="stylesheet" href="styles.css?v=54" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -69,6 +69,7 @@
         <span><span class="live-dot"></span>Live</span>
         <a href="terminal.html" class="is-active">Terminal</a>
         <a href="brief.html">Brief</a>
+        <a href="web3.html">Web3</a>
         <a href="discover.html">Discover</a>
         <a href="calendar.html">Calendar</a>
         <a href="screener.html">Screener</a>
@@ -399,7 +400,18 @@
   <script src="auth.js?v=46"></script>
   <script src="analysis.js?v=49"></script>
   <script src="report.js?v=45"></script>
-  <script src="terminal.js?v=58"></script>
+  <!-- MOVERS RADAR — modeled ±10% odds sidebar -->
+  <button class="radar-btn" id="radarBtn" title="Movers radar — modeled odds of a ±10% move">🚀</button>
+  <aside class="radar" id="radarPanel" hidden>
+    <div class="radar__head">
+      <b>🚀 Movers radar</b>
+      <span class="radar__sub">modeled odds of a ±10% move · 30 sessions</span>
+      <button class="radar__x" id="radarClose">×</button>
+    </div>
+    <div class="radar__list" id="radarList"><div class="radar__empty">Scanning the market…</div></div>
+    <div class="radar__foot">Seeded Monte-Carlo probabilities — high-volatility assets naturally rank higher. Probabilities, not calls. Not investment advice.</div>
+  </aside>
+  <script src="terminal.js?v=59"></script>
   <script src="onboard.js?v=1" defer></script>
   <script src="pwa.js?v=45" defer></script>
 </body>
