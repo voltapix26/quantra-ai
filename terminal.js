@@ -1093,6 +1093,53 @@
     else if (radarTimer) { clearInterval(radarTimer); radarTimer = null; }
     try { localStorage.setItem('quantra.radar', show ? '1' : '0'); } catch {}
   }
+  /* ---- radar signal alerts: opt-in pop-ups near the radar + server push ---- */
+  let sigTimer = null, sigOn = false;
+  const sigSeen = () => { try { return +(localStorage.getItem('quantra.rsig') || 0); } catch { return 0; } };
+  function showSignalPop(s) {
+    let wrap = $('rsigWrap');
+    if (!wrap) { wrap = document.createElement('div'); wrap.id = 'rsigWrap'; wrap.className = 'rsig-wrap'; document.body.appendChild(wrap); }
+    const el = document.createElement('div');
+    el.className = 'rsig';
+    el.innerHTML = `<button class="rsig__x">×</button>
+      <b>🚀 ${escHtml(s.symbol)}</b> <small>${escHtml(s.type)}</small>
+      <div class="rsig__p">Modeled odds of <b>+20% in 24h</b> jumped to <b>${s.p}%</b> <small>(${oddsPhrase(s.p)})</small></div>
+      <div class="rsig__d">downside −20%: ${s.pDown != null ? s.pDown + '%' : '—'} · probability, not a call · not advice</div>`;
+    el.addEventListener('click', (e) => { if (e.target.className === 'rsig__x') { el.remove(); return; } select({ type: s.type, id: s.id, symbol: s.symbol, name: s.name }); el.remove(); });
+    wrap.prepend(el);
+    while (wrap.children.length > 3) wrap.lastChild.remove();
+    setTimeout(() => { try { el.remove(); } catch {} }, 15000);
+  }
+  async function pollSignals() {
+    if (!sigOn || !signedIn()) return;
+    try {
+      const d = await getJSON(`${API}/movers/signals?after=${sigSeen()}`);
+      if (d.ok && d.signals && d.signals.length) {
+        d.signals.slice(0, 3).forEach(showSignalPop);
+        try { localStorage.setItem('quantra.rsig', String(d.now)); } catch {}
+      }
+    } catch {}
+  }
+  async function initSigToggle() {
+    const wrap = $('radarAlertWrap'), tog = $('radarAlertTog');
+    if (!wrap || !tog || !signedIn()) return;
+    const t = window.QuantraAuth && window.QuantraAuth.token;
+    try {
+      const d = await (await fetch(`${API}/me/data`, { headers: t ? { Authorization: 'Bearer ' + t } : {}, credentials: 'same-origin' })).json();
+      sigOn = !!(d && d.prefs && d.prefs.radarAlerts);
+      tog.checked = sigOn; wrap.hidden = false;
+      if (sigOn && !sigTimer) { sigTimer = setInterval(pollSignals, 60000); pollSignals(); }
+    } catch { return; }
+    tog.addEventListener('change', async () => {
+      sigOn = tog.checked;
+      try { await fetch(`${API}/me/data`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...(t ? { Authorization: 'Bearer ' + t } : {}) }, credentials: 'same-origin', body: JSON.stringify({ prefs: { radarAlerts: sigOn } }) }); } catch {}
+      if (sigOn) { if (!sigTimer) sigTimer = setInterval(pollSignals, 60000); R.toast('🔔 Radar alerts on — pop-ups here, plus push if notifications are enabled'); }
+      else if (sigTimer) { clearInterval(sigTimer); sigTimer = null; }
+    });
+  }
+  window.addEventListener('quantra:limits', (e) => { if (e.detail && e.detail.loggedIn) setTimeout(initSigToggle, 500); });
+  setTimeout(initSigToggle, 2500);
+
   { const rb = $('radarBtn'), rc = $('radarClose');
     if (rb) rb.addEventListener('click', () => toggleRadar());
     if (rc) rc.addEventListener('click', () => toggleRadar(false));

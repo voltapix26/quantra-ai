@@ -774,3 +774,15 @@ button{font-family:inherit}
 .radar__seg button{background:none;border:0;color:var(--muted-2);font-size:.72rem;font-weight:600;padding:.25em .6em;border-radius:6px;cursor:pointer;font-family:inherit}
 .radar__seg button.on{background:var(--grad);color:#06251c}
 .radar__odds small{display:block;font-size:.62rem;color:var(--muted-2);font-weight:400}
+.radar__alert{display:flex;align-items:center;gap:.4rem;width:100%;font-size:.72rem;color:var(--muted);cursor:pointer;margin-top:.3rem;user-select:none}
+.radar__alert input{accent-color:#34D399}
+.rsig-wrap{position:fixed;right:70px;top:50%;transform:translateY(-50%);z-index:207;display:flex;flex-direction:column;gap:.6rem;width:min(300px,calc(100vw - 100px))}
+.rsig{position:relative;background:var(--panel-2);border:1px solid rgba(52,211,153,.45);border-radius:var(--r);padding:.7rem .9rem;box-shadow:0 12px 40px rgba(0,0,0,.55);cursor:pointer;animation:rsigin .3s ease}
+@keyframes rsigin{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}
+.rsig b{font-family:'Space Grotesk';color:var(--text)}
+.rsig small{color:var(--muted-2);font-size:.66rem;text-transform:uppercase}
+.rsig__p{font-size:.8rem;color:var(--muted);margin-top:.25rem}
+.rsig__p b{color:var(--mint);font-family:inherit}
+.rsig__d{font-size:.66rem;color:var(--muted-2);margin-top:.25rem}
+.rsig__x{position:absolute;top:.3rem;right:.45rem;background:none;border:0;color:var(--muted-2);font-size:.95rem;cursor:pointer}
+@media (max-width:900px){.rsig-wrap{top:auto;bottom:130px;transform:none;right:14px}}

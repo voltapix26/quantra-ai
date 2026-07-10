@@ -700,9 +700,15 @@ const api = {
         await Promise.all(universe.slice(i, i + 6).map(scanOne));
         await new Promise((r) => setTimeout(r, 50));   // yield to the event loop between batches
       }
+      detectRadarSignals(items).catch(() => {});   // +20%-odds spike alerts (opt-in members)
       return { ok: true, asOf: Date.now(), thresholds: THRESH, horizons: ['1h', '4h', '24h', '30d'], count: items.length, items,
         note: 'Modeled probability the price is beyond ±X% at the horizon end (seeded Monte Carlo; 1h–24h from hourly closes — trading hours for stocks, literal for crypto; 30d from daily closes). Probabilities, not calls. Not investment advice.' };
     });
+  },
+  /* ---- radar signals feed: recent +20%-odds spikes (for the popup system) ---- */
+  async 'movers/signals'(q) {
+    const after = +(q.after || 0);
+    return { ok: true, now: Date.now(), minOdds: RADAR_ALERT_MIN, signals: radarSignals.filter((s) => s.ts > after) };
   },
   /* ---- Web3 / on-chain overview (all free, keyless feeds) ---- */
   async 'web3/overview'() {
@@ -2280,6 +2286,58 @@ async function selfCheck() {
   errCount = 0; scBusy = false;
   if (!ok) { audit('selfcheck_fail', null, null, { fails: healthLast.checks.filter((c) => !c.ok) }); alertAdmins(healthLast); }
   return healthLast;
+}
+
+/* ============================================================
+   Radar signals — pop-up + push alerts when an asset's MODELED
+   odds of a +20% move (24h horizon) cross the alert line.
+   Edge-triggered against the previous scan + 6h per-symbol
+   cooldown so it never spams. Honest wording throughout:
+   probabilities, not calls. Delivered to opt-in members only
+   (prefs.radarAlerts) — in-app popups + web push if subscribed.
+   ============================================================ */
+const RADAR_ALERT_MIN = Math.max(5, Math.min(90, +(process.env.RADAR_ALERT_MIN || 25)));
+let radarSignals = [];            // recent signals for the in-app popup feed
+let radarPrev = null;             // previous scan (key → pUp20) for edge-triggering
+const radarCooldown = new Map();  // key → last-signal ts
+async function detectRadarSignals(items) {
+  const cur = new Map();
+  const fresh = [];
+  for (const it of items) {
+    const g = it.grid && it.grid['24h']; if (!g || g.u[20] == null) continue;
+    const key = it.type + ':' + it.id, p = g.u[20];
+    cur.set(key, p);
+    if (radarPrev === null) continue;                          // first scan after boot: baseline only
+    const was = radarPrev.get(key);
+    const cooled = (radarCooldown.get(key) || 0) < Date.now() - 6 * 3600 * 1000;
+    if (p >= RADAR_ALERT_MIN && (was == null || was < RADAR_ALERT_MIN) && cooled) {
+      radarCooldown.set(key, Date.now());
+      fresh.push({ ts: Date.now(), type: it.type, id: it.id, symbol: it.symbol, name: it.name,
+        horizon: '24h', threshold: 20, p, pDown: g.d[20] ?? null, prev: was ?? null });
+    }
+  }
+  radarPrev = cur;
+  if (!fresh.length) return;
+  radarSignals = [...fresh, ...radarSignals].slice(0, 30);
+  // web push to opted-in members (cap 3 signals per scan to stay respectful)
+  if (PUSH_ENABLED) {
+    try {
+      const users = await store.allUsers();
+      for (const u of users.slice(0, 500)) {
+        try {
+          const d = await store.getUserData(u.id);
+          if (!d || !d.prefs || !d.prefs.radarAlerts || !Array.isArray(d.pushSubs) || !d.pushSubs.length) continue;
+          for (const s of fresh.slice(0, 3)) {
+            await sendPush(d.pushSubs, {
+              title: `🚀 ${s.symbol}: +20% odds now ${s.p}%`,
+              body: `Modeled odds of a +20% move in 24h crossed ${RADAR_ALERT_MIN}% (downside −20%: ${s.pDown ?? '?'}%). Probability, not a call — not advice.`,
+              tag: 'radar-' + s.symbol, url: '/terminal.html',
+            });
+          }
+        } catch {}
+      }
+    } catch {}
+  }
 }
 
 /* ============================================================
