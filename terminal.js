@@ -1935,6 +1935,27 @@
   });
 
   $('wStar').addEventListener('click', () => { if (current) toggleWatch(current); });
+  // Share this analysis → public snapshot link (growth loop). Signed-in only (server-gated).
+  { const sb = $('shareBtn');
+    if (sb) sb.addEventListener('click', async () => {
+      if (!state || !state.analysis) { R.toast('Open an asset first.'); return; }
+      if (!signedIn()) { R.toast('Sign in to share an analysis.'); return; }
+      const res = state.analysis, fc = res.forecast || {};
+      const lastH = fc.horizons && fc.horizons[fc.horizons.length - 1];
+      const lo = (lastH && fc.p0 != null) ? fc.p0 * (1 + lastH.lo) : null;
+      const hi = (lastH && fc.p0 != null) ? fc.p0 * (1 + lastH.hi) : null;
+      const snap = { symbol: state.symbol, name: state.name, type: state.type, price: res.price, currency: curBase,
+        score: res.quantraScore, grade: res.scoreGrade, dir: res.verdict && res.verdict.dir,
+        trend: res.verdict && res.verdict.trend, lo, hi, horizon: lastH ? ('+' + lastH.bars + ' sessions') : null };
+      const t = window.QuantraAuth && window.QuantraAuth.token;
+      sb.textContent = '⏳';
+      try {
+        const r = await (await fetch(`${API}/share`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(t ? { Authorization: 'Bearer ' + t } : {}) }, body: JSON.stringify(snap) })).json();
+        if (r.ok && r.url) { try { await navigator.clipboard.writeText(r.url); } catch {} R.toast('🔗 Share link copied — anyone can view this analysis'); }
+        else R.toast(r.error || 'Could not create a share link.');
+      } catch { R.toast('Could not create a share link.'); }
+      sb.textContent = '🔗';
+    }); }
   // M7: share the open asset to the workspace's team watchlist
   { const sh = $('tShare');
     if (sh) sh.addEventListener('click', async () => {

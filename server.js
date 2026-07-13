@@ -2146,6 +2146,83 @@ async function verifyLedger() {
   return { valid, length: entries.length, head: entries.length ? entries[entries.length - 1].hash : null, brokenAt, entries };
 }
 // Dynamic SVG accuracy badge for embedding on a landing page (<img src=…>).
+/* ---- shareable analysis snapshot: sanitize + render (server-side) ---- */
+function shareSnapshot(b) {
+  if (!b || !b.symbol) return null;
+  const num = (v) => (v == null || !isFinite(+v)) ? null : +(+v).toFixed(6);
+  const str = (v, n) => v == null ? null : String(v).slice(0, n || 40);
+  return {
+    symbol: str(b.symbol, 20), name: str(b.name, 60), type: str(b.type, 12),
+    price: num(b.price), currency: str(b.currency, 6) || 'USD',
+    score: (b.score != null && isFinite(+b.score)) ? Math.round(+b.score) : null,
+    grade: str(b.grade, 16), dir: str(b.dir, 8), trend: str(b.trend, 40),
+    lo: num(b.lo), hi: num(b.hi), horizon: str(b.horizon, 20),
+    ts: Date.now(),
+  };
+}
+function fmtMoney(v, ccy) {
+  if (v == null) return '—';
+  const p = (ccy === 'USD' || !ccy) ? '$' : '';
+  const suf = (ccy && ccy !== 'USD') ? ' ' + ccy : '';
+  return p + Number(v).toLocaleString('en-US', { maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : Math.abs(v) >= 1 ? 2 : 6 }) + suf;
+}
+function shareCardSvg(d) {
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const scoreCol = d.score == null ? '#93A0B8' : d.score >= 70 ? '#34D399' : d.score >= 56 ? '#22D3EE' : d.score >= 45 ? '#FBBF24' : '#FB7185';
+  const band = (d.lo != null && d.hi != null) ? `${fmtMoney(d.lo, d.currency)} – ${fmtMoney(d.hi, d.currency)}` : '—';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs><linearGradient id="g" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs>
+  <rect width="1200" height="630" fill="#0A0F1C"/>
+  <rect x="0" y="0" width="1200" height="8" fill="url(#g)"/>
+  <text x="70" y="96" fill="#6B7890" font-family="Arial,sans-serif" font-size="26" font-weight="bold" letter-spacing="2">QUANTRA AI · ANALYSIS</text>
+  <text x="70" y="188" fill="#E7ECF5" font-family="Arial,sans-serif" font-size="72" font-weight="bold">${esc(d.symbol)}</text>
+  <text x="70" y="238" fill="#93A0B8" font-family="Arial,sans-serif" font-size="30">${esc((d.name || '').slice(0, 42))}</text>
+  <text x="70" y="340" fill="#E7ECF5" font-family="Arial,sans-serif" font-size="58" font-weight="bold">${esc(fmtMoney(d.price, d.currency))}</text>
+  <text x="70" y="386" fill="#93A0B8" font-family="Arial,sans-serif" font-size="28">${esc(d.trend || '')}</text>
+  <rect x="820" y="120" width="310" height="200" rx="20" fill="#121A2E" stroke="${scoreCol}" stroke-width="2"/>
+  <text x="975" y="196" fill="#6B7890" font-family="Arial,sans-serif" font-size="24" text-anchor="middle" font-weight="bold">QUANTRA SCORE</text>
+  <text x="975" y="272" fill="${scoreCol}" font-family="Arial,sans-serif" font-size="86" text-anchor="middle" font-weight="bold">${d.score == null ? '—' : d.score}</text>
+  <text x="975" y="306" fill="#93A0B8" font-family="Arial,sans-serif" font-size="24" text-anchor="middle">${esc(d.grade || '')}</text>
+  <text x="70" y="470" fill="#6B7890" font-family="Arial,sans-serif" font-size="26" font-weight="bold">PROJECTION RANGE (${esc(d.horizon || '')})</text>
+  <text x="70" y="518" fill="#22D3EE" font-family="Arial,sans-serif" font-size="40" font-weight="bold">${esc(band)}</text>
+  <text x="70" y="586" fill="#6B7890" font-family="Arial,sans-serif" font-size="24">Probabilistic — not a guarantee, not investment advice · quantra-ai.onrender.com</text>
+  </svg>`;
+}
+function sharePageHtml(d, id) {
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const base = (APP_URL || '').replace(/\/$/, '');
+  if (!d) return `<!doctype html><meta charset="utf-8"><title>Quantra AI</title><body style="background:#0A0F1C;color:#93A0B8;font-family:Arial;text-align:center;padding:80px"><h2 style="color:#34D399">Quantra AI</h2><p>This shared analysis link has expired or was not found.</p><a href="${base}/terminal.html" style="color:#22D3EE">Open the live terminal →</a></body>`;
+  const title = `${d.symbol} — Quantra Score ${d.score == null ? '' : d.score}${d.grade ? ' (' + d.grade + ')' : ''}`;
+  const desc = `${d.name || d.symbol} at ${fmtMoney(d.price, d.currency)}. ${d.trend || ''} Projection ${d.horizon || ''}: ${d.lo != null ? fmtMoney(d.lo, d.currency) + '–' + fmtMoney(d.hi, d.currency) : ''}. Probabilistic, not advice.`;
+  const img = `${base}/api/share/${id}/img.svg`;
+  const scoreCol = d.score == null ? '#93A0B8' : d.score >= 70 ? '#34D399' : d.score >= 56 ? '#22D3EE' : d.score >= 45 ? '#FBBF24' : '#FB7185';
+  const band = (d.lo != null && d.hi != null) ? `${fmtMoney(d.lo, d.currency)} – ${fmtMoney(d.hi, d.currency)}` : '—';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(title)} · Quantra AI</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:type" content="website"><meta property="og:title" content="${esc(title)} · Quantra AI">
+<meta property="og:description" content="${esc(desc)}"><meta property="og:image" content="${esc(img)}"><meta property="og:url" content="${esc(base + '/s/' + id)}">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(img)}">
+<style>body{margin:0;background:#0A0F1C;color:#E7ECF5;font-family:'Segoe UI',Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:640px;margin:0 auto;padding:32px 20px 60px}.bar{height:6px;background:linear-gradient(100deg,#34D399,#22D3EE,#818CF8)}
+.kick{color:#6B7890;font-size:13px;font-weight:700;letter-spacing:2px;margin:24px 0 6px}
+h1{font-size:42px;margin:0}.name{color:#93A0B8;font-size:18px;margin-top:4px}
+.card{background:#121A2E;border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:22px;margin-top:22px;display:flex;gap:20px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.px{font-size:34px;font-weight:700}.trend{color:#93A0B8;font-size:15px;margin-top:4px}
+.score{text-align:center;min-width:120px}.score .v{font-size:56px;font-weight:800;color:${scoreCol};line-height:1}.score .l{color:#6B7890;font-size:12px;font-weight:700;letter-spacing:1px}
+.band{margin-top:18px}.band .l{color:#6B7890;font-size:13px;font-weight:700;letter-spacing:1px}.band .v{color:#22D3EE;font-size:24px;font-weight:700;margin-top:4px}
+.cta{display:inline-block;margin-top:26px;background:linear-gradient(100deg,#34D399,#22D3EE);color:#06251c;font-weight:700;text-decoration:none;padding:14px 26px;border-radius:12px;font-size:16px}
+.foot{color:#5A6680;font-size:12px;margin-top:22px;line-height:1.6}a.link{color:#22D3EE;text-decoration:none}</style></head>
+<body><div class="bar"></div><div class="wrap">
+<div class="kick">QUANTRA AI · SHARED ANALYSIS</div>
+<h1>${esc(d.symbol)}</h1><div class="name">${esc(d.name || '')}</div>
+<div class="card"><div><div class="px">${esc(fmtMoney(d.price, d.currency))}</div><div class="trend">${esc(d.trend || '')}</div></div>
+<div class="score"><div class="v">${d.score == null ? '—' : d.score}</div><div class="l">${esc((d.grade || 'SCORE').toUpperCase())}</div></div></div>
+<div class="band"><div class="l">PROJECTION RANGE${d.horizon ? ' · ' + esc(d.horizon) : ''}</div><div class="v">${esc(band)}</div></div>
+<a class="cta" href="${base}/terminal.html?type=${encodeURIComponent(d.type || 'stock')}&symbol=${encodeURIComponent(d.symbol)}&name=${encodeURIComponent(d.name || d.symbol)}">Open the live analysis on Quantra →</a>
+<div class="foot">Snapshot from ${new Date(d.ts).toLocaleString()}. Probabilistic analytics — <b>not a guarantee, not investment advice</b>. Quantra publicly grades every projection against reality: <a class="link" href="${base}/track-record.html">see the track record →</a></div>
+</div></body></html>`;
+}
 function badgeSvg(tr) {
   let best = null;
   if (!tr.building) for (const h of tr.horizons || []) if (h.hitRate != null && (!best || h.evaluated > best.evaluated)) best = h;
@@ -2418,7 +2495,8 @@ store.ready().then(() => {
     // Escape hatch for the operator: OPEN_ACCESS=true restores anonymous access.
     if (u.pathname.startsWith('/api/') && process.env.OPEN_ACCESS !== 'true') {
       const open = u.pathname.startsWith('/api/auth/') || u.pathname === '/api/billing/webhook'
-        || u.pathname === '/api/config' || u.pathname.startsWith('/api/track-record') || u.pathname === '/api/status';
+        || u.pathname === '/api/config' || u.pathname.startsWith('/api/track-record') || u.pathname === '/api/status'
+        || u.pathname.startsWith('/api/share/') || u.pathname.startsWith('/s/');   // public share cards
       if (!open) {
         const s = await sessionUser(req).catch(() => null);
         if (!s) return send(res, 401, { error: 'Sign in to use Quantra.', signin: true });
@@ -2452,6 +2530,36 @@ store.ready().then(() => {
     if (u.pathname === '/api/track-record/dev-seed' && req.method === 'POST') {
       if (!process.env.QUANTRA_DEV_BILLING || PROD) return send(res, 404, { error: 'not found' });
       await trackDevSeed(); return send(res, 200, { ok: true });
+    }
+    /* ---- shareable analysis snapshots (public growth loop) ----
+       A signed-in user shares the current read; anyone can open the link (no account).
+       Stored as a long-lived token so links survive restarts. Server-rendered HTML with
+       OpenGraph tags so it previews in WhatsApp/Twitter/LinkedIn, + an SVG card image. */
+    if (u.pathname === '/api/share' && req.method === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Sign in to share.' });
+      if (tooMany(res, 'sh:' + clientIp(req), 40, 3600000)) return;
+      let body; try { body = await readBody(req); } catch { return send(res, 400, { error: 'bad body' }); }
+      const snap = shareSnapshot(body);
+      if (!snap) return send(res, 400, { error: 'nothing to share' });
+      const id = crypto.randomBytes(7).toString('hex');
+      await store.putToken('share:' + id, { type: 'share', data: snap, by: s.user.email, exp: Date.now() + 180 * 864e5 });
+      return send(res, 200, { ok: true, id, url: APP_URL + '/s/' + id });
+    }
+    if (u.pathname.startsWith('/api/share/') && req.method === 'GET') {
+      const id = u.pathname.split('/')[3] || '';
+      const rec = await store.getToken('share:' + id.replace(/[^a-f0-9]/g, ''));
+      if (!rec || rec.type !== 'share') return send(res, 404, { error: 'not found' });
+      if (u.pathname.endsWith('/img.svg')) {
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+        return res.end(shareCardSvg(rec.data));
+      }
+      return send(res, 200, { ok: true, snapshot: rec.data });
+    }
+    if (u.pathname.startsWith('/s/') && req.method === 'GET') {
+      const id = u.pathname.slice(3).replace(/[^a-f0-9]/g, '');
+      const rec = await store.getToken('share:' + id);
+      res.writeHead(rec && rec.type === 'share' ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+      return res.end(sharePageHtml(rec && rec.type === 'share' ? rec.data : null, id));
     }
     if (u.pathname === '/api/billing/webhook') return billingWebhook(req, res);
     if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname.startsWith('/api/me/') || u.pathname === '/api/org' || u.pathname.startsWith('/api/org/') || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname === '/api/brief' || u.pathname.startsWith('/api/community/') || u.pathname.startsWith('/api/billing/') || u.pathname.startsWith('/api/broker/')) {
