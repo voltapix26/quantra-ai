@@ -7,7 +7,7 @@
   <meta name="description" content="Track your holdings — live value, profit/loss, and allocation across crypto, stocks, ETFs and more." />
   <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=58" />
+  <link rel="stylesheet" href="styles.css?v=59" />
   <style>
     .pf{max-width:1080px;margin:0 auto;padding:1.3rem 0 4rem}
     .pf h1{font-size:1.9rem;margin-bottom:.2rem}
@@ -40,6 +40,13 @@
     .pf-del{background:none;border:0;color:var(--muted-2);cursor:pointer;font-size:.9rem}.pf-del:hover{color:var(--rose)}
     .pf-empty{padding:2.4rem 1rem;text-align:center;color:var(--muted)}
     .pf-note{font-size:.76rem;color:var(--muted-2);margin-top:.7rem}
+
+    .pf-risk-h{font-family:'Space Grotesk';font-size:1.05rem;font-weight:700;margin:1.8rem 0 .7rem}
+    .pf-risk-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.7rem;margin-bottom:.7rem}
+    .pf-risk-note{font-size:.82rem;color:var(--muted);line-height:1.55;margin:.3rem 0 .2rem}
+    .pf-corr{border-collapse:collapse;font-size:.74rem;font-variant-numeric:tabular-nums}
+    .pf-corr th,.pf-corr td{border:1px solid var(--line);padding:.32rem .5rem;color:var(--muted);white-space:nowrap}
+    .pf-corr th{color:var(--muted-2);font-weight:600}
   </style>
 </head>
 <body>
@@ -86,6 +93,7 @@
     </div>
 
     <div class="pf-wrap"><table class="pf-t" id="pfTable"></table></div>
+    <div id="pfRisk"></div>
     <p class="pf-note">Prices are delayed/live from free feeds and shown in each asset's native currency; totals assume USD. P&amp;L = (price − avg cost) × quantity.</p>
   </main>
 
@@ -188,6 +196,66 @@
         card(`<span class="${totPl >= 0 ? 'up' : 'down'}">${(totPl >= 0 ? '+' : '') + fmt(totPl)}</span>`, 'Total P&L') +
         card(`<span class="${totPl >= 0 ? 'up' : 'down'}">${pctS(totPlp)}</span>`, 'Return') +
         card(holdings.length, 'Holdings');
+      renderRisk();
+    }
+
+    /* ---- portfolio risk: correlation matrix + diversification score ---- */
+    async function chartCloses(h) {
+      try {
+        if (h.type === 'crypto') { const d = await api(`/crypto/chart?id=${encodeURIComponent(h.id)}&days=90`); return { dates: (d.dates || []).map((x) => String(x).slice(0, 10)), closes: d.closes || [] }; }
+        const d = await api(`/stock/chart?symbol=${encodeURIComponent(h.id)}&range=3mo&interval=1d`);
+        return { dates: (d.dates || []).map((x) => String(x).slice(0, 10)), closes: d.closes || [] };
+      } catch { return null; }
+    }
+    function pearson(a, b) {
+      const n = a.length; if (n < 8) return null;
+      let sa = 0, sb = 0; for (let i = 0; i < n; i++) { sa += a[i]; sb += b[i]; }
+      const ma = sa / n, mb = sb / n; let num = 0, da = 0, db = 0;
+      for (let i = 0; i < n; i++) { const x = a[i] - ma, y = b[i] - mb; num += x * y; da += x * x; db += y * y; }
+      const den = Math.sqrt(da * db); return den ? num / den : null;
+    }
+    async function renderRisk() {
+      const box = $('pfRisk');
+      const want = holdings.slice(0, 12);
+      if (want.length < 2) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="pf-risk-h">Portfolio risk &amp; diversification</div><div class="pf-risk-note">Crunching 3 months of daily returns…</div>';
+      const raw = await Promise.all(want.map(chartCloses));
+      // keep ONLY holdings whose history actually loaded — one failed fetch must not
+      // collapse the whole matrix (crypto feeds occasionally rate-limit).
+      const kept = [], maps = [];
+      want.forEach((h, i) => {
+        const s = raw[i]; if (!s || !s.dates || s.dates.length < 12) return;
+        const m = new Map(); s.dates.forEach((d, j) => { if (s.closes[j] != null) m.set(d, s.closes[j]); });
+        if (m.size >= 12) { kept.push(h); maps.push(m); }
+      });
+      const hs = kept;
+      if (hs.length < 2) { box.innerHTML = '<div class="pf-risk-h">Portfolio risk &amp; diversification</div><div class="pf-risk-note">Not enough price history loaded yet to compute correlations — reload in a moment.</div>'; return; }
+      let common = null;
+      maps.forEach((m) => { const ks = new Set(m.keys()); common = common === null ? ks : new Set([...common].filter((k) => ks.has(k))); });
+      const dates = [...(common || [])].sort();
+      if (dates.length < 12) { box.innerHTML = '<div class="pf-risk-h">Portfolio risk &amp; diversification</div><div class="pf-risk-note">Not enough overlapping price history yet to compute correlations.</div>'; return; }
+      const rets = maps.map((m) => { const r = []; for (let i = 1; i < dates.length; i++) { const p0 = m.get(dates[i - 1]), p1 = m.get(dates[i]); if (p0 > 0 && p1 > 0) r.push(Math.log(p1 / p0)); else r.push(0); } return r; });
+      const n = hs.length, C = Array.from({ length: n }, () => new Array(n).fill(1));
+      let sum = 0, cnt = 0;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const c = pearson(rets[i], rets[j]); const v = c == null ? 0 : c; C[i][j] = C[j][i] = v; sum += v; cnt++; }
+      const avg = cnt ? sum / cnt : 0;
+      const divScore = Math.max(0, Math.min(100, Math.round((1 - avg) * 100)));
+      const dcol = divScore >= 66 ? 'var(--mint)' : divScore >= 40 ? 'var(--amber)' : 'var(--rose)';
+      const cell = (v) => { const a = Math.min(1, Math.abs(v)); const col = v >= 0 ? `rgba(251,113,133,${(0.12 + a * 0.6).toFixed(2)})` : `rgba(52,211,153,${(0.12 + a * 0.6).toFixed(2)})`; return `<td style="background:${col};text-align:center;color:var(--text)">${v.toFixed(2)}</td>`; };
+      const head = '<th></th>' + hs.map((h) => `<th style="font-size:.66rem">${esc(h.symbol)}</th>`).join('');
+      const rows = hs.map((h, i) => `<tr><th style="text-align:left;font-size:.68rem">${esc(h.symbol)}</th>${C[i].map((v, j) => i === j ? '<td style="text-align:center;color:var(--muted-2)">1.00</td>' : cell(v)).join('')}</tr>`).join('');
+      const read = avg >= 0.6 ? 'Your holdings move very together — high correlation means limited diversification; a broad market drop would hit most of them at once.'
+        : avg >= 0.3 ? 'Moderate correlation — some diversification, but several holdings still tend to move as a group.'
+        : 'Low average correlation — your holdings are reasonably diversified and don’t all move as one.';
+      box.innerHTML = `
+        <div class="pf-risk-h">Portfolio risk &amp; diversification</div>
+        <div class="pf-risk-cards">
+          <div class="pf-card"><div class="v" style="color:${dcol}">${divScore}<span style="font-size:.9rem">/100</span></div><div class="l">Diversification score</div></div>
+          <div class="pf-card"><div class="v">${avg.toFixed(2)}</div><div class="l">Avg correlation</div></div>
+          <div class="pf-card"><div class="v">${dates.length}</div><div class="l">Overlapping days</div></div>
+        </div>
+        <div class="pf-risk-note">${read} <span style="color:var(--muted-2)">Red = move together, green = move opposite. Correlation of daily returns over ${dates.length} shared trading days. Informational, not advice.</span></div>
+        <div class="pf-wrap" style="margin-top:.7rem"><table class="pf-corr">${'<tr>' + head + '</tr>' + rows}</table></div>`;
     }
 
     (async () => {
