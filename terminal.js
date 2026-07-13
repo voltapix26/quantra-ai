@@ -824,6 +824,56 @@
   }
   const escAttr = (s) => (s || '').replace(/"/g, '&quot;');
   const escHtml = (s) => (s || '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+  /* ---------------- educational tooltips (plain-English glossary) ---------------- */
+  const GLOSSARY = {
+    rsi: 'RSI (14): momentum on a 0–100 scale. Above ~70 is often called overbought, below ~30 oversold — but strong trends can stay there. A clue, not a signal.',
+    sma20: 'SMA 20: the average closing price over the last 20 bars — a short-term trend line. Price above it = short-term uptrend.',
+    sma50: 'SMA 50: average price over 50 bars — the medium-term trend line.',
+    sma200: 'SMA 200: average price over 200 bars — the classic long-term trend line. The 50 crossing above the 200 is the “golden cross”.',
+    macd: 'MACD histogram: the momentum of the trend. Positive and rising = upward momentum building; negative = downward.',
+    adx: 'ADX: trend STRENGTH (0–100), not direction. Above ~25 = a strong trend worth trusting; below ~20 = choppy, rangebound.',
+    stoch: 'Stochastic %K: where the price sits inside its recent range (0–100). Near 100 = top of the range, near 0 = bottom.',
+    boll: 'Bollinger %B: position within the Bollinger Bands. Above 1 = price is above the upper band; below 0 = below the lower band.',
+    atr: 'ATR: Average True Range — how much this asset typically moves per bar, in price terms. A raw volatility gauge.',
+    support: 'Support: a recent price floor where buyers have tended to step in.',
+    resistance: 'Resistance: a recent price ceiling where sellers have tended to step in.',
+    score: 'Quantra Score (1–99): a blended read of trend, momentum and signals — weighted by what has actually worked for THIS asset out-of-sample. A view, never advice. Every score’s projections are graded on the public track record.',
+  };
+  function tipKey(k) {
+    k = String(k).toLowerCase();
+    if (k.includes('rsi')) return 'rsi';
+    if (k.includes('sma 200')) return 'sma200';
+    if (k.includes('sma 50')) return 'sma50';
+    if (k.includes('sma 20')) return 'sma20';
+    if (k.includes('macd')) return 'macd';
+    if (k.includes('adx')) return 'adx';
+    if (k.includes('stoch')) return 'stoch';
+    if (k.includes('boll')) return 'boll';
+    if (k.includes('atr')) return 'atr';
+    if (k.includes('support')) return 'support';
+    if (k.includes('resist')) return 'resistance';
+    return '';
+  }
+  // one delegated floating tooltip — works for dynamically-rendered chips, hover + tap
+  (function initGlossTips() {
+    let tip = null;
+    const show = (el) => {
+      const txt = GLOSSARY[el.getAttribute('data-tip')]; if (!txt) return;
+      if (!tip) { tip = document.createElement('div'); tip.className = 'glosstip'; document.body.appendChild(tip); }
+      tip.textContent = txt; tip.style.display = 'block';
+      const r = el.getBoundingClientRect(), w = Math.min(280, window.innerWidth - 20);
+      tip.style.width = w + 'px';
+      let top = r.bottom + 8; if (top + 120 > window.innerHeight) top = Math.max(8, r.top - 120);
+      tip.style.top = top + 'px';
+      tip.style.left = Math.max(10, Math.min(window.innerWidth - w - 10, r.left)) + 'px';
+    };
+    const hide = () => { if (tip) tip.style.display = 'none'; };
+    document.addEventListener('pointerover', (e) => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) show(el); });
+    document.addEventListener('pointerout', (e) => { if (e.target.closest && e.target.closest('[data-tip]')) hide(); });
+    document.addEventListener('click', (e) => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el && matchMedia('(pointer:coarse)').matches) { show(el); setTimeout(hide, 4000); } });
+    window.addEventListener('scroll', hide, true);
+  })();
   function renderNews(sent, item) {
     const card = $('newsCard');
     if (!sent || !sent.count) { card.hidden = true; return; }
@@ -1626,7 +1676,7 @@
         ['ATR', ind.atr != null ? money(ind.atr, curBase) : '—'],
         ['Support', money(ind.support, curBase)],
         ['Resistance', money(ind.resistance, curBase)],
-      ].map(([k, v]) => `<span class="indi"><i>${k}</i>${v}</span>`).join('');
+      ].map(([k, v]) => `<span class="indi" data-tip="${tipKey(k)}"><i>${k}</i>${v}</span>`).join('');
 
       // signal breakdown
       const sw = $('sigwrap');

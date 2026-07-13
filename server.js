@@ -2503,7 +2503,8 @@ store.ready().then(() => {
     if (u.pathname.startsWith('/api/') && process.env.OPEN_ACCESS !== 'true') {
       const open = u.pathname.startsWith('/api/auth/') || u.pathname === '/api/billing/webhook'
         || u.pathname === '/api/config' || u.pathname.startsWith('/api/track-record') || u.pathname === '/api/status'
-        || u.pathname.startsWith('/api/share/') || u.pathname.startsWith('/s/');   // public share cards
+        || u.pathname.startsWith('/api/share/') || u.pathname.startsWith('/s/')   // public share cards
+        || u.pathname.startsWith('/api/v1/');   // developer API (own key auth)
       if (!open) {
         const s = await sessionUser(req).catch(() => null);
         if (!s) return send(res, 401, { error: 'Sign in to use Quantra.', signin: true });
@@ -2567,6 +2568,28 @@ store.ready().then(() => {
       const rec = await store.getToken('share:' + id);
       res.writeHead(rec && rec.type === 'share' ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
       return res.end(sharePageHtml(rec && rec.type === 'share' ? rec.data : null, id, reqBase(req)));
+    }
+    /* ---- Developer API v1 (authenticated by the workspace API key) ----
+       Key in `X-API-Key` header or `?key=`. Rate-limited per key. On-demand only. */
+    if (u.pathname.startsWith('/api/v1/') && req.method === 'GET') {
+      const key = req.headers['x-api-key'] || u.searchParams.get('key') || '';
+      if (!/^qk_live_[a-f0-9]{32}$/.test(key)) return send(res, 401, { ok: false, error: 'Missing or malformed API key. Pass X-API-Key: qk_live_… (find it in your workspace settings).' });
+      const org = await store.findOrgByApiKey(key);
+      if (!org) return send(res, 401, { ok: false, error: 'Invalid API key.' });
+      if (tooMany(res, 'apik:' + key, 120, 60000)) return;   // 120 req/min/key
+      try {
+        if (u.pathname === '/api/v1/price') {
+          const sym = u.searchParams.get('symbol'); if (!sym) return send(res, 400, { ok: false, error: 'symbol required' });
+          const p = await api['price']({ id: sym, symbol: sym, type: u.searchParams.get('type') || 'stock' });
+          return send(res, 200, { ok: !!(p && p.ok !== false), symbol: sym, price: p && p.price, change: p && p.change, currency: (p && p.currency) || 'USD', source: p && p.source, asOf: (p && p.asOf) || Date.now() });
+        }
+        if (u.pathname === '/api/v1/movers') {
+          const d = await api['movers/radar']();
+          return send(res, 200, { ok: !!(d && d.ok), asOf: d && d.asOf, thresholds: d && d.thresholds, horizons: d && d.horizons, items: (d && d.items || []).map((it) => ({ type: it.type, symbol: it.symbol, price: it.price, odds: it.grid })) });
+        }
+        if (u.pathname === '/api/v1/track-record') return send(res, 200, await trackRecord());
+        return send(res, 404, { ok: false, error: 'unknown endpoint', endpoints: ['/api/v1/price', '/api/v1/movers', '/api/v1/track-record'] });
+      } catch (e) { return send(res, 502, { ok: false, error: String(e.message || e) }); }
     }
     if (u.pathname === '/api/billing/webhook') return billingWebhook(req, res);
     if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname.startsWith('/api/me/') || u.pathname === '/api/org' || u.pathname.startsWith('/api/org/') || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname === '/api/brief' || u.pathname.startsWith('/api/community/') || u.pathname.startsWith('/api/billing/') || u.pathname.startsWith('/api/broker/')) {

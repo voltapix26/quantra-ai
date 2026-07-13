@@ -74,6 +74,13 @@ const ok = (cond, name, detail) => {
     ok(tr.status === 200 && tr.body && (tr.body.building || tr.body.days != null), '/api/track-record responds');
   }
 
+  // developer API: key required
+  {
+    const noKey = await j('/api/v1/price?symbol=AAPL');
+    ok(noKey.status === 401, 'dev API rejects missing key (401)', noKey.status);
+    const badKey = await fetch(B + '/api/v1/price?symbol=AAPL', { headers: { 'X-API-Key': 'qk_live_00000000000000000000000000000000' } });
+    ok(badKey.status === 401, 'dev API rejects bad key (401)', badKey.status);
+  }
   srv.kill();
   try { fs.rmSync(DATA, { recursive: true, force: true }); } catch {}
   console.log(failures ? `\n${failures} FAILURE(S)` : '\nall smoke tests passed');
