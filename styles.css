@@ -786,3 +786,15 @@ button{font-family:inherit}
 .rsig__d{font-size:.66rem;color:var(--muted-2);margin-top:.25rem}
 .rsig__x{position:absolute;top:.3rem;right:.45rem;background:none;border:0;color:var(--muted-2);font-size:.95rem;cursor:pointer}
 @media (max-width:900px){.rsig-wrap{top:auto;bottom:130px;transform:none;right:14px}}
+
+/* ---------------- i18n: RTL + language toggle ---------------- */
+.lang-tog{position:fixed;left:14px;bottom:14px;z-index:320;background:var(--panel-2);border:1px solid var(--line-2);color:var(--muted);font-weight:700;border-radius:50%;width:42px;height:42px;cursor:pointer;font-family:inherit;font-size:1rem;box-shadow:var(--shadow)}
+.lang-tog:hover{color:var(--text);border-color:var(--cyan)}
+html[dir="rtl"] body{direction:rtl}
+html[dir="rtl"] .thead,html[dir="rtl"] .trow{direction:rtl}
+/* numbers, prices, tickers, code stay left-to-right so they read correctly in RTL */
+html[dir="rtl"] .trow__price,html[dir="rtl"] .trow__chg,html[dir="rtl"] .dprice,html[dir="rtl"] .qscore,
+html[dir="rtl"] .proj-table,html[dir="rtl"] .opt-table,html[dir="rtl"] [class*="__px"],
+html[dir="rtl"] .mono,html[dir="rtl"] code,html[dir="rtl"] .indi,html[dir="rtl"] #dTicker,
+html[dir="rtl"] .radar__odds,html[dir="rtl"] .radar__sym,html[dir="rtl"] .tick-live{direction:ltr;unicode-bidi:isolate}
+html[dir="rtl"] .indis{direction:rtl}

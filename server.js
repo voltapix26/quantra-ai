@@ -2188,9 +2188,16 @@ function shareCardSvg(d) {
   <text x="70" y="586" fill="#6B7890" font-family="Arial,sans-serif" font-size="24">Probabilistic — not a guarantee, not investment advice · quantra-ai.onrender.com</text>
   </svg>`;
 }
-function sharePageHtml(d, id) {
+// Canonical public base from the request itself (Render sits behind a proxy, so
+// honor x-forwarded-proto/host) — reliable even when APP_URL env is unset.
+function reqBase(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || (isHttps(req) ? 'https' : 'http');
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'quantra-ai.onrender.com';
+  return `${proto}://${host}`;
+}
+function sharePageHtml(d, id, baseIn) {
   const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const base = (APP_URL || '').replace(/\/$/, '');
+  const base = (baseIn || APP_URL || '').replace(/\/$/, '');
   if (!d) return `<!doctype html><meta charset="utf-8"><title>Quantra AI</title><body style="background:#0A0F1C;color:#93A0B8;font-family:Arial;text-align:center;padding:80px"><h2 style="color:#34D399">Quantra AI</h2><p>This shared analysis link has expired or was not found.</p><a href="${base}/terminal.html" style="color:#22D3EE">Open the live terminal →</a></body>`;
   const title = `${d.symbol} — Quantra Score ${d.score == null ? '' : d.score}${d.grade ? ' (' + d.grade + ')' : ''}`;
   const desc = `${d.name || d.symbol} at ${fmtMoney(d.price, d.currency)}. ${d.trend || ''} Projection ${d.horizon || ''}: ${d.lo != null ? fmtMoney(d.lo, d.currency) + '–' + fmtMoney(d.hi, d.currency) : ''}. Probabilistic, not advice.`;
@@ -2543,7 +2550,7 @@ store.ready().then(() => {
       if (!snap) return send(res, 400, { error: 'nothing to share' });
       const id = crypto.randomBytes(7).toString('hex');
       await store.putToken('share:' + id, { type: 'share', data: snap, by: s.user.email, exp: Date.now() + 180 * 864e5 });
-      return send(res, 200, { ok: true, id, url: APP_URL + '/s/' + id });
+      return send(res, 200, { ok: true, id, url: reqBase(req) + '/s/' + id });
     }
     if (u.pathname.startsWith('/api/share/') && req.method === 'GET') {
       const id = u.pathname.split('/')[3] || '';
@@ -2559,7 +2566,7 @@ store.ready().then(() => {
       const id = u.pathname.slice(3).replace(/[^a-f0-9]/g, '');
       const rec = await store.getToken('share:' + id);
       res.writeHead(rec && rec.type === 'share' ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
-      return res.end(sharePageHtml(rec && rec.type === 'share' ? rec.data : null, id));
+      return res.end(sharePageHtml(rec && rec.type === 'share' ? rec.data : null, id, reqBase(req)));
     }
     if (u.pathname === '/api/billing/webhook') return billingWebhook(req, res);
     if (u.pathname.startsWith('/api/auth/') || u.pathname.startsWith('/api/admin/') || u.pathname.startsWith('/api/me/') || u.pathname === '/api/org' || u.pathname.startsWith('/api/org/') || u.pathname.startsWith('/api/ai/') || u.pathname.startsWith('/api/push/') || u.pathname === '/api/brief' || u.pathname.startsWith('/api/community/') || u.pathname.startsWith('/api/billing/') || u.pathname.startsWith('/api/broker/')) {

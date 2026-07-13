@@ -60,7 +60,7 @@ s = slide()
 txt(s, 0.7, 2.3, 12, 1.2, [("Quantra AI", 60, TEXT, True)], PP_ALIGN.CENTER)
 txt(s, 0.7, 3.5, 12, 0.7, [("The honest markets terminal — live AI analysis, publicly graded against reality", 22, MINT, False)], PP_ALIGN.CENTER)
 txt(s, 0.7, 4.5, 12, 0.6, [("Seed round · raising US$ 2.5M ($2–3M range)  |  quantra-ai.onrender.com", 16, MUT, False)], PP_ALIGN.CENTER)
-txt(s, 0.7, 5.1, 12, 0.5, [("Eshan Thanvi, Founder · eshanthanvi@gmail.com", 14, MUT2, False)], PP_ALIGN.CENTER)
+txt(s, 0.7, 5.1, 12, 0.5, [("Eshan Thanvi, Founder · quantra.aio@proton.me", 14, MUT2, False)], PP_ALIGN.CENTER)
 foot(s)
 
 # 2 — problem
@@ -147,7 +147,7 @@ txt(s, 0.7, 2.8, 12, 1.2, [("US$ 2.5 million seed", 48, TEXT, True)], PP_ALIGN.C
 txt(s, 0.7, 4.0, 12, 0.8, [("to take a live, complete, provably honest markets platform", 18, MUT, False),
                             ("from product-ready to market-winning across MENA & South Asia", 18, MUT, False)], PP_ALIGN.CENTER)
 txt(s, 0.7, 5.3, 12, 0.8, [("Live demo: quantra-ai.onrender.com  ·  Public proof: /track-record.html", 15, CYAN, True),
-                            ("Eshan Thanvi · eshanthanvi@gmail.com", 14, MUT2, False)], PP_ALIGN.CENTER)
+                            ("Eshan Thanvi · quantra.aio@proton.me", 14, MUT2, False)], PP_ALIGN.CENTER)
 foot(s)
 
 out_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Quantra AI")
