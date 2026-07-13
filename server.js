@@ -726,8 +726,13 @@ const api = {
         if (Array.isArray(pr)) out.protocols = pr.sort((a, b) => (b.tvl || 0) - (a.tvl || 0)).slice(0, 12).map((p2) => ({ name: p2.name, tvl: p2.tvl, chain: p2.chain, change7d: p2.change_7d != null ? +(+p2.change_7d).toFixed(1) : null, category: p2.category })); } catch {}
       // ETH gas via public RPC (keyless)
       try {
-        const r = await fetch('https://cloudflare-eth.com', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_gasPrice', params: [], id: 1 }) });
-        const d = await r.json(); if (d && d.result) out.gasGwei = +(parseInt(d.result, 16) / 1e9).toFixed(2);
+        // public RPCs that don't block cloud IPs (Cloudflare's does, from Render)
+        for (const rpc of ['https://ethereum-rpc.publicnode.com', 'https://1rpc.io/eth', 'https://rpc.ankr.com/eth']) {
+          try {
+            const r = await fetch(rpc, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_gasPrice', params: [], id: 1 }) });
+            const d = await r.json(); if (d && d.result) { out.gasGwei = +(parseInt(d.result, 16) / 1e9).toFixed(2); break; }
+          } catch {}
+        }
       } catch {}
       return out;
     });
@@ -850,7 +855,10 @@ const api = {
         }
       } catch {}
     }
-    return { ok: false, premium: true, events: [] };
+    // No free macro-calendar source currently available (FMP/Finnhub gated, TE guest
+    // discontinued). Return an honest "needs a data source" state — the client shows
+    // the working earnings calendar as the primary content instead of a blank block.
+    return { ok: false, premium: true, reason: 'no-macro-source', events: [] };
   },
 
   /* ---- premium multi-source news (marketaux) with source attribution ---- */
@@ -2410,7 +2418,7 @@ store.ready().then(() => {
     // Escape hatch for the operator: OPEN_ACCESS=true restores anonymous access.
     if (u.pathname.startsWith('/api/') && process.env.OPEN_ACCESS !== 'true') {
       const open = u.pathname.startsWith('/api/auth/') || u.pathname === '/api/billing/webhook'
-        || u.pathname === '/api/config' || u.pathname.startsWith('/api/track-record');
+        || u.pathname === '/api/config' || u.pathname.startsWith('/api/track-record') || u.pathname === '/api/status';
       if (!open) {
         const s = await sessionUser(req).catch(() => null);
         if (!s) return send(res, 401, { error: 'Sign in to use Quantra.', signin: true });
@@ -2425,6 +2433,13 @@ store.ready().then(() => {
     if (isHttps(req)) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     // health checks
     if (u.pathname === '/healthz' || u.pathname === '/readyz') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ ok: true, storage: store.kind })); }
+    // Public status — the self-diagnostics, read-only, no sensitive detail (names + pass/fail only)
+    if (u.pathname === '/api/status') {
+      const h = healthLast;
+      const checks = (h && h.checks || []).map((c) => ({ name: c.name, ok: c.ok }));
+      const recent = (healthHistory || []).slice(-30).map((r) => ({ ts: r.ts, ok: r.ok }));
+      return send(res, 200, { ok: h ? h.ok : true, asOf: h ? h.ts : Date.now(), uptimeSec: Math.round(process.uptime()), checks, recent });
+    }
     // public track record
     if (u.pathname === '/api/stream/trades' && req.method === 'GET') return tradeStream(req, res, u);
     if (u.pathname === '/api/track-record' && req.method === 'GET') { snapshotToday().catch(() => {}); return send(res, 200, await trackRecord()); }

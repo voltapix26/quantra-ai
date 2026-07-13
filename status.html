@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — System Status</title>
+  <meta name="description" content="Live system status for Quantra AI — the app tests itself every 12 minutes; this page shows the results in real time." />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=56" />
+  <style>
+    .st{max-width:720px;margin:0 auto;padding:1.4rem 0 4rem}
+    .st h1{font-size:1.9rem;margin-bottom:.2rem}
+    .st-sub{color:var(--muted-2);margin-bottom:1.4rem;font-size:.9rem}
+    .st-banner{border-radius:var(--r-lg);padding:1.1rem 1.3rem;margin-bottom:1.3rem;display:flex;align-items:center;gap:.8rem;font-size:1.05rem;font-weight:600}
+    .st-banner.ok{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.4);color:var(--mint)}
+    .st-banner.bad{background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.4);color:var(--rose)}
+    .st-dot{width:12px;height:12px;border-radius:50%}
+    .st-dot.ok{background:var(--mint);box-shadow:0 0 12px rgba(52,211,153,.6)} .st-dot.bad{background:var(--rose)}
+    .st-row{display:flex;align-items:center;gap:.7rem;padding:.75rem 1rem;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);margin-bottom:.5rem}
+    .st-row b{flex:1;color:var(--text);font-weight:500}
+    .st-badge{font-size:.74rem;font-weight:700;padding:.2em .6em;border-radius:8px}
+    .st-badge.ok{color:var(--mint);background:rgba(52,211,153,.12)} .st-badge.bad{color:var(--rose);background:rgba(244,63,94,.14)}
+    .st-hist{display:flex;gap:3px;margin:1.2rem 0 .4rem}
+    .st-hist i{flex:1;height:34px;border-radius:3px;background:var(--line-2)}
+    .st-hist i.ok{background:var(--mint)} .st-hist i.bad{background:var(--rose)}
+    .st-meta{font-size:.78rem;color:var(--muted-2)}
+    .st-names{font-family:'Space Grotesk';text-transform:capitalize}
+  </style>
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand"><span class="brand__mark">
+        <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true"><defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs><path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/><path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="82" cy="16" r="6" fill="#34D399"/></svg>
+      </span><span class="brand__name">Quantra<span class="brand__ai">AI</span></span></a>
+      <span class="bar__tag">System status</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links"><a href="terminal.html">Terminal</a><a href="track-record.html">Track record</a></nav>
+    </div>
+  </header>
+
+  <main class="container st">
+    <h1>System status</h1>
+    <div class="st-sub">Quantra tests itself in production every 12 minutes — live feeds, price sanity, forecast calibration, storage and error rate. This page shows the latest results, unedited.</div>
+    <div id="stBanner"></div>
+    <div id="stRows"></div>
+    <div class="st-names" style="font-size:.8rem;color:var(--muted-2);margin-top:1.4rem;margin-bottom:.3rem">Recent self-checks</div>
+    <div class="st-hist" id="stHist"></div>
+    <div class="st-meta" id="stMeta"></div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const nice = (n) => n.replace(/_/g, ' ');
+    async function load() {
+      try {
+        const d = await (await fetch('/api/status')).json();
+        const okAll = d.ok;
+        $('stBanner').className = 'st-banner ' + (okAll ? 'ok' : 'bad');
+        $('stBanner').innerHTML = `<span class="st-dot ${okAll ? 'ok' : 'bad'}"></span>${okAll ? 'All systems operational' : 'Some checks are failing — we’ve been alerted'}`;
+        $('stRows').innerHTML = (d.checks || []).map((c) => `<div class="st-row"><span class="st-dot ${c.ok ? 'ok' : 'bad'}"></span><b class="st-names">${nice(c.name)}</b><span class="st-badge ${c.ok ? 'ok' : 'bad'}">${c.ok ? 'operational' : 'degraded'}</span></div>`).join('') || '<div class="st-row"><b>Warming up — first self-check runs shortly.</b></div>';
+        $('stHist').innerHTML = (d.recent || []).map((r) => `<i class="${r.ok ? 'ok' : 'bad'}" title="${new Date(r.ts).toLocaleString()}"></i>`).join('') || '';
+        const up = d.uptimeSec || 0;
+        $('stMeta').textContent = `As of ${new Date(d.asOf).toLocaleString()} · uptime ${Math.floor(up / 3600)}h ${Math.floor((up % 3600) / 60)}m · auto-refreshes every 60s`;
+      } catch { $('stBanner').className = 'st-banner bad'; $('stBanner').innerHTML = '<span class="st-dot bad"></span>Status unavailable right now.'; }
+    }
+    load(); setInterval(load, 60000);
+  </script>
+</body>
+</html>
