@@ -173,30 +173,48 @@ table([
 
 # ---- 10 financials ----
 H1('10. Financials')
-P('Full model: Quantra_AI_Financial_Model.xlsx — assumption-driven with live formulas; change any driver and the '
-  'model recalculates. Summary below.', size=9.5, italic=True, color=MUT)
+P('Full model: Quantra_AI_Financial_Model.xlsx — budget-driven with live formulas and a Bear/Base/Bull switch; '
+  'change any driver and the model recalculates. Base case below.', size=9.5, italic=True, color=MUT)
 table([
-    ['Metric', 'Year 1', 'Year 2', 'Year 3'],
-    ['Total customers (paying, end of year)', '~590', '~2,670', '~6,940'],
-    ['Active users (end of year)', '~13,300', '~57,200', '~141,700'],
-    ['Total Revenue (US$)', '~37,000', '~241,000', '~747,000'],
-    ['Total Expense (US$)', '~599,000', '~1,255,000', '~1,870,000'],
-    ['EBITDA (US$)', '~(562,000)', '~(1,015,000)', '~(1,124,000)'],
-    ['ARR run-rate (end of year, US$)', '~91,000', '~416,000', '~1,082,000'],
+    ['Metric (Base case)', 'Year 1', 'Year 2', 'Year 3'],
+    ['Total Customers (paying, end of year)', '~990', '~2,520', '~4,120'],
+    ['Total Revenue (US$)', '~92,000', '~296,000', '~541,000'],
+    ['Total Expense (US$)', '~564,000', '~1,197,000', '~1,804,000'],
+    ['EBITDA (US$)', '~(473,000)', '~(901,000)', '~(1,263,000)'],
+    ['ARR run-rate (end of year, US$)', '~155,000', '~393,000', '~642,000'],
+    ['Cash balance (end of year, US$)', '~2,027,000', '~1,126,000', '~(137,000)'],
 ])
+H2('Scenarios')
+table([
+    ['Scenario', 'Y3 Revenue', 'Y3 ARR', 'LTV:CAC (Y1)', 'What it assumes'],
+    ['Bear', '~95,000', '~109,000', '0.5x', 'CAC $9, conversion 2.5%, churn 7%, weak share loop'],
+    ['Base', '~541,000', '~642,000', '2.3x', 'CAC $6, conversion 4%, churn 5%, organic 35%'],
+    ['Bull', '~2,707,000', '~3,284,000', '10.5x', 'CAC $4.50, conversion 6%, churn 3.5%, organic 60%, higher pricing'],
+])
+H2('Unit economics — stated honestly')
+P('The Base case runs at roughly 2.3x LTV:CAC in year 1, drifting to ~1.5x by year 3 as CAC inflates. That is below '
+  'the 3:1 bar investors look for, and we have not tuned the assumptions until 3:1 appeared.', bold=True, color=RED)
+P('The reason is structural, not evasive: CAC and conversion are the two numbers a pre-launch company cannot know — '
+  'we have no users. So the first milestone of this round is to MEASURE both on a small cohort (~US$25k of spend) '
+  'before scaling anything. Marketing scales only once the ratio clears 3:1. If it cannot be made to clear, the honest '
+  'outcome is a smaller, slower company — not a larger burn.')
+P('The levers, in order of impact: conversion (4% → 5% takes Base to ~2.8x); organic share from the in-product share '
+  'loop (35% → 60%); CAC mix (Gulf is expensive, India is cheap); and churn, which drives LTV directly. The Bull case '
+  'is all four landing well (10.5x); the Bear case is them missing (0.4x). Both are in the model, not hidden.')
 H2('Key and critical assumptions')
-B('Free → paid conversion: 4% (prosumer range 2–6%).')
-B('Pricing: Pro US$9.99 / Ultimate US$24.99 — both already built in the product.')
-B('Churn: 5%/month paying, 8%/month free.')
-B('Signup growth: 18% m/m in year 1, tapering to 10% (Y2) and 6% (Y3) as the base grows.')
+B('Budget-driven: marketing spend is an input; signups fall out of it at the stated CAC. Growth is bought at a stated price, never assumed.')
+B('Free → paid conversion: 4% Base (prosumer range 2–6%).')
+B('Pricing: Pro US$9.99 / Ultimate US$24.99 — both already built in the product. Blended ARPU ≈ US$13.00.')
+B('Churn: 5%/month paying (LTV ≈ US$252 net of fees), 8%/month free.')
+B('Blended paid CAC per signup: US$6 (Y1) inflating to US$9 (Y3); organic adds 35% on top at zero CAC.')
 B('Costs step in three tiers across Y1/Y2/Y3: team, licensed market data, infrastructure, marketing, G&A.')
 B('No revenue is modelled before the round closes; there is no historical revenue in the model.')
 H2('Runway and the Series A — stated plainly')
-P('The US$2.5M seed funds operations to approximately month 34. Year-3 closing cash in the model is negative: this '
-  'plan assumes a Series A in year 3, raised against a ~US$1M ARR run-rate, a live product, and a multi-year public '
-  'accuracy record. If no Series A is raised, marketing and hiring throttle back in year 3 to hold cash positive — '
-  'growth slows and the company survives. EBITDA is negative across all three years; breakeven is not claimed inside '
-  'the seed window.', color=RED)
+P('The US$2.5M seed funds the plan into year 3; Base-case closing cash in year 3 is slightly negative (~US$137k). '
+  'This plan assumes a Series A in year 3, raised against a ~US$640k ARR run-rate, a live product and a multi-year '
+  'public accuracy record. If no Series A is raised, marketing and hiring throttle back to hold cash positive — growth '
+  'slows and the company survives. EBITDA is negative across all three years in Base; breakeven is not claimed inside '
+  'the seed window. In the Bull case the company reaches EBITDA-positive in year 2 — that is upside, not the plan.', color=RED)
 
 # ---- 11 use of funds ----
 H1('11. Use of Funds — US$2.5M')
