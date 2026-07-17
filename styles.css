@@ -42,7 +42,7 @@ button{font-family:inherit}
 
 /* ---- top bar ---- */
 .bar{position:sticky;top:0;z-index:40;backdrop-filter:blur(14px);background:rgba(6,9,18,.7);border-bottom:1px solid var(--line)}
-.bar__inner{display:flex;align-items:center;gap:1rem;height:64px}
+.bar__inner{display:flex;align-items:center;gap:1rem;height:64px;min-width:0}
 .brand{display:inline-flex;align-items:center;gap:.55rem;font-weight:700}
 .brand__mark{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--line)}
 .brand__name{font-family:'Space Grotesk';font-size:1.15rem}
@@ -103,7 +103,18 @@ button{font-family:inherit}
 .legal-links a{color:var(--muted-2);text-decoration:none}
 .legal-links a:hover{color:var(--mint)}
 
-.bar__links{display:flex;gap:.5rem;align-items:center}
+/* Nav must SHRINK (min-width:0) and scroll — otherwise it pushes the account
+   button past the viewport where overflow-x:clip hides it entirely. */
+.bar__links{display:flex;gap:.5rem;align-items:center;min-width:0;flex:1 1 auto;
+  overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;scroll-behavior:smooth}
+.bar__links::-webkit-scrollbar{display:none}
+.bar__links a,.bar__links>span{flex:0 0 auto;white-space:nowrap}
+.brand{flex:0 0 auto}
+.bar__tag{flex:0 0 auto}
+.cur-pick{flex:0 0 auto}
+.acct-btn{flex:0 0 auto}
+/* the tag is the first thing to go when space is tight — the account button never is */
+@media (max-width:1500px){.bar__tag{display:none}}
 .bar__links a{font-size:.88rem;color:var(--muted);padding:.4em .7em;border-radius:8px;transition:.2s}
 .bar__links a:hover,.bar__links a.is-active{color:var(--text);background:rgba(255,255,255,.06)}
 .live-dot{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 4px rgba(52,211,153,.18);animation:pulse 2s infinite;display:inline-block;margin-right:.4rem}
