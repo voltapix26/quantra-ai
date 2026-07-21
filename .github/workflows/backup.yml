@@ -1,0 +1,90 @@
+
+name: Weekly backup
+
+# Pulls a full export from production every Sunday and stores it as an encrypted
+# artifact. This repo is PUBLIC and artifacts on public repos are downloadable by
+# anyone with the run URL, so the dump is encrypted on the runner before it is
+# ever uploaded. The plaintext never touches the artifact store and is never logged.
+#
+# Required repository secrets:
+#   BACKUP_TOKEN       — must equal the BACKUP_TOKEN env var set on Render
+#   BACKUP_PASSPHRASE  — passphrase used to encrypt the dump (keep it somewhere
+#                        that is NOT this repo; without it the backups are landfill)
+# Optional:
+#   BACKUP_URL         — defaults to the production host below
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'      # Sundays, 04:00 UTC
+  workflow_dispatch:          # and on demand
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets are configured
+        env:
+          TOKEN: ${{ secrets.BACKUP_TOKEN }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::error::BACKUP_TOKEN secret is not set"; exit 1; fi
+          if [ -z "$PASS" ]; then echo "::error::BACKUP_PASSPHRASE secret is not set"; exit 1; fi
+
+      - name: Fetch export from production
+        env:
+          TOKEN: ${{ secrets.BACKUP_TOKEN }}
+          URL: ${{ secrets.BACKUP_URL || 'https://quantra-ai.onrender.com' }}
+        run: |
+          # Render free instances sleep; the first hit can take ~60s to wake.
+          code=$(curl -sS --max-time 180 --retry 3 --retry-delay 20 --retry-all-errors \
+            -H "X-Backup-Token: $TOKEN" \
+            -o backup.json -w '%{http_code}' "$URL/api/admin/backup")
+          if [ "$code" != "200" ]; then
+            echo "::error::Export returned HTTP $code"
+            head -c 300 backup.json || true
+            exit 1
+          fi
+
+      - name: Verify the dump is real
+        run: |
+          # A silently-empty backup is worse than no backup — fail loudly instead.
+          node -e '
+            const d = JSON.parse(require("fs").readFileSync("backup.json", "utf8"));
+            if (d.format !== "quantra-backup/1") throw new Error("bad format: " + d.format);
+            const c = d.counts || {};
+            console.log("taken:", d.takenAt, "backend:", d.backend);
+            console.log("counts:", JSON.stringify(c));
+            if (!c.users) throw new Error("zero users in the dump — refusing to store it");
+            if (c.userData !== c.users) console.log("::warning::userData rows (" + c.userData + ") != users (" + c.users + ")");
+          '
+          echo "SIZE=$(wc -c < backup.json)" >> "$GITHUB_ENV"
+
+      - name: Encrypt
+        env:
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+            -in backup.json -out "quantra-backup-$(date -u +%Y-%m-%d).json.enc" \
+            -pass env:PASS
+          shred -u backup.json 2>/dev/null || rm -f backup.json
+          ls -l quantra-backup-*.json.enc
+
+      - name: Upload encrypted artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quantra-backup-${{ github.run_id }}
+          path: quantra-backup-*.json.enc
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          echo "### Weekly backup complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "Plaintext dump was ${SIZE} bytes; stored encrypted (AES-256-CBC, PBKDF2)." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "To restore: download the artifact, then" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in quantra-backup-*.json.enc -out backup.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "node scripts/restore-backup.js backup.json            # dry run" >> "$GITHUB_STEP_SUMMARY"
+          echo "node scripts/restore-backup.js backup.json --confirm  # write it" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

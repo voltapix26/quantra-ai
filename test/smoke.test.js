@@ -81,6 +81,14 @@ const ok = (cond, name, detail) => {
     const badKey = await fetch(B + '/api/v1/price?symbol=AAPL', { headers: { 'X-API-Key': 'qk_live_00000000000000000000000000000000' } });
     ok(badKey.status === 401, 'dev API rejects bad key (401)', badKey.status);
   }
+
+  // backup export: off unless BACKUP_TOKEN is configured, and never session-gated open
+  {
+    const off = await j('/api/admin/backup');
+    ok(off.status === 404, 'backup export is 404 when BACKUP_TOKEN unset', off.status);
+    const wrong = await fetch(B + '/api/admin/backup', { headers: { 'X-Backup-Token': 'guess' } });
+    ok(wrong.status === 404, 'backup export ignores tokens when disabled', wrong.status);
+  }
   srv.kill();
   try { fs.rmSync(DATA, { recursive: true, force: true }); } catch {}
   console.log(failures ? `\n${failures} FAILURE(S)` : '\nall smoke tests passed');

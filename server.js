@@ -1832,6 +1832,42 @@ async function authRoute(req, res, u) {
       audit('admin_view_audit', req, s.user.email);
       return send(res, 200, { events: await store.listAudit(limit, offset) });
     }
+    /* ---- full data export for the weekly off-site backup ----
+       Authenticated by BACKUP_TOKEN rather than a session, because the caller is an
+       unattended cron. Disabled entirely (404, not 401 — no hint it exists) unless
+       that env var is set. Sessions and reset tokens are deliberately NOT exported:
+       they are short-lived credentials, worthless to restore and pure risk at rest. */
+    if (p === '/api/admin/backup' && m === 'GET') {
+      const want = process.env.BACKUP_TOKEN || '';
+      if (!want) return send(res, 404, { error: 'not found' });
+      const got = String(req.headers['x-backup-token'] || '');
+      const a = Buffer.from(got), b = Buffer.from(want);
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        audit('backup_denied', req, null, {});
+        return send(res, 401, { error: 'Bad backup token.' });
+      }
+      const users = await store.allUsers();
+      const userData = {};
+      for (const usr of users) {
+        try { userData[usr.id] = await store.getUserData(usr.id); } catch {}
+      }
+      const dump = {
+        format: 'quantra-backup/1', takenAt: new Date().toISOString(),
+        backend: process.env.DATABASE_URL ? 'postgres' : 'file',
+        users, userData,
+        orgs: await store.allOrgs().catch(() => []),
+        snapshots: await store.allSnapshots().catch(() => []),
+        stats: await store.allStats().catch(() => []),
+        ideas: await store.listIdeas(1000).catch(() => []),
+        leaders: await store.allLeaders().catch(() => []),
+        audit: await store.listAudit(5000, 0).catch(() => []),
+      };
+      dump.counts = { users: dump.users.length, userData: Object.keys(dump.userData).length,
+        orgs: dump.orgs.length, snapshots: dump.snapshots.length, stats: dump.stats.length,
+        ideas: dump.ideas.length, leaders: dump.leaders.length, audit: dump.audit.length };
+      audit('backup_taken', req, null, dump.counts);
+      return send(res, 200, dump);
+    }
     if (p === '/api/admin/selfcheck' && m === 'GET') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       if (!isSuperAdmin(s.user.email)) { audit('admin_denied', req, s.user.email, { path: p }); return send(res, 403, { error: 'Forbidden.' }); }
@@ -2658,6 +2694,7 @@ store.ready().then(() => {
       const open = u.pathname.startsWith('/api/auth/') || u.pathname === '/api/billing/webhook'
         || u.pathname === '/api/config' || u.pathname.startsWith('/api/track-record') || u.pathname === '/api/status'
         || u.pathname.startsWith('/api/share/') || u.pathname.startsWith('/s/')   // public share cards
+        || u.pathname === '/api/admin/backup'   // unattended cron; own BACKUP_TOKEN auth
         || u.pathname.startsWith('/api/v1/');   // developer API (own key auth)
       if (!open) {
         const s = await sessionUser(req).catch(() => null);
