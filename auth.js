@@ -15,7 +15,8 @@
   const getToken = () => { try { return localStorage.getItem(TKEY) || ''; } catch { return ''; } };
   const setToken = (t) => { try { t ? localStorage.setItem(TKEY, t) : localStorage.removeItem(TKEY); } catch {} };
 
-  window.QuantraAuth = { get user() { return user; }, get limits() { return limits; }, get token() { return getToken(); }, pushWatch, pushData };
+  window.QuantraAuth = { get user() { return user; }, get limits() { return limits; }, get token() { return getToken(); }, pushWatch, pushData,
+    signIn() { try { openModal(); } catch {} } };
 
   async function loadLimits() {
     try { limits = await api('/me/limits', {}); window.dispatchEvent(new CustomEvent('quantra:limits', { detail: limits })); } catch {}

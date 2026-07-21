@@ -1169,8 +1169,10 @@
       // a 401 is not a broken feed — the news pulse is members-only, say so plainly
       const gated = /HTTP 401/.test(String(e && e.message));
       list.innerHTML = gated
-        ? '<div class="radar__empty">Sign in to see today\'s market news. <a href="index.html#signin">Sign in →</a></div>'
+        ? '<div class="radar__empty">Sign in to see today\'s market news.<br><button class="btn btn--sm" id="npSignin" style="margin-top:.6rem">Sign in</button></div>'
         : '<div class="radar__empty">Could not load headlines — retrying shortly.</div>';
+      const sb = $('npSignin');
+      if (sb) sb.addEventListener('click', () => { if (window.QuantraAuth && window.QuantraAuth.signIn) window.QuantraAuth.signIn(); });
       if (!gated && !newsRetry) newsRetry = setTimeout(() => { newsRetry = null; loadNewsPulse(); }, 20000);
     }
   }
