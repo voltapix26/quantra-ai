@@ -721,11 +721,19 @@ const api = {
     });
   },
   /* ---- daily news pulse: market-wide headlines, each mapped to tradable assets ----
-     marketaux entities give real ticker attribution; falls back to a keyword match
-     against our own universe so the feature still works unkeyed. */
+     Two sources are MERGED, not chained: marketaux gives real entity/ticker attribution
+     but its free tier returns only 3 articles per call, so Yahoo's keyless news search
+     fills the rest of the board. Deduped on a normalised headline — wire stories get
+     resyndicated under slightly different titles across both feeds. */
   async 'news/pulse'() {
     return cached('newspulse', 15 * 60 * 1000, async () => {
-      const out = [];
+      const out = [], seen = new Set();
+      const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60);
+      const push = (it) => {
+        const k = norm(it.title);
+        if (!k || !it.title || !it.url || seen.has(k)) return;
+        seen.add(k); out.push(it);
+      };
       if (MARKETAUX_KEY) {
         try {
           const d = await getJSON(`https://api.marketaux.com/v1/news/all?language=en&filter_entities=true&limit=25&api_token=${MARKETAUX_KEY}`);
@@ -735,29 +743,31 @@ const api = {
               const hit = lookupAsset(e.symbol || e.name);
               if (hit && !assets.some((a) => a.symbol === hit.symbol)) assets.push({ ...hit, sentiment: typeof e.sentiment_score === 'number' ? +e.sentiment_score.toFixed(2) : null });
             }
-            out.push({ title: n.title, url: n.url, publisher: n.source, time: n.published_at,
+            push({ title: n.title, url: n.url, publisher: n.source, time: n.published_at,
               snippet: (n.description || n.snippet || '').slice(0, 220), assets: assets.slice(0, 6) });
           }
         } catch {}
       }
-      if (!out.length) {
-        // keyless fallback: Yahoo market news, assets matched by ticker/name mention
-        try {
-          const d = await getJSON(`${YF}/v1/finance/search?q=market&newsCount=25&quotesCount=0&enableFuzzyQuery=false`);
-          for (const n of (d.news || [])) {
-            const assets = [];
-            for (const t of (n.relatedTickers || [])) {
-              const hit = lookupAsset(t);
-              if (hit && !assets.some((a) => a.symbol === hit.symbol)) assets.push(hit);
-            }
-            out.push({ title: n.title, url: n.link, publisher: n.publisher,
-              time: n.providerPublishTime ? new Date(n.providerPublishTime * 1000).toISOString() : null,
-              snippet: '', assets: assets.slice(0, 6) });
+      // Yahoo, always — several themed queries so the board covers equities, crypto,
+      // rates and commodities rather than whatever one keyword happens to surface.
+      const QUERIES = ['stock market', 'earnings', 'crypto', 'federal reserve', 'oil gold commodities'];
+      const pages = await Promise.all(QUERIES.map((q) =>
+        getJSON(`${YF}/v1/finance/search?q=${encodeURIComponent(q)}&newsCount=20&quotesCount=0&enableFuzzyQuery=false`).catch(() => null)));
+      for (const d of pages) {
+        for (const n of ((d && d.news) || [])) {
+          const assets = [];
+          for (const t of (n.relatedTickers || [])) {
+            const hit = lookupAsset(t);
+            if (hit && !assets.some((a) => a.symbol === hit.symbol)) assets.push(hit);
           }
-        } catch {}
+          push({ title: n.title, url: n.link, publisher: n.publisher,
+            time: n.providerPublishTime ? new Date(n.providerPublishTime * 1000).toISOString() : null,
+            snippet: '', assets: assets.slice(0, 6) });
+        }
       }
+      // asset-linked stories first (that is the point of the panel), then most recent
       out.sort((a, b) => (b.assets.length - a.assets.length) || (Date.parse(b.time || 0) - Date.parse(a.time || 0)));
-      return { ok: true, asOf: Date.now(), count: out.length, items: out.slice(0, 20),
+      return { ok: true, asOf: Date.now(), count: out.length, items: out.slice(0, 24),
         note: 'Headlines are linked to assets they mention. A mention is not proof the news moved the price.' };
     });
   },
@@ -2460,19 +2470,30 @@ function assetIndex() {
   };
   for (const s of DEFAULT_STOCKS) add('stock', s, s, s);
   for (const mk of Object.values(STOCK_MARKETS)) for (const s of mk.list) add('stock', s, String(s).split('.')[0], s);
-  for (const c of UNIV.commodity) add('commodity', c.y, c.s, c.n);
-  for (const c of UNIV.index) add('index', c.y, c.s, c.n);
-  for (const c of UNIV.etf) add('etf', c.y, c.s, c.n);
-  for (const f of FUTURES) add('future', f.y, f.s, f.n);
+  // register the display symbol AND the Yahoo symbol as aliases — news feeds quote
+  // tickers either way (^GSPC vs SPX, GC=F vs GOLD), and both must resolve.
+  const addBoth = (type, o) => {
+    add(type, o.y, o.s, o.n);
+    const canon = m.get(String(o.s).toUpperCase());          // alias points at the same
+    const ak = String(o.y).toUpperCase();                     // entry so chips still show
+    if (canon && ak && !m.has(ak)) m.set(ak, canon);          // the friendly symbol
+  };
+  for (const c of UNIV.commodity) addBoth('commodity', c);
+  for (const c of UNIV.index) addBoth('index', c);
+  for (const c of UNIV.etf) addBoth('etf', c);
+  for (const f of FUTURES) addBoth('future', f);
   for (const [sym, id] of [['BTC', 'bitcoin'], ['ETH', 'ethereum'], ['SOL', 'solana'], ['XRP', 'ripple'],
     ['BNB', 'binancecoin'], ['ADA', 'cardano'], ['DOGE', 'dogecoin'], ['AVAX', 'avalanche-2'], ['LINK', 'chainlink']]) add('crypto', id, sym, sym);
   _assetIdx = m; return m;
 }
 function lookupAsset(sym) {
   if (!sym) return null;
-  const k = String(sym).toUpperCase().replace(/^\$/, '').split('.')[0].trim();
+  let k = String(sym).toUpperCase().replace(/^\$/, '').split('.')[0].trim();
   if (k.length < 2 || k.length > 12) return null;
-  return assetIndex().get(k) || null;
+  const idx = assetIndex();
+  if (idx.has(k)) return idx.get(k);
+  const pair = k.replace(/-(USD|USDT|USDC)$/, '');            // BTC-USD → BTC
+  return (pair !== k && idx.get(pair)) || null;
 }
 
 /* ============================================================

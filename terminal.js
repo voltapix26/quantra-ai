@@ -1144,10 +1144,11 @@
     try { localStorage.setItem('quantra.radar', show ? '1' : '0'); } catch {}
   }
   /* ---------------- news pulse + sudden-move (shock) alerts ---------------- */
-  let newsTimer = null, shockTimer = null, shockOn = false;
+  let newsTimer = null, shockTimer = null, shockOn = false, newsRetry = null;
   const shockSeen = () => { try { return +(localStorage.getItem('quantra.shock') || 0); } catch { return 0; } };
   async function loadNewsPulse() {
     const list = $('newsList'); if (!list || !onServer) return;
+    if (!list.querySelector('.np-item')) list.innerHTML = '<div class="radar__empty">Loading headlines…</div>';
     try {
       const d = await getJSON(`${API}/news/pulse`);
       if (!d.ok || !d.items || !d.items.length) { list.innerHTML = '<div class="radar__empty">No headlines right now.</div>'; return; }
@@ -1164,7 +1165,14 @@
         select({ type: b.dataset.type, id: b.dataset.id, symbol: b.dataset.symbol, name: b.dataset.name });
         if (window.innerWidth < 900) toggleNews(false);
       }));
-    } catch { list.innerHTML = '<div class="radar__empty">Could not load headlines.</div>'; }
+    } catch (e) {
+      // a 401 is not a broken feed — the news pulse is members-only, say so plainly
+      const gated = /HTTP 401/.test(String(e && e.message));
+      list.innerHTML = gated
+        ? '<div class="radar__empty">Sign in to see today\'s market news. <a href="index.html#signin">Sign in →</a></div>'
+        : '<div class="radar__empty">Could not load headlines — retrying shortly.</div>';
+      if (!gated && !newsRetry) newsRetry = setTimeout(() => { newsRetry = null; loadNewsPulse(); }, 20000);
+    }
   }
   function toggleNews(on) {
     const p = $('newsPanel'); if (!p) return;
