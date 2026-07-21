@@ -693,7 +693,21 @@ const api = {
             if (fc && fc.probs) grid[key] = { u: Object.fromEntries(THRESH.map((t) => [t, +(fc.probs.up[t] * 100).toFixed(1)])), d: Object.fromEntries(THRESH.map((t) => [t, +(fc.probs.down[t] * 100).toFixed(1)])) };
           }
           if (!grid['24h']) return;
-          items.push({ type: u2.type, id: u2.id, symbol: u2.symbol, name: u2.name, price: dc[dc.length - 1], grid });
+          // shock signal: recent 3-bar move measured against THIS asset's own hourly
+          // volatility, so a normally-wild coin isn't flagged for a normal day.
+          let shock = null;
+          if (hc.length > 40) {
+            const rets = []; for (let k = 1; k < hc.length; k++) rets.push(Math.log(hc[k] / hc[k - 1]));
+            const win = rets.slice(-120), mu = win.reduce((s2, v) => s2 + v, 0) / win.length;
+            const sd = Math.sqrt(win.reduce((s2, v) => s2 + (v - mu) ** 2, 0) / win.length) || 1e-9;
+            const H = 3, p0 = hc[hc.length - 1 - H], p1 = hc[hc.length - 1];
+            if (p0 > 0) {
+              const pct = ((p1 - p0) / p0) * 100;
+              const sigmas = Math.abs(Math.log(p1 / p0)) / (sd * Math.sqrt(H));
+              if (sigmas >= 3 && Math.abs(pct) >= 2) shock = { pct: +pct.toFixed(2), hours: H, sigmas: +sigmas.toFixed(1) };
+            }
+          }
+          items.push({ type: u2.type, id: u2.id, symbol: u2.symbol, name: u2.name, price: dc[dc.length - 1], grid, shock });
         } catch {}
       };
       for (let i = 0; i < universe.length; i += 6) {
@@ -701,9 +715,56 @@ const api = {
         await new Promise((r) => setTimeout(r, 50));   // yield to the event loop between batches
       }
       detectRadarSignals(items).catch(() => {});   // +20%-odds spike alerts (opt-in members)
+      detectShocks(items).catch(() => {});         // sudden-move alerts paired with news
       return { ok: true, asOf: Date.now(), thresholds: THRESH, horizons: ['1h', '4h', '24h', '30d'], count: items.length, items,
         note: 'Modeled probability the price is beyond ±X% at the horizon end (seeded Monte Carlo; 1h–24h from hourly closes — trading hours for stocks, literal for crypto; 30d from daily closes). Probabilities, not calls. Not investment advice.' };
     });
+  },
+  /* ---- daily news pulse: market-wide headlines, each mapped to tradable assets ----
+     marketaux entities give real ticker attribution; falls back to a keyword match
+     against our own universe so the feature still works unkeyed. */
+  async 'news/pulse'() {
+    return cached('newspulse', 15 * 60 * 1000, async () => {
+      const out = [];
+      if (MARKETAUX_KEY) {
+        try {
+          const d = await getJSON(`https://api.marketaux.com/v1/news/all?language=en&filter_entities=true&limit=25&api_token=${MARKETAUX_KEY}`);
+          for (const n of (d.data || [])) {
+            const assets = [];
+            for (const e of (n.entities || [])) {
+              const hit = lookupAsset(e.symbol || e.name);
+              if (hit && !assets.some((a) => a.symbol === hit.symbol)) assets.push({ ...hit, sentiment: typeof e.sentiment_score === 'number' ? +e.sentiment_score.toFixed(2) : null });
+            }
+            out.push({ title: n.title, url: n.url, publisher: n.source, time: n.published_at,
+              snippet: (n.description || n.snippet || '').slice(0, 220), assets: assets.slice(0, 6) });
+          }
+        } catch {}
+      }
+      if (!out.length) {
+        // keyless fallback: Yahoo market news, assets matched by ticker/name mention
+        try {
+          const d = await getJSON(`${YF}/v1/finance/search?q=market&newsCount=25&quotesCount=0&enableFuzzyQuery=false`);
+          for (const n of (d.news || [])) {
+            const assets = [];
+            for (const t of (n.relatedTickers || [])) {
+              const hit = lookupAsset(t);
+              if (hit && !assets.some((a) => a.symbol === hit.symbol)) assets.push(hit);
+            }
+            out.push({ title: n.title, url: n.link, publisher: n.publisher,
+              time: n.providerPublishTime ? new Date(n.providerPublishTime * 1000).toISOString() : null,
+              snippet: '', assets: assets.slice(0, 6) });
+          }
+        } catch {}
+      }
+      out.sort((a, b) => (b.assets.length - a.assets.length) || (Date.parse(b.time || 0) - Date.parse(a.time || 0)));
+      return { ok: true, asOf: Date.now(), count: out.length, items: out.slice(0, 20),
+        note: 'Headlines are linked to assets they mention. A mention is not proof the news moved the price.' };
+    });
+  },
+  /* ---- market shocks: unusual short-term moves, paired with news published nearby ---- */
+  async 'news/shocks'(q) {
+    const after = +(q.after || 0);
+    return { ok: true, now: Date.now(), shocks: marketShocks.filter((s) => s.ts > after) };
   },
   /* ---- radar signals feed: recent +20%-odds spikes (for the popup system) ---- */
   async 'movers/signals'(q) {
@@ -2388,6 +2449,78 @@ async function selfCheck() {
    probabilities, not calls. Delivered to opt-in members only
    (prefs.radarAlerts) — in-app popups + web push if subscribed.
    ============================================================ */
+/* ---- asset lookup: map a ticker/name from a news article to something tradable here ---- */
+let _assetIdx = null;
+function assetIndex() {
+  if (_assetIdx) return _assetIdx;
+  const m = new Map();
+  const add = (type, id, symbol, name) => {
+    const k = String(symbol).toUpperCase();
+    if (!m.has(k)) m.set(k, { type, id, symbol: k, name: name || k });
+  };
+  for (const s of DEFAULT_STOCKS) add('stock', s, s, s);
+  for (const mk of Object.values(STOCK_MARKETS)) for (const s of mk.list) add('stock', s, String(s).split('.')[0], s);
+  for (const c of UNIV.commodity) add('commodity', c.y, c.s, c.n);
+  for (const c of UNIV.index) add('index', c.y, c.s, c.n);
+  for (const c of UNIV.etf) add('etf', c.y, c.s, c.n);
+  for (const f of FUTURES) add('future', f.y, f.s, f.n);
+  for (const [sym, id] of [['BTC', 'bitcoin'], ['ETH', 'ethereum'], ['SOL', 'solana'], ['XRP', 'ripple'],
+    ['BNB', 'binancecoin'], ['ADA', 'cardano'], ['DOGE', 'dogecoin'], ['AVAX', 'avalanche-2'], ['LINK', 'chainlink']]) add('crypto', id, sym, sym);
+  _assetIdx = m; return m;
+}
+function lookupAsset(sym) {
+  if (!sym) return null;
+  const k = String(sym).toUpperCase().replace(/^\$/, '').split('.')[0].trim();
+  if (k.length < 2 || k.length > 12) return null;
+  return assetIndex().get(k) || null;
+}
+
+/* ============================================================
+   Market shocks — unusual SHORT-TERM moves detected from the radar's
+   hourly data (no extra fetching), paired with news published nearby.
+   We report correlation, never causation: "X moved N%, here is the news
+   around that window" — the UI says so explicitly.
+   ============================================================ */
+let marketShocks = [];
+const shockCooldown = new Map();
+async function detectShocks(items) {
+  const fresh = [];
+  for (const it of items) {
+    const mv = it.shock; if (!mv) continue;
+    const key = it.type + ':' + it.id;
+    if ((shockCooldown.get(key) || 0) > Date.now() - 4 * 3600 * 1000) continue;   // 4h per-asset cooldown
+    shockCooldown.set(key, Date.now());
+    let news = null;
+    try {
+      const n = await api['stock/news']({ symbol: it.symbol });
+      if (Array.isArray(n) && n[0]) news = { title: n[0].title, url: n[0].link, publisher: n[0].publisher, time: n[0].time };
+    } catch {}
+    fresh.push({ ts: Date.now(), type: it.type, id: it.id, symbol: it.symbol, name: it.name,
+      movePct: mv.pct, hours: mv.hours, sigmas: mv.sigmas, price: it.price, news });
+  }
+  if (!fresh.length) return;
+  marketShocks = [...fresh, ...marketShocks].slice(0, 30);
+  if (PUSH_ENABLED) {
+    try {
+      const users = await store.allUsers();
+      for (const u of users.slice(0, 500)) {
+        try {
+          const d = await store.getUserData(u.id);
+          if (!d || !d.prefs || !d.prefs.shockAlerts || !Array.isArray(d.pushSubs) || !d.pushSubs.length) continue;
+          for (const s of fresh.slice(0, 3)) {
+            await sendPush(d.pushSubs, {
+              title: `⚡ ${s.symbol} ${s.movePct >= 0 ? '+' : ''}${s.movePct}% in ${s.hours}h`,
+              body: (s.news ? `Nearby headline: ${String(s.news.title).slice(0, 90)}` : 'Unusual move vs its own recent volatility.')
+                + ' — timing only, not proven cause. Not advice.',
+              tag: 'shock-' + s.symbol, url: '/terminal.html',
+            });
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+}
+
 const RADAR_ALERT_MIN = Math.max(5, Math.min(90, +(process.env.RADAR_ALERT_MIN || 25)));
 let radarSignals = [];            // recent signals for the in-app popup feed
 let radarPrev = null;             // previous scan (key → pUp20) for edge-triggering

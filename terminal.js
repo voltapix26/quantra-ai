@@ -1143,6 +1143,90 @@
     else if (radarTimer) { clearInterval(radarTimer); radarTimer = null; }
     try { localStorage.setItem('quantra.radar', show ? '1' : '0'); } catch {}
   }
+  /* ---------------- news pulse + sudden-move (shock) alerts ---------------- */
+  let newsTimer = null, shockTimer = null, shockOn = false;
+  const shockSeen = () => { try { return +(localStorage.getItem('quantra.shock') || 0); } catch { return 0; } };
+  async function loadNewsPulse() {
+    const list = $('newsList'); if (!list || !onServer) return;
+    try {
+      const d = await getJSON(`${API}/news/pulse`);
+      if (!d.ok || !d.items || !d.items.length) { list.innerHTML = '<div class="radar__empty">No headlines right now.</div>'; return; }
+      list.innerHTML = d.items.map((n) => {
+        const chips = (n.assets || []).map((a) => `<button class="np-chip" data-type="${escAttr(a.type)}" data-id="${escAttr(String(a.id))}" data-symbol="${escAttr(a.symbol)}" data-name="${escAttr(a.name || a.symbol)}">${escHtml(a.symbol)}</button>`).join('');
+        const ago = n.time ? newsAgo(n.time) + ' ago' : '';
+        return `<div class="np-item">
+          <a class="np-title" href="${escAttr(n.url || '#')}" target="_blank" rel="noopener noreferrer">${escHtml(n.title)}</a>
+          <div class="np-meta">${escHtml(n.publisher || '')}${ago ? ' · ' + ago : ''}</div>
+          ${chips ? `<div class="np-chips">${chips}</div>` : ''}
+        </div>`;
+      }).join('');
+      list.querySelectorAll('.np-chip').forEach((b) => b.addEventListener('click', () => {
+        select({ type: b.dataset.type, id: b.dataset.id, symbol: b.dataset.symbol, name: b.dataset.name });
+        if (window.innerWidth < 900) toggleNews(false);
+      }));
+    } catch { list.innerHTML = '<div class="radar__empty">Could not load headlines.</div>'; }
+  }
+  function toggleNews(on) {
+    const p = $('newsPanel'); if (!p) return;
+    const show = on != null ? on : p.hidden;
+    p.hidden = !show;
+    if (show) { loadNewsPulse(); if (!newsTimer) newsTimer = setInterval(loadNewsPulse, 10 * 60 * 1000); initShockToggle(); }
+    else if (newsTimer) { clearInterval(newsTimer); newsTimer = null; }
+  }
+  { const nb = $('newsBtn'), nc = $('newsClose');
+    if (nb) nb.addEventListener('click', () => toggleNews());
+    if (nc) nc.addEventListener('click', () => toggleNews(false)); }
+
+  function showShockPop(s) {
+    let wrap = $('rsigWrap');
+    if (!wrap) { wrap = document.createElement('div'); wrap.id = 'rsigWrap'; wrap.className = 'rsig-wrap'; document.body.appendChild(wrap); }
+    const el = document.createElement('div');
+    el.className = 'rsig rsig--shock';
+    const up = s.movePct >= 0;
+    el.innerHTML = `<button class="rsig__x">×</button>
+      <b>⚡ ${escHtml(s.symbol)}</b> <small>${escHtml(s.type)}</small>
+      <div class="rsig__p">Moved <b class="${up ? 'up' : 'down'}">${up ? '+' : ''}${s.movePct}%</b> in ${s.hours}h <small>(${s.sigmas}× its normal move)</small></div>
+      ${s.news ? `<div class="rsig__news">📰 ${escHtml(String(s.news.title).slice(0, 110))}</div>` : ''}
+      <div class="rsig__d">headline published near this move — timing only, not proven cause · not advice</div>`;
+    el.addEventListener('click', (e) => {
+      if (e.target.className === 'rsig__x') { el.remove(); return; }
+      if (e.target.classList.contains('rsig__news') && s.news && s.news.url) { window.open(s.news.url, '_blank', 'noopener'); return; }
+      select({ type: s.type, id: s.id, symbol: s.symbol, name: s.name }); el.remove();
+    });
+    wrap.prepend(el);
+    while (wrap.children.length > 3) wrap.lastChild.remove();
+    setTimeout(() => { try { el.remove(); } catch {} }, 20000);
+  }
+  async function pollShocks() {
+    if (!shockOn || !signedIn()) return;
+    try {
+      const d = await getJSON(`${API}/news/shocks?after=${shockSeen()}`);
+      if (d.ok && d.shocks && d.shocks.length) {
+        d.shocks.slice(0, 3).forEach(showShockPop);
+        try { localStorage.setItem('quantra.shock', String(d.now)); } catch {}
+      }
+    } catch {}
+  }
+  async function initShockToggle() {
+    const wrap = $('shockWrap'), tog = $('shockTog');
+    if (!wrap || !tog || !signedIn() || tog.dataset.wired) return;
+    const t = window.QuantraAuth && window.QuantraAuth.token;
+    try {
+      const d = await (await fetch(`${API}/me/data`, { headers: t ? { Authorization: 'Bearer ' + t } : {}, credentials: 'same-origin' })).json();
+      shockOn = !!(d && d.prefs && d.prefs.shockAlerts);
+      tog.checked = shockOn; wrap.hidden = false; tog.dataset.wired = '1';
+      if (shockOn && !shockTimer) { shockTimer = setInterval(pollShocks, 60000); pollShocks(); }
+    } catch { return; }
+    tog.addEventListener('change', async () => {
+      shockOn = tog.checked;
+      try { await fetch(`${API}/me/data`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...(t ? { Authorization: 'Bearer ' + t } : {}) }, credentials: 'same-origin', body: JSON.stringify({ prefs: { shockAlerts: shockOn } }) }); } catch {}
+      if (shockOn) { if (!shockTimer) shockTimer = setInterval(pollShocks, 60000); R.toast('⚡ Sudden-move alerts on — pop-ups here, plus push if notifications are enabled'); }
+      else if (shockTimer) { clearInterval(shockTimer); shockTimer = null; }
+    });
+  }
+  window.addEventListener('quantra:limits', (e) => { if (e.detail && e.detail.loggedIn) setTimeout(initShockToggle, 600); });
+  setTimeout(initShockToggle, 2600);
+
   /* ---- radar signal alerts: opt-in pop-ups near the radar + server push ---- */
   let sigTimer = null, sigOn = false;
   const sigSeen = () => { try { return +(localStorage.getItem('quantra.rsig') || 0); } catch { return 0; } };

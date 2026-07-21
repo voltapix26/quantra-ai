@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0A0F1C" />
   <link rel="apple-touch-icon" href="assets/brand/quantra-icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=60" />
+  <link rel="stylesheet" href="styles.css?v=61" />
   <!-- export libraries (graceful fallback if blocked) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -403,6 +403,19 @@
   <script src="report.js?v=45"></script>
   <!-- MOVERS RADAR — modeled ±10% odds sidebar -->
   <button class="radar-btn" id="radarBtn" title="Movers radar — modeled odds of a ±10% move">🚀</button>
+  <button class="news-btn" id="newsBtn" title="Daily news pulse — big headlines and the assets they mention">📰</button>
+  <aside class="radar news-panel" id="newsPanel" hidden>
+    <div class="radar__head">
+      <b>📰 News pulse</b>
+      <span class="radar__sub">today's big headlines · click an asset to analyse it</span>
+      <button class="radar__x" id="newsClose">×</button>
+      <label class="radar__alert" id="shockWrap" hidden title="Get a pop-up + push when an asset moves unusually fast, with any headline published around that window">
+        <input type="checkbox" id="shockTog" /> ⚡ Alert me on sudden market moves
+      </label>
+    </div>
+    <div class="radar__list" id="newsList"><div class="radar__empty">Loading headlines…</div></div>
+    <div class="radar__foot">Assets listed are those a headline <b>mentions</b> — a mention is not proof the news moved the price. Not investment advice.</div>
+  </aside>
   <aside class="radar" id="radarPanel" hidden>
     <div class="radar__head">
       <b>🚀 Movers radar</b>
@@ -420,7 +433,7 @@
     <div class="radar__list" id="radarList"><div class="radar__empty">Scanning the market…</div></div>
     <div class="radar__foot">Seeded Monte-Carlo probabilities — high-volatility assets naturally rank higher. Probabilities, not calls. Not investment advice.</div>
   </aside>
-  <script src="terminal.js?v=64"></script>
+  <script src="terminal.js?v=65"></script>
   <script src="onboard.js?v=1" defer></script>
   <script src="pwa.js?v=45" defer></script>
   <script src="i18n.js?v=1" defer></script>
