@@ -53,9 +53,11 @@ console.log('engine.test.js');
   ok(h2.mid[29] !== f.mid[29], 'different data → different path');
   const b = Q.forecast(closes, 30, 5);
   ok(b.mid[29] !== f.mid[29], 'news bias shifts path');
-  // calibration clamps
-  ok(Q.forecast(closes, 30, 0, { cal: 9 }).calScale === 1.35, 'cal clamps high at 1.35');
-  ok(Q.forecast(closes, 30, 0, { cal: 0 }).calScale >= 0.8, 'cal clamps low at 0.8');
+  // calibration clamps — rails widened so real measured miscoverage (needs ~0.72–0.78
+  // to tighten a 90%-covering band to true 80%) is no longer pinned above its target
+  ok(Q.forecast(closes, 30, 0, { cal: 9 }).calScale === 1.7, 'cal clamps high at 1.7');
+  ok(Q.forecast(closes, 30, 0, { cal: 0 }).calScale >= 0.55, 'cal clamps low at 0.55');
+  ok(Q.forecast(closes, 30, 0, { cal: 0.72 }).calScale === 0.72, 'cal 0.72 passes through (below old 0.8 floor)');
   // wider cal → wider band
   const w1 = f.hi[29] - f.lo[29], w2 = (() => { const x = Q.forecast(closes, 30, 0, { cal: 1.3 }); return x.hi[29] - x.lo[29]; })();
   ok(w2 > w1, 'calibration widens band');

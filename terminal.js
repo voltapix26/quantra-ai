@@ -924,11 +924,28 @@
     while (added < bars) { dt.setDate(dt.getDate() + step); if (isCrypto || (dt.getDay() !== 0 && dt.getDay() !== 6)) added++; }
     return dt;
   }
+  // Inverse standard-normal CDF (probit), Acklam's rational approximation, |err|<1.2e-9.
+  // Used to turn measured band coverage into the correct width multiplier.
+  function invNorm(p) {
+    if (p <= 0) return -Infinity; if (p >= 1) return Infinity;
+    const a = [-3.969683028665376e+1, 2.209460984245205e+2, -2.759285104469687e+2, 1.38357751867269e+2, -3.066479806614716e+1, 2.506628277459239e+0];
+    const b = [-5.447609879822406e+1, 1.615858368580409e+2, -1.556989798598866e+2, 6.680131188771972e+1, -1.328068155288572e+1];
+    const c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838e+0, -2.549732539343734e+0, 4.374664141464968e+0, 2.938163982698783e+0];
+    const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996e+0, 3.754408661907416e+0];
+    const pl = 0.02425, ph = 1 - pl; let q, r;
+    if (p < pl) { q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+    if (p <= ph) { q = p - 0.5; r = q * q; return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1); }
+    q = Math.sqrt(-2 * Math.log(1 - p)); return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  }
   // Live calibration feedback: read the measured 80%-band coverage from the server's
   // track record (real forward outcomes, hash-chained) and turn it into a corrective
-  // width multiplier for the forecast cone. Under-coverage → wider bands; over-coverage
-  // → tighter. This is what makes the bands trustworthy in real use: they converge to
-  // meaning exactly what they say. Cached 10 min; scale clamped so it can never run away.
+  // WIDTH multiplier for the forecast cone. If the band that claims 80% actually catches
+  // (say) 90% of outcomes it is too wide; the honest fix is to scale its half-width by the
+  // ratio of the normal quantiles that produce those two coverages — z(0.80-two-sided) /
+  // z(measured-two-sided) — so the cone converges on TRUE 80% coverage. This tightens an
+  // over-wide band and widens an over-narrow one; it is measured precision, not a knob.
+  // Cached 10 min; clamped only as a runaway rail, wide enough not to bind on real data.
+  const TARGET_COVER = 0.80;
   let liveCal = null, liveCalAt = 0;
   async function getLiveCal() {
     if (liveCal && Date.now() - liveCalAt < 10 * 60 * 1000) return liveCal;
@@ -936,8 +953,11 @@
     try {
       const d = await getJSON(`${API}/track-record`);
       const c = d && d.calibration;
-      if (c && c.n >= 150 && c.coverage != null) {
-        liveCal = { scale: Math.max(0.85, Math.min(1.3, 1 + (0.8 - c.coverage) * 1.6)), coverage: c.coverage, n: c.n };
+      if (c && c.n >= 150 && c.coverage != null && c.coverage > 0.5 && c.coverage < 0.999) {
+        const zHave = invNorm((1 + c.coverage) / 2);        // half-width the band currently spans
+        const zWant = invNorm((1 + TARGET_COVER) / 2);       // half-width a true 80% band should span
+        const scale = Math.max(0.55, Math.min(1.7, zWant / zHave));
+        liveCal = { scale, coverage: c.coverage, n: c.n };
       } else liveCal = { scale: 1, coverage: null, n: (c && c.n) || 0 };
     } catch { liveCal = { scale: 1, coverage: null, n: 0 }; }
     return liveCal;
@@ -982,11 +1002,19 @@
     } catch {}
     $('projTable').innerHTML = '<tr><th>Date</th><th>Projected (P50)</th><th>Likely range (P25–P75)</th><th>Δ vs now</th><th>Status</th></tr>' + rows + verified;
     const calNote = (liveCal && liveCal.coverage != null)
-      ? ` <b>Self-calibrating:</b> measured live coverage is ${Math.round(liveCal.coverage * 100)}% over ${liveCal.n.toLocaleString()} matured projections, so band width runs ×${liveCal.scale.toFixed(2)} to converge on a true 80%.`
+      ? ` <b>Self-calibrating:</b> the 80% band was actually catching ${Math.round(liveCal.coverage * 100)}% of prices over ${liveCal.n.toLocaleString()} matured projections — too wide — so its width is scaled ×${liveCal.scale.toFixed(2)} to converge on a true, tighter 80%.`
       : ' Bands auto-calibrate against the live track record as projections mature.';
     const regNote = (fc.regimeScale && Math.abs(fc.regimeScale - 1) > 0.12)
       ? ` Current volatility regime: ${fc.regimeScale > 1 ? 'elevated' : 'calm'} (×${fc.regimeScale.toFixed(2)} vs the 120-day average).` : '';
-    $('projAsof').innerHTML = 'Anchored to ' + fmtD(new Date(lastIso || Date.now())) + ' · ' + Math.round((fc.probUp || 0) * 100) + '% modelled chance of finishing higher. The headline <b>P25–P75 range is the tight 50% band</b> — the price lands inside it about half the time; the small <b>80% band</b> beneath catches ~4 in 5. A narrower range always means lower odds — that\'s probability, not a setting.' + calNote + regNote + ' Probabilistic, not a guarantee.';
+    // The honest "within 10%" figure: modelled probability the price STAYS inside ±10%
+    // of now by the final horizon (1 − P[>+10%] − P[<−10%]). A precise number, not a
+    // narrowed band pretending to be one.
+    let stayNote = '';
+    if (fc.probUp10 != null && fc.probDown10 != null) {
+      const within = Math.max(0, Math.min(1, 1 - fc.probUp10 - fc.probDown10));
+      stayNote = ` <b>Within ±10%:</b> ~${Math.round(within * 100)}% modelled chance the price stays inside ±10% of now by +${(fc.horizon || '')} sessions.`;
+    }
+    $('projAsof').innerHTML = 'Anchored to ' + fmtD(new Date(lastIso || Date.now())) + ' · ' + Math.round((fc.probUp || 0) * 100) + '% modelled chance of finishing higher. The headline <b>P25–P75 range is the tight 50% band</b> — the price lands inside it about half the time; the small <b>80% band</b> beneath catches ~4 in 5. A narrower range always means lower odds — that\'s probability, not a setting, so the range is tightened by calibrating to real outcomes rather than by shrinking the label.' + stayNote + calNote + regNote + ' Probabilistic, not a guarantee.';
     card.hidden = false;
     logProjection(item, fc, hist, interval, isCrypto, lastIso);
     renderProjScorecard(item, hist);
