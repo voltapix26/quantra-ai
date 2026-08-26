@@ -12,3 +12,7 @@ cloudflared.exe
 docs/_vh_export.docx
 docs/*.pdf
 .gstack/
+
+# Local build artifacts (APK, etc.) — never commit binaries to this public repo
+/dist/
+*.apk
