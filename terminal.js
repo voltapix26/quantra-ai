@@ -107,7 +107,7 @@
   async function loadChart(item, range, interval) {
     if (item.type === 'crypto') {
       const days = cryptoDays(interval, range);
-      if (onServer) return getJSON(`${API}/crypto/chart?id=${item.id}&days=${days}`);
+      if (onServer) return getJSON(`${API}/crypto/chart?id=${item.id}&days=${days}&symbol=${encodeURIComponent(item.symbol || '')}`);
       const d = await getJSON(`${CG}/coins/${item.id}/market_chart?vs_currency=usd&days=${days}`);
       const closes = (d.prices || []).map((p) => p[1]), dates = (d.prices || []).map((p) => new Date(p[0]).toISOString());
       return { symbol: item.symbol, closes, highs: closes, lows: closes, dates };

@@ -346,6 +346,18 @@ function send(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(obj));
 }
+// Public Bybit spot klines (no key) — fallback OHLC source for coins Coinbase/CoinGecko
+// don't cover. Rows: [start(ms), open, high, low, close, volume, turnover], newest-first.
+async function bybitKline(symbol, interval, limit) {
+  const iv = { '1m': '1', '60m': '60', '1d': 'D', '1wk': 'W' }[interval] || 'D';
+  const sym = String(symbol || '').toUpperCase().replace(/[-/]?USDT?$/, '') + 'USDT';   // BTC / BTC-USD → BTCUSDT
+  const lim = Math.min(Math.max(limit || 200, 10), 1000);
+  const d = await getJSON(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(sym)}&interval=${iv}&limit=${lim}`);
+  const rows = (d && d.result && Array.isArray(d.result.list)) ? d.result.list.slice().reverse() : [];
+  const opens = [], highs = [], lows = [], closes = [], volumes = [], dates = [];
+  for (const k of rows) { dates.push(new Date(+k[0]).toISOString()); opens.push(+k[1]); highs.push(+k[2]); lows.push(+k[3]); closes.push(+k[4]); volumes.push(+k[5]); }
+  return { opens, highs, lows, closes, volumes, dates };
+}
 
 /* ---- Yahoo crumb/cookie dance (needed for fundamentals) ---- */
 let yCookie = null, yCrumb = null, yCrumbAt = 0;
@@ -615,11 +627,25 @@ const api = {
   async 'crypto/chart'(q) {
     if (!q.id) throw new Error('missing id');
     const days = q.days || '90';
-    const d = await cached(`cc:${q.id}:${days}`, 60000, () => getJSON(`${CG}/coins/${encodeURIComponent(q.id)}/market_chart?vs_currency=usd&days=${days}`, cgHeaders()));
-    const closes = (d.prices || []).map((p) => p[1]);
-    const dates = (d.prices || []).map((p) => new Date(p[0]).toISOString());
-    const volumes = (d.total_volumes || []).map((p) => p[1]);
-    return { symbol: q.id, closes, highs: closes, lows: closes, opens: closes, volumes, dates };
+    // Primary: CoinGecko market_chart (closes + volumes; no true OHLC on the free tier).
+    let cg = null;
+    try { cg = await cached(`cc:${q.id}:${days}`, 60000, () => getJSON(`${CG}/coins/${encodeURIComponent(q.id)}/market_chart?vs_currency=usd&days=${days}`, cgHeaders())); } catch {}
+    const closes = (cg && cg.prices || []).map((p) => p[1]);
+    if (closes.length) {
+      const dates = cg.prices.map((p) => new Date(p[0]).toISOString());
+      const volumes = (cg.total_volumes || []).map((p) => p[1]);
+      return { symbol: q.id, closes, highs: closes, lows: closes, opens: closes, volumes, dates, source: 'coingecko' };
+    }
+    // Fallback: Bybit public spot klines — real OHLC + volume, and far wider coin
+    // coverage than CoinGecko's free tier. Needs the ticker symbol (client passes it).
+    if (q.symbol) {
+      try {
+        const lim = Math.min(Math.max(parseInt(days, 10) || 90, 30), 1000);
+        const b = await cached(`ccb:${q.symbol}:${lim}`, 60000, () => bybitKline(q.symbol, '1d', lim));
+        if (b.closes.length) return { symbol: q.id, ...b, source: 'bybit' };
+      } catch {}
+    }
+    return { symbol: q.id, closes: [], highs: [], lows: [], opens: [], volumes: [], dates: [], source: 'none' };
   },
   // Real crypto OHLC candles via Coinbase (free, no key, US-accessible — Binance
   // geo-blocks US/cloud IPs with HTTP 451, so it can't be used server-side).
@@ -630,12 +656,20 @@ const api = {
     const limit = Math.min(Math.max(parseInt(q.limit || '200', 10), 10), 300);
     const prod = (q.symbol || '').toUpperCase() + '-USD';
     return cached(`cb:${prod}:${gran}:${limit}`, 30000, async () => {
-      const d = await getJSON(`https://api.exchange.coinbase.com/products/${encodeURIComponent(prod)}/candles?granularity=${gran}`);
-      // Coinbase rows: [time(s), low, high, open, close, volume], newest-first.
-      const rows = (Array.isArray(d) ? d : []).slice(0, limit).reverse();
-      const opens = [], highs = [], lows = [], closes = [], dates = [];
-      for (const k of rows) { dates.push(new Date(k[0] * 1000).toISOString()); lows.push(+k[1]); highs.push(+k[2]); opens.push(+k[3]); closes.push(+k[4]); }
-      return { symbol: q.symbol, opens, highs, lows, closes, dates };
+      // Primary: Coinbase candles (US-accessible, proven).
+      try {
+        const d = await getJSON(`https://api.exchange.coinbase.com/products/${encodeURIComponent(prod)}/candles?granularity=${gran}`);
+        // Coinbase rows: [time(s), low, high, open, close, volume], newest-first.
+        const rows = (Array.isArray(d) ? d : []).slice(0, limit).reverse();
+        if (rows.length) {
+          const opens = [], highs = [], lows = [], closes = [], volumes = [], dates = [];
+          for (const k of rows) { dates.push(new Date(k[0] * 1000).toISOString()); lows.push(+k[1]); highs.push(+k[2]); opens.push(+k[3]); closes.push(+k[4]); volumes.push(+k[5]); }
+          return { symbol: q.symbol, opens, highs, lows, closes, volumes, dates, source: 'coinbase' };
+        }
+      } catch {}
+      // Fallback: Bybit public spot klines (coins Coinbase doesn't list).
+      const b = await bybitKline(q.symbol, q.interval, limit);
+      return { symbol: q.symbol, ...b, source: 'bybit' };
     });
   },
   async 'stock/search'(q) {
