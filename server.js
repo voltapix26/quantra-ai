@@ -1509,6 +1509,31 @@ let Stripe = null; try { Stripe = require('stripe'); } catch {}
 const stripe = (process.env.STRIPE_SECRET_KEY && Stripe) ? Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const PRICES = { pro: process.env.STRIPE_PRICE_PRO || '', ultimate: process.env.STRIPE_PRICE_ULTIMATE || '' };
 
+/* ---- broker secret encryption at rest ----
+   Broker API secrets can move real money, so they are encrypted (AES-256-GCM)
+   before they touch the store, keyed by BROKER_ENC_KEY. Without that env var the
+   secret is stored as-is (legacy behaviour) and a warning is logged — set it on
+   Render to turn encryption on. decSecret transparently reads legacy plaintext,
+   so existing connections keep working. */
+const BROKER_ENC_KEY = process.env.BROKER_ENC_KEY ? crypto.createHash('sha256').update(process.env.BROKER_ENC_KEY).digest() : null;
+if (!BROKER_ENC_KEY) console.warn('[broker] BROKER_ENC_KEY not set — broker secrets stored unencrypted. Set it on Render to encrypt them at rest.');
+function encSecret(plain) {
+  if (!BROKER_ENC_KEY) return plain;
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', BROKER_ENC_KEY, iv);
+  const enc = Buffer.concat([c.update(String(plain), 'utf8'), c.final()]);
+  return 'enc:v1:' + Buffer.concat([iv, c.getAuthTag(), enc]).toString('base64');
+}
+function decSecret(stored) {
+  if (typeof stored !== 'string' || !stored.startsWith('enc:v1:')) return stored;   // legacy plaintext
+  if (!BROKER_ENC_KEY) throw new Error('BROKER_ENC_KEY is missing — cannot decrypt the stored broker secret.');
+  const buf = Buffer.from(stored.slice(7), 'base64');
+  const d = crypto.createDecipheriv('aes-256-gcm', BROKER_ENC_KEY, buf.subarray(0, 12));
+  d.setAuthTag(buf.subarray(12, 28));
+  return Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString('utf8');
+}
+// Return a creds object safe to hand a broker adapter (secret decrypted).
+function brokerCreds(b) { return { ...b, secret: decSecret(b.secret) }; }
 function hashPw(pw) { const salt = crypto.randomBytes(16); return salt.toString('hex') + ':' + crypto.scryptSync(pw, salt, 64).toString('hex'); }
 function verifyPw(pw, stored) { try { const [s, h] = stored.split(':'); const exp = Buffer.from(h, 'hex'); const act = crypto.scryptSync(pw, Buffer.from(s, 'hex'), 64); return act.length === exp.length && crypto.timingSafeEqual(act, exp); } catch { return false; } }
 function parseCookies(req) { const o = {}; (req.headers.cookie || '').split(';').forEach((p) => { const i = p.indexOf('='); if (i > 0) o[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); }); return o; }
@@ -2003,7 +2028,7 @@ async function authRoute(req, res, u) {
       try { account = await broker.verify(provider, { mode, keyId, secret }); }
       catch (e) { return send(res, 200, { ok: false, error: 'Broker rejected the credentials: ' + (e.message || 'unknown error') }); }
       const usr = await store.getUserByEmail(s.user.email);
-      usr.broker = { provider, mode, keyId, secret, connectedAt: Date.now() };
+      usr.broker = { provider, mode, keyId, secret: encSecret(secret), connectedAt: Date.now() };   // secret encrypted at rest
       await store.putUser(usr);
       audit('broker_connect', req, s.user.email, { provider, mode });   // secret never logged
       return send(res, 200, { ok: true, provider, mode, keyHint: maskKey(keyId), account });
@@ -2019,15 +2044,15 @@ async function authRoute(req, res, u) {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       const b = s.user.broker; if (!b) return send(res, 400, { error: 'No broker connected.' });
       try {
-        const prov = broker.PROVIDERS[b.provider];
-        const [account, positions] = await Promise.all([prov.account(b), prov.positions(b).catch(() => [])]);
+        const prov = broker.PROVIDERS[b.provider]; const creds = brokerCreds(b);
+        const [account, positions] = await Promise.all([prov.account(creds), prov.positions(creds).catch(() => [])]);
         return send(res, 200, { ok: true, provider: b.provider, mode: b.mode, account, positions });
       } catch (e) { return send(res, 200, { ok: false, error: e.message }); }
     }
     if (p === '/api/broker/orders' && m === 'GET') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       const b = s.user.broker; if (!b) return send(res, 400, { error: 'No broker connected.' });
-      try { return send(res, 200, { ok: true, orders: await broker.PROVIDERS[b.provider].orders(b) }); }
+      try { return send(res, 200, { ok: true, orders: await broker.PROVIDERS[b.provider].orders(brokerCreds(b)) }); }
       catch (e) { return send(res, 200, { ok: false, error: e.message }); }
     }
     // Place an order — ALWAYS user-initiated (one explicit request per order; no autonomous loop).
@@ -2038,7 +2063,7 @@ async function authRoute(req, res, u) {
       // Live orders require the client to echo the live mode explicitly — guards against an accidental real-money send.
       if (b.mode === 'live' && body.confirmLive !== true) return send(res, 400, { error: 'Live order not confirmed.' });
       try {
-        const order = await broker.PROVIDERS[b.provider].placeOrder(b, { symbol: body.symbol, side: body.side, type: body.type, qty: body.qty, notional: body.notional, limitPrice: body.limitPrice, tif: body.tif });
+        const order = await broker.PROVIDERS[b.provider].placeOrder(brokerCreds(b), { symbol: body.symbol, side: body.side, type: body.type, qty: body.qty, notional: body.notional, limitPrice: body.limitPrice, tif: body.tif, category: body.category });
         audit('broker_order', req, s.user.email, { provider: b.provider, mode: b.mode, symbol: order.symbol, side: order.side, qty: order.qty, type: order.type });
         return send(res, 200, { ok: true, mode: b.mode, order });
       } catch (e) { return send(res, 200, { ok: false, error: e.message }); }
@@ -2046,7 +2071,7 @@ async function authRoute(req, res, u) {
     if (p === '/api/broker/cancel' && m === 'POST') {
       const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
       const b = s.user.broker; if (!b) return send(res, 400, { error: 'No broker connected.' });
-      try { await broker.PROVIDERS[b.provider].cancel(b, String(body.id || '')); return send(res, 200, { ok: true }); }
+      try { await broker.PROVIDERS[b.provider].cancel(brokerCreds(b), String(body.id || ''), { symbol: body.symbol, category: body.category }); return send(res, 200, { ok: true }); }
       catch (e) { return send(res, 200, { ok: false, error: e.message }); }
     }
 

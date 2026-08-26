@@ -106,34 +106,59 @@
       if (!onServer) return gate('Run the live server to use trading.');
       try { status = await api('/api/broker/status'); }
       catch (e) { return gate(e.code === 401 ? 'Please <a href="index.html" style="color:var(--mint)">sign in</a> first, then return here.' : esc(e.message)); }
+      try { const pr = await api('/api/broker/providers'); if (pr && pr.providers && pr.providers.length) providers = pr.providers; } catch {}
       $('bkGate').hidden = true; $('bkApp').hidden = false;
       status.connected ? renderConnected() : renderConnect();
     }
 
     /* ---------- not connected: link a broker ---------- */
+    // Per-provider UI copy the API doesn't carry (paper wording, placeholders, footer).
+    const BK_UI = {
+      alpaca: { pick: 'Alpaca · US stocks, ETFs & crypto', paperLabel: 'Paper (simulated)', keyPh: 'PK… / AK…',
+        foot: 'Get free <b>paper</b> keys instantly at <a href="https://alpaca.markets" target="_blank" rel="noopener" style="color:var(--cyan)">alpaca.markets</a> → Paper Trading → API Keys.' },
+      bybit: { pick: 'Bybit · crypto spot & perpetuals', paperLabel: 'Testnet (fake funds)', keyPh: 'Bybit API key',
+        foot: 'Paper mode uses the <b>Bybit testnet</b> — get free test keys at <a href="https://testnet.bybit.com" target="_blank" rel="noopener" style="color:var(--cyan)">testnet.bybit.com</a>. Create a Unified-account key with <b>Trade enabled</b> and <b>Withdrawal DISABLED</b> (add an IP allowlist). Symbols look like <code>BTCUSDT</code>. Bybit is restricted in some countries — check your local rules.' },
+    };
+    let providers = [{ id: 'alpaca' }];
     function renderConnect() {
       $('modeBadge').hidden = true;
+      const opts = providers.map((p) => `<option value="${esc(p.id)}">${esc((BK_UI[p.id] && BK_UI[p.id].pick) || p.label || p.id)}</option>`).join('');
       $('bkApp').innerHTML = `
         <div class="bk-card">
           <h2>Connect your broker</h2>
           <div class="fld"><label>Broker</label>
-            <select id="cProvider"><option value="alpaca">Alpaca · US stocks, ETFs &amp; crypto</option></select>
+            <select id="cProvider">${opts}</select>
           </div>
           <div class="fld"><label>Mode</label>
-            <div class="seg2" id="cMode"><button data-m="paper" class="on">Paper (simulated)</button><button data-m="live" class="live">Live (real money)</button></div>
+            <div class="seg2" id="cMode"><button data-m="paper" class="on" id="paperBtn">Paper (simulated)</button><button data-m="live" class="live">Live (real money)</button></div>
           </div>
           <div id="liveWarn"></div>
           <div class="fld"><label>API key ID</label><input id="cKey" type="text" autocomplete="off" spellcheck="false" placeholder="PK… / AK…" /></div>
           <div class="fld"><label>API secret key</label><input id="cSecret" type="password" autocomplete="off" spellcheck="false" placeholder="kept server-side, never shown again" /></div>
           <button class="btn btn--primary" id="cBtn">Connect broker</button>
           <div class="bk-msg" id="cMsg"></div>
-          <p class="bk-foot">Get free <b>paper</b> keys instantly at <a href="https://alpaca.markets" target="_blank" rel="noopener" style="color:var(--cyan)">alpaca.markets</a> → Paper Trading → API Keys. Your secret is stored server-side for routing orders and is never sent back to the browser.</p>
+          <p class="bk-foot" id="cFoot"></p>
         </div>`;
       let mode = 'paper';
+      const providerName = () => { const id = $('cProvider').value; const p = providers.find((x) => x.id === id) || {}; return p.label || id; };
+      const syncProvider = () => {
+        const id = $('cProvider').value, ui = BK_UI[id] || {};
+        $('paperBtn').textContent = ui.paperLabel || 'Paper (simulated)';
+        $('cKey').placeholder = ui.keyPh || 'API key';
+        $('cFoot').innerHTML = (ui.foot || '') + ' Your secret is <b>encrypted and stored server-side</b> for routing orders, and is never sent back to the browser.';
+        renderLiveWarn();
+      };
+      const renderLiveWarn = () => {
+        $('liveWarn').innerHTML = mode === 'live'
+          ? `<div class="warn">⚠ <b>Live mode places real orders with real money</b> in your ${esc(providerName())} account. Make sure you understand the risks and your local regulations. We recommend testing in ${$('cProvider').value === 'bybit' ? 'testnet' : 'paper'} mode first.<br/><label style="display:flex;gap:.45rem;align-items:flex-start;margin-top:.5rem;cursor:pointer"><input type="checkbox" id="liveAck" style="margin-top:.2em"/> I understand live mode trades real money, losses are possible, and Quantra provides no investment advice or guarantees.</label></div>`
+          : '';
+      };
+      $('cProvider').addEventListener('change', syncProvider);
       const seg = $('cMode');
       seg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.m;
         [...seg.children].forEach((x) => x.classList.toggle('on', x === b)); $('cBtn').classList.toggle('on', false);
-        $('liveWarn').innerHTML = mode === 'live' ? `<div class="warn">⚠ <b>Live mode places real orders with real money</b> in your Alpaca account. Make sure you understand the risks and your local regulations. We recommend testing in paper mode first.<br/><label style="display:flex;gap:.45rem;align-items:flex-start;margin-top:.5rem;cursor:pointer"><input type="checkbox" id="liveAck" style="margin-top:.2em"/> I understand live mode trades real money, losses are possible, and Quantra provides no investment advice or guarantees.</label></div>` : ''; });
+        renderLiveWarn(); });
+      syncProvider();
       $('cBtn').addEventListener('click', async () => {
         const keyId = $('cKey').value.trim(), secret = $('cSecret').value.trim(), msg = $('cMsg');
         if (!keyId || !secret) { msg.style.color = 'var(--rose)'; msg.textContent = 'Enter both the API key and secret.'; return; }

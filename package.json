@@ -9,7 +9,8 @@
     "test:engine": "node test/engine.test.js",
     "test:agents": "node test/agents.test.js",
     "test:smoke": "node test/smoke.test.js",
-    "test": "npm run check && npm run test:engine && npm run test:agents && npm run test:smoke"
+    "test:broker": "node test/broker.test.js",
+    "test": "npm run check && npm run test:engine && npm run test:agents && npm run test:broker && npm run test:smoke"
   },
   "engines": {
     "node": ">=22"
