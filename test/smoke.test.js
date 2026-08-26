@@ -51,6 +51,7 @@ const ok = (cond, name, detail) => {
     const c = await j('/api/config');
     ok(c.status === 200 && typeof c.body.cryptoStream === 'boolean', '/api/config shape');
     ok(['finnhub', 'twelvedata', 'polygon', 'rapidapi'].every((k) => k in c.body), 'config reports all feed flags');
+    ok(c.body.puterAI === true && c.body.ai === false, 'config exposes puterAI (on) + ai (off without key)');
   }
   // auth: bad login rejected, admin gated, signup works end-to-end on file store
   {

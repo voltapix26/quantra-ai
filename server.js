@@ -1184,7 +1184,13 @@ const api = {
      glance which real-time feeds are actually loaded: crypto (always), US
      (finnhub), international incl. India/NSE (twelvedata), US fallback (polygon). */
   async config() {
-    return { cryptoStream: true, finnhub: !!FINNHUB_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY, dhan: DHAN_ON };
+    // `ai` = the server has its own Anthropic key (real server-side LLM verdicts).
+    // `puterAI` = the client-side Puter.js fallback is allowed (default on; set
+    // PUTER_AI=false to kill it without a code deploy). The client only reaches for
+    // Puter when a verdict comes back rule-based (source!=='ai'), so the day the
+    // server key is set, `ai` flips true and the Puter path stops firing on its own.
+    return { cryptoStream: true, finnhub: !!FINNHUB_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY, dhan: DHAN_ON,
+      ai: !!(ANTHROPIC_KEY && AI_MODEL), puterAI: process.env.PUTER_AI !== 'false' };
   },
 
   /* ---- RapidAPI research: analyst-grade news + market analytics for a symbol ----
@@ -2739,7 +2745,7 @@ store.ready().then(() => {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.coingecko.com https://open.er-api.com https://query1.finance.yahoo.com https://query2.finance.yahoo.com https://finnhub.io wss://ws-feed.exchange.coinbase.com wss://stream.binance.com:9443 wss://stream.binance.com; frame-ancestors 'self'; base-uri 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdnjs.cloudflare.com https://js.puter.com https://*.puter.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.coingecko.com https://open.er-api.com https://query1.finance.yahoo.com https://query2.finance.yahoo.com https://finnhub.io https://api.puter.com https://*.puter.com wss://*.puter.com wss://ws-feed.exchange.coinbase.com wss://stream.binance.com:9443 wss://stream.binance.com; frame-src 'self' https://*.puter.com; frame-ancestors 'self'; base-uri 'self'");
     if (isHttps(req)) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     // health checks
     if (u.pathname === '/healthz' || u.pathname === '/readyz') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ ok: true, storage: store.kind })); }

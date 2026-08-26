@@ -135,6 +135,77 @@
       return await r.json();
     } catch (e) { return { ok: false, reason: String(e) }; }
   }
+  /* -------- Puter.js client-side AI fallback (User-Pays; no server key) --------
+     When the server can't produce a real LLM verdict (no ANTHROPIC_API_KEY →
+     source!=='ai'), the terminal can upgrade the rule-based read in the browser
+     via Puter.js. The end user's own Puter account covers the usage. Loaded
+     lazily and only after the user opts in, so nobody is ambushed by a Puter
+     sign-in popup. Gated by config.puterAI; disappears entirely once the server
+     key is set (source flips to 'ai'). */
+  const PUTER_MODELS = ['claude-sonnet-5', 'claude-opus-4-8'];   // preferred → older-but-known; falls back to Puter default
+  let puterLoading = null;
+  function ensurePuter() {
+    if (window.puter && window.puter.ai) return Promise.resolve(true);
+    if (puterLoading) return puterLoading;
+    puterLoading = new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = 'https://js.puter.com/v2/'; s.async = true;
+      s.onload = () => resolve(!!(window.puter && window.puter.ai));
+      s.onerror = () => { puterLoading = null; resolve(false); };
+      document.head.appendChild(s);
+    });
+    return puterLoading;
+  }
+  function parseLooseJSON(s) {
+    try { return JSON.parse(s); } catch {}
+    const m = String(s).match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch {} }
+    return null;
+  }
+  async function puterReason(payload) {
+    try {
+      if (!(window.puter && window.puter.ai)) { if (!(await ensurePuter())) return null; }
+      const sys = 'You are Quantra AI, a markets analyst. Given a JSON snapshot of one asset (technicals, Monte-Carlo forecast, fundamentals, recent news), write a concise 3–5 sentence plain-English read. Respond with STRICT minified JSON only, no markdown, no text outside it: {"text":"the read","stance":"bullish|bearish|neutral","newsImpact":<number -1..1, net news sentiment, 0 if none>,"rationale":"one sentence on the news, or empty"}. Not financial advice.';
+      const messages = [{ role: 'system', content: sys }, { role: 'user', content: JSON.stringify(payload) }];
+      let resp = null;
+      for (const model of PUTER_MODELS) {
+        try { resp = await window.puter.ai.chat(messages, { model, temperature: 0.4 }); if (resp) break; } catch { resp = null; }
+      }
+      if (!resp) { try { resp = await window.puter.ai.chat(messages, {}); } catch { return null; } }   // last resort: Puter's default model
+      const c = resp && resp.message && resp.message.content;
+      const raw = typeof c === 'string' ? c : (Array.isArray(c) ? c.map((x) => x && x.text || '').join('') : '');
+      if (!raw) return null;
+      const j = parseLooseJSON(raw);
+      if (j && j.text) return { ok: true, source: 'puter', text: String(j.text), stance: j.stance,
+        newsImpact: typeof j.newsImpact === 'number' ? Math.max(-1, Math.min(1, j.newsImpact)) : undefined, rationale: j.rationale || '' };
+      return { ok: true, source: 'puter', text: String(raw).slice(0, 1200) };
+    } catch { return null; }
+  }
+  let puterOptIn = false;
+  try { puterOptIn = localStorage.getItem('quantra.puterAI') === '1'; } catch {}
+  async function maybePuterUpgrade(payload, myToken, apply) {
+    const badge = $('aiBadge'); if (!badge) return;
+    const run = async () => {
+      if (myToken !== aiToken) return;
+      badge.className = 'ai-badge thinking'; badge.innerHTML = '✦ AI thinking… <small>· via Puter</small>';
+      const pr = await puterReason(payload);
+      if (myToken !== aiToken) return;
+      if (!(pr && apply(pr, true))) { badge.className = 'ai-badge rule'; badge.textContent = 'rule-based · AI unavailable'; }
+    };
+    let signedIn = false;
+    try { signedIn = !!(window.puter && window.puter.auth && await window.puter.auth.isSignedIn()); } catch {}
+    if (puterOptIn || signedIn) { if (await ensurePuter()) run(); return; }
+    // Not opted in yet: turn the badge into a one-click opt-in so the Puter
+    // sign-in popup is always user-initiated, never automatic.
+    badge.className = 'ai-badge rule puter-offer';
+    badge.innerHTML = '✦ Enable AI verdict <small>· via Puter</small>';
+    badge.onclick = async () => {
+      badge.onclick = null;
+      try { localStorage.setItem('quantra.puterAI', '1'); } catch {}
+      puterOptIn = true;
+      if (await ensurePuter()) run(); else { badge.className = 'ai-badge rule'; badge.textContent = 'rule-based · AI unavailable'; }
+    };
+  }
   async function doSearch(term) {
     if (assetClass === 'crypto') {
       if (!onServer) { const d = await getJSON(`${CG}/search?query=${encodeURIComponent(term)}`); return (d.coins || []).slice(0, 12).map((c) => ({ type: 'crypto', id: c.id, symbol: (c.symbol || '').toUpperCase(), name: c.name })); }
@@ -1850,29 +1921,38 @@
         news: sent && { label: sent.label, score: +sent.score.toFixed(2), positive: sent.pos, negative: sent.neg, headlines: sent.scored.slice(0, 8).map((n) => n.title) },
       };
       const myToken = ++aiToken;
+      // Apply an AI verdict to the UI. viaPuter tags the badge + attribution when the
+      // client-side Puter.js fallback produced it. Returns true if it rendered.
+      const applyAIVerdict = (r, viaPuter) => {
+        if (!(r && r.ok && r.text)) return false;
+        state.aiText = r.text; typeOut($('dText'), r.text);
+        badge.className = 'ai-badge' + (viaPuter ? ' puter' : '');
+        badge.innerHTML = viaPuter
+          ? '✦ AI verdict <a href="https://developer.puter.com" target="_blank" rel="noopener" class="puter-credit">via Puter</a>'
+          : '✦ Quantra AI';
+        if (typeof r.newsImpact === 'number') {
+          // recompute the forecast with the comprehension-based news impact
+          const fc2 = Q.forecast(state.history.closes, 30, r.newsImpact, { cal: (liveCal && liveCal.scale) || 1 });
+          if (fc2) { state.analysis.forecast = fc2; if (!tickMode) { drawChart(state.history, fc2); renderProjections(fc2, state.history, item); } renderForecast(fc2); }
+          const lab = r.stance === 'bullish' ? 'Positive' : r.stance === 'bearish' ? 'Negative' : 'Neutral';
+          const tag = viaPuter ? ' · Puter' : ' · AI';
+          setNewsMeter(lab, r.newsImpact, tag);
+          const nb = $('newsSentiment');
+          if (nb && !$('newsCard').hidden) {
+            nb.textContent = `${lab} · ${r.newsImpact >= 0 ? '+' : ''}${r.newsImpact.toFixed(2)}${tag}`;
+            nb.className = 'grade sent-' + (lab === 'Positive' ? 'pos' : lab === 'Negative' ? 'neg' : 'neu');
+          }
+          if (r.rationale) {
+            state.newsRationale = r.rationale;
+            const nr = $('newsRationale');
+            if (nr && !$('newsCard').hidden) { nr.hidden = false; nr.innerHTML = `<span class="nr-tag">${viaPuter ? 'Puter AI news read' : 'AI news read'}</span> ${escHtml(r.rationale)}`; }
+          }
+        }
+        return true;
+      };
       reasonAI(aiPayload).then((r) => {
         if (myToken !== aiToken) return; // user moved on
-        if (r && r.ok && r.text) {
-          state.aiText = r.text; typeOut($('dText'), r.text);
-          badge.className = 'ai-badge'; badge.textContent = '✦ Quantra AI';
-          if (typeof r.newsImpact === 'number') {
-            // recompute the forecast with the AI's comprehension-based news impact
-            const fc2 = Q.forecast(state.history.closes, 30, r.newsImpact, { cal: (liveCal && liveCal.scale) || 1 });
-            if (fc2) { state.analysis.forecast = fc2; if (!tickMode) { drawChart(state.history, fc2); renderProjections(fc2, state.history, item); } renderForecast(fc2); }
-            const lab = r.stance === 'bullish' ? 'Positive' : r.stance === 'bearish' ? 'Negative' : 'Neutral';
-            setNewsMeter(lab, r.newsImpact, ' · AI');
-            const nb = $('newsSentiment');
-            if (nb && !$('newsCard').hidden) {
-              nb.textContent = `${lab} · ${r.newsImpact >= 0 ? '+' : ''}${r.newsImpact.toFixed(2)} · AI`;
-              nb.className = 'grade sent-' + (lab === 'Positive' ? 'pos' : lab === 'Negative' ? 'neg' : 'neu');
-            }
-            if (r.rationale) {
-              state.newsRationale = r.rationale;
-              const nr = $('newsRationale');
-              if (nr && !$('newsCard').hidden) { nr.hidden = false; nr.innerHTML = `<span class="nr-tag">AI news read</span> ${escHtml(r.rationale)}`; }
-            }
-          }
-        } else {
+        if (!applyAIVerdict(r, false)) {
           badge.className = 'ai-badge rule';
           const reason = r && r.reason;
           badge.textContent = reason === 'upgrade' ? 'rule-based · upgrade for AI verdicts'
@@ -1880,6 +1960,10 @@
             : reason === 'no-key' ? 'rule-based · AI not configured'
             : 'rule-based';
         }
+        // No real server-side LLM (source!=='ai', e.g. no key): offer the Puter.js
+        // fallback. Self-disabling — once the Render Anthropic key is set the server
+        // returns source==='ai' and this never fires.
+        if (live.puterAI && (!r || r.source !== 'ai')) maybePuterUpgrade(aiPayload, myToken, applyAIVerdict);
       });
 
       renderForecast(res.forecast);
