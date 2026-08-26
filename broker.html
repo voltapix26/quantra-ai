@@ -107,6 +107,7 @@
       try { status = await api('/api/broker/status'); }
       catch (e) { return gate(e.code === 401 ? 'Please <a href="index.html" style="color:var(--mint)">sign in</a> first, then return here.' : esc(e.message)); }
       try { const pr = await api('/api/broker/providers'); if (pr && pr.providers && pr.providers.length) providers = pr.providers; } catch {}
+      try { cfg = await api('/api/config'); } catch {}
       $('bkGate').hidden = true; $('bkApp').hidden = false;
       status.connected ? renderConnected() : renderConnect();
     }
@@ -119,7 +120,7 @@
       bybit: { pick: 'Bybit · crypto spot & perpetuals', paperLabel: 'Testnet (fake funds)', keyPh: 'Bybit API key',
         foot: 'Paper mode uses the <b>Bybit testnet</b> — get free test keys at <a href="https://testnet.bybit.com" target="_blank" rel="noopener" style="color:var(--cyan)">testnet.bybit.com</a>. Create a Unified-account key with <b>Trade enabled</b> and <b>Withdrawal DISABLED</b> (add an IP allowlist). Symbols look like <code>BTCUSDT</code>. Bybit is restricted in some countries — check your local rules.' },
     };
-    let providers = [{ id: 'alpaca' }];
+    let providers = [{ id: 'alpaca' }], cfg = {};
     function renderConnect() {
       $('modeBadge').hidden = true;
       const opts = providers.map((p) => `<option value="${esc(p.id)}">${esc((BK_UI[p.id] && BK_UI[p.id].pick) || p.label || p.id)}</option>`).join('');
@@ -133,6 +134,7 @@
             <div class="seg2" id="cMode"><button data-m="paper" class="on" id="paperBtn">Paper (simulated)</button><button data-m="live" class="live">Live (real money)</button></div>
           </div>
           <div id="liveWarn"></div>
+          <div id="reachWarn"></div>
           <div class="fld"><label>API key ID</label><input id="cKey" type="text" autocomplete="off" spellcheck="false" placeholder="PK… / AK…" /></div>
           <div class="fld"><label>API secret key</label><input id="cSecret" type="password" autocomplete="off" spellcheck="false" placeholder="kept server-side, never shown again" /></div>
           <button class="btn btn--primary" id="cBtn">Connect broker</button>
@@ -146,7 +148,19 @@
         $('paperBtn').textContent = ui.paperLabel || 'Paper (simulated)';
         $('cKey').placeholder = ui.keyPh || 'API key';
         $('cFoot').innerHTML = (ui.foot || '') + ' Your secret is <b>encrypted and stored server-side</b> for routing orders, and is never sent back to the browser.';
-        renderLiveWarn();
+        renderLiveWarn(); renderReach();
+      };
+      // Honest heads-up when this server region can't reach the Bybit network the
+      // chosen mode needs (paper→testnet, live→mainnet) — Bybit geo-blocks some regions.
+      const reachOK = () => {
+        if ($('cProvider').value !== 'bybit') return null;   // only Bybit is geo-gated
+        return mode === 'live' ? cfg.bybitReachable : cfg.bybitTestnetReachable;   // true | false | null(unknown)
+      };
+      const renderReach = () => {
+        const el = $('reachWarn'); if (!el) return;
+        el.innerHTML = reachOK() === false
+          ? `<div class="warn">⚠ <b>Bybit ${mode === 'live' ? 'mainnet' : 'testnet'} is unreachable from this server right now</b> — Bybit geo-blocks this region, so connecting will fail. It works once Quantra is hosted in a Bybit-reachable region. <a href="status.html" style="color:var(--cyan)">Status</a></div>`
+          : '';
       };
       const renderLiveWarn = () => {
         $('liveWarn').innerHTML = mode === 'live'
@@ -157,11 +171,12 @@
       const seg = $('cMode');
       seg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.m;
         [...seg.children].forEach((x) => x.classList.toggle('on', x === b)); $('cBtn').classList.toggle('on', false);
-        renderLiveWarn(); });
+        renderLiveWarn(); renderReach(); });
       syncProvider();
       $('cBtn').addEventListener('click', async () => {
         const keyId = $('cKey').value.trim(), secret = $('cSecret').value.trim(), msg = $('cMsg');
         if (!keyId || !secret) { msg.style.color = 'var(--rose)'; msg.textContent = 'Enter both the API key and secret.'; return; }
+        if (reachOK() === false) { msg.style.color = 'var(--rose)'; msg.textContent = `Bybit ${mode === 'live' ? 'mainnet' : 'testnet'} is unreachable from this server’s region — move Quantra to a Bybit-reachable region first.`; return; }
         if (mode === 'live' && !($('liveAck') && $('liveAck').checked)) { msg.style.color = 'var(--rose)'; msg.textContent = 'Please tick the live-trading risk acknowledgement first.'; return; }
         $('cBtn').disabled = true; msg.style.color = 'var(--muted-2)'; msg.textContent = 'Verifying with the broker…';
         try {

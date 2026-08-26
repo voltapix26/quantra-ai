@@ -1225,7 +1225,10 @@ const api = {
     // server key is set, `ai` flips true and the Puter path stops firing on its own.
     return { cryptoStream: true, finnhub: !!FINNHUB_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY, dhan: DHAN_ON,
       ai: !!(ANTHROPIC_KEY && AI_MODEL), puterAI: process.env.PUTER_AI !== 'false',
-      bybitReachable: bybitReach ? bybitReach.ok : null };   // null until first self-check; true from a Bybit-reachable region
+      // null until the first self-check; then whether THIS region can reach Bybit
+      // mainnet (data feed + live broker) and testnet (paper broker).
+      bybitReachable: bybitReach ? bybitReach.main : null,
+      bybitTestnetReachable: bybitReach ? bybitReach.test : null };
   },
 
   /* ---- RapidAPI research: analyst-grade news + market analytics for a symbol ----
@@ -2059,6 +2062,14 @@ async function authRoute(req, res, u) {
       const keyId = String(body.keyId || '').trim(), secret = String(body.secret || '').trim();
       if (!broker.PROVIDERS[provider]) return send(res, 400, { error: 'Unsupported broker.' });
       if (!keyId || !secret) return send(res, 400, { error: 'Enter both the API key and secret.' });
+      // Bybit geo-blocks some server regions: if we already know the relevant network
+      // is unreachable, say so honestly instead of letting the verify hit a 403 that
+      // reads as "invalid API key". Only blocks when reachability is known-false.
+      if (provider === 'bybit' && bybitReach) {
+        const reachable = mode === 'live' ? bybitReach.main : bybitReach.test;
+        if (!reachable) return send(res, 200, { ok: false, reason: 'region',
+          error: `Bybit’s ${mode === 'live' ? 'mainnet' : 'testnet'} can’t be reached from this server’s region — Bybit geo-blocks it. This connects once Quantra is hosted in a Bybit-reachable region (see the status page).` });
+      }
       let account;
       try { account = await broker.verify(provider, { mode, keyId, secret }); }
       catch (e) { return send(res, 200, { ok: false, error: 'Broker rejected the credentials: ' + (e.message || 'unknown error') }); }
@@ -2582,8 +2593,13 @@ async function selfCheck() {
     // Informational: can THIS server region reach Bybit? Bybit geo-blocks US/cloud
     // IPs, so this reads false on US Render and true from a reachable region — the
     // one-glance signal for whether the Bybit data feed + live broker path work here.
-    try { const t0 = Date.now(); await getJSON('https://api.bybit.com/v5/market/time'); bybitReach = { ok: true, at: Date.now() }; add('bybit_data', true, `reachable (${Date.now() - t0}ms)`, true); }
-    catch (e) { bybitReach = { ok: false, at: Date.now() }; add('bybit_data', false, `blocked from this region — ${e.message}`, true); }
+    // Mainnet drives the data feed + LIVE broker; testnet drives PAPER broker — they
+    // can differ, so probe both. Informational: never degrades overall health.
+    let bMain = false, bTest = false;
+    try { const t0 = Date.now(); await getJSON('https://api.bybit.com/v5/market/time'); bMain = true; add('bybit_data', true, `reachable (${Date.now() - t0}ms)`, true); }
+    catch (e) { add('bybit_data', false, `blocked from this region — ${e.message}`, true); }
+    try { await getJSON('https://api-testnet.bybit.com/v5/market/time'); bTest = true; } catch {}
+    bybitReach = { main: bMain, test: bTest, at: Date.now() };
   } catch (e) { add('selfcheck', false, e.message); }
   const ok = checks.filter((c) => !c.info).every((c) => c.ok);
   healthLast = { ts: Date.now(), ok, checks, uptimeSec: Math.round(process.uptime()) };
