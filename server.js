@@ -1475,6 +1475,10 @@ const broker = require('./broker');
 global.window = global.window || {};
 try { require('./analysis'); } catch {}
 const Q = global.window.Quantra || null;
+// Quantra Agent Desk — multi-agent AI analysis (analysts → debate → verdict → risk gate).
+// One run makes ~10 Claude calls, so it costs AGENT_RUN_COST units of the org's aiDaily allowance.
+const agentDesk = require('./agents').create({ Anthropic, apiKey: ANTHROPIC_KEY, model: AI_MODEL, api, Q });
+const AGENT_RUN_COST = 5;
 
 // reject the most common / weak passwords
 const WEAK_PW = new Set(['password', 'password1', 'password123', '12345678', '123456789', '1234567890', 'qwerty123', 'qwertyuiop', 'iloveyou', 'admin123', 'welcome1', 'letmein123', 'changeme', 'football1', 'sunshine1', 'password!', 'passw0rd', 'trustno1', 'baseball1', 'starwars1', 'quantra123', 'abc12345']);
@@ -2070,6 +2074,35 @@ async function authRoute(req, res, u) {
     if (p === '/api/ai/ask' && m === 'POST') {
       if (tooMany(res, 'ask:' + clientIp(req), 40, 3600000)) return;   // 40 questions / hour / IP
       return send(res, 200, await api['ai/ask'](Object.fromEntries(u.searchParams.entries()), body));
+    }
+    /* ---- Agent Desk: multi-agent AI analysis (analysts → bull/bear debate → trader → risk gate) ---- */
+    if (p === '/api/ai/agents' && m === 'POST') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Sign in to use the Agent Desk.' });
+      if (tooMany(res, 'agents:' + clientIp(req), 20, 3600000)) return;   // 20 desk runs / hour / IP
+      const item = {
+        type: ['stock', 'crypto', 'etf', 'index', 'fx', 'commodity', 'future'].includes(body && body.type) ? body.type : 'stock',
+        id: String((body && body.id) || '').slice(0, 60),
+        symbol: String((body && body.symbol) || '').toUpperCase().slice(0, 24),
+        name: String((body && body.name) || '').slice(0, 80),
+      };
+      if (!item.id || !item.symbol) return send(res, 400, { error: 'symbol and id are required' });
+      if (!agentDesk.enabled) return send(res, 200, { ok: false, reason: 'no-ai' });
+      const hit = agentDesk.cachedResult(item);
+      if (hit) return send(res, 200, { ok: true, done: true, cached: true, result: hit });
+      const org = await store.getOrg(s.user.orgId);
+      const cfg = planOf(planFor(org, s.user.email));
+      if (!cfg.aiVerdicts) return send(res, 200, { ok: false, reason: 'plan' });
+      const usage = aiUsage(org);
+      if (usage.ai + AGENT_RUN_COST > cfg.aiDaily) return send(res, 200, { ok: false, reason: 'quota' });
+      const started = agentDesk.start(item);
+      if (started.ok && started.fresh) { usage.ai += AGENT_RUN_COST; await store.putOrg(org); }
+      return send(res, 200, started);
+    }
+    if (p === '/api/ai/agents/status' && m === 'GET') {
+      const s = await sessionUser(req); if (!s) return send(res, 401, { error: 'Not signed in.' });
+      const j = agentDesk.job(u.searchParams.get('job'));
+      if (!j) return send(res, 404, { error: 'unknown or expired job' });
+      return send(res, 200, j);
     }
     if (p === '/api/brief' && m === 'POST') {
       if (tooMany(res, 'brief:' + clientIp(req), 20, 3600000)) return;   // 20 briefs / hour / IP

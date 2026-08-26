@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantra AI — Agent Desk</title>
+  <meta name="description" content="A multi-agent AI desk debates any asset: four analysts, three investor personas, a bull/bear debate, a trader verdict and a risk-manager gate." />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/quantra-icon.svg" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0A0F1C" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=61" />
+  <style>
+    .ag{max-width:960px;margin:0 auto;padding:1.3rem 0 4rem}
+    .ag h1{font-size:1.9rem;margin-bottom:.15rem}
+    .ag-sub{color:var(--muted-2);margin-bottom:1.2rem;font-size:.9rem;max-width:64ch}
+    .ag-search{position:relative;display:flex;gap:.6rem;margin-bottom:1.2rem;flex-wrap:wrap}
+    .ag-search input{flex:1;min-width:230px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);color:var(--text);padding:.65rem .9rem;font:inherit}
+    .ag-search input:focus{outline:none;border-color:var(--cyan)}
+    .ag-dd{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r);z-index:30;max-height:300px;overflow:auto;box-shadow:0 12px 32px rgba(0,0,0,.45)}
+    .ag-dd:empty{display:none}
+    .ag-dd button{display:flex;gap:.6rem;align-items:baseline;width:100%;text-align:left;background:none;border:0;color:var(--text);padding:.5rem .9rem;cursor:pointer;font:inherit}
+    .ag-dd button:hover{background:rgba(255,255,255,.05)}
+    .ag-dd .sym{font-family:'Space Grotesk';font-weight:600}
+    .ag-dd .nm{color:var(--muted-2);font-size:.82rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ag-dd .tp{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--cyan)}
+    .ag-sel{display:flex;align-items:center;gap:.6rem;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.5rem .9rem}
+    .ag-sel .sym{font-family:'Space Grotesk';font-weight:700}
+    .ag-steps{display:flex;flex-direction:column;gap:.45rem;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:1rem 1.2rem;margin-bottom:1.2rem}
+    .ag-step{display:flex;align-items:center;gap:.65rem;font-size:.9rem;color:var(--muted)}
+    .ag-step.run{color:var(--cyan)}.ag-step.done{color:var(--text)}
+    .ag-step .ic{width:1.1rem;text-align:center}
+    .ag-step.run .ic{animation:agspin 1.1s linear infinite;display:inline-block}
+    @keyframes agspin{to{transform:rotate(360deg)}}
+    .ag-banner{border:1px solid var(--line-2);border-radius:var(--r-lg);padding:1.2rem 1.3rem;margin-bottom:1.2rem}
+    .ag-banner.bullish{background:linear-gradient(135deg,rgba(52,211,153,.12),rgba(34,211,238,.06))}
+    .ag-banner.bearish{background:linear-gradient(135deg,rgba(251,113,133,.12),rgba(129,140,248,.06))}
+    .ag-banner.neutral{background:linear-gradient(135deg,rgba(148,163,184,.10),rgba(129,140,248,.06))}
+    .ag-banner__row{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-bottom:.6rem}
+    .ag-stance{font-family:'Space Grotesk';font-weight:700;font-size:1.25rem;text-transform:capitalize}
+    .ag-stance.bullish{color:var(--mint)}.ag-stance.bearish{color:var(--rose)}.ag-stance.neutral{color:var(--muted)}
+    .ag-chip{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:.2rem .55rem;border-radius:999px;border:1px solid var(--line-2)}
+    .ag-chip.ok{color:var(--mint)}.ag-chip.veto{color:var(--rose)}
+    .ag-banner p{line-height:1.6}
+    .ag-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.2rem}
+    @media(max-width:720px){.ag-grid{grid-template-columns:1fr}}
+    .ag-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.9rem 1rem}
+    .ag-card h3{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-2);margin:0 0 .5rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+    .ag-card .st{font-size:.7rem;font-weight:700;text-transform:uppercase;padding:.12rem .5rem;border-radius:999px}
+    .st.bullish{background:rgba(52,211,153,.15);color:var(--mint)}.st.bearish{background:rgba(251,113,133,.15);color:var(--rose)}.st.neutral{background:rgba(148,163,184,.15);color:var(--muted)}
+    .ag-card p{font-size:.88rem;line-height:1.55;margin:0 0 .5rem}
+    .ag-card ul{margin:0;padding-left:1.1rem;font-size:.82rem;color:var(--muted);line-height:1.5}
+    .ag-conf{font-size:.72rem;color:var(--muted-2)}
+    .ag-h2{font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-2);margin:1.4rem 0 .7rem}
+    .ag-debate .ag-card{border-top:2px solid var(--line-2)}
+    .ag-debate .bull{border-top-color:var(--mint)}.ag-debate .bear{border-top-color:var(--rose)}
+    .ag-personas{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.2rem}
+    @media(max-width:720px){.ag-personas{grid-template-columns:1fr}}
+    .ag-state{padding:2.4rem;text-align:center;color:var(--muted)}
+    .ag-foot{font-size:.74rem;color:var(--muted-2);margin-top:1.4rem;line-height:1.6}
+    .ag-err{background:rgba(251,113,133,.08);border:1px solid rgba(251,113,133,.3);border-radius:var(--r);padding:.8rem 1rem;color:var(--rose);font-size:.9rem;margin-bottom:1rem}
+  </style>
+</head>
+<body>
+  <div class="bg-glow bg-glow--1"></div>
+  <div class="bg-glow bg-glow--2"></div>
+  <header class="bar">
+    <div class="container bar__inner">
+      <a href="index.html" class="brand"><span class="brand__mark">
+        <svg viewBox="0 0 100 100" width="26" height="26" fill="none" aria-hidden="true"><defs><linearGradient id="qm" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#34D399"/><stop offset=".5" stop-color="#22D3EE"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs><path d="M60.9 19.9 A32 32 0 1 0 80.1 39.1" stroke="url(#qm)" stroke-width="7" stroke-linecap="round"/><path d="M26 66 L42 54 L54 58 L82 16" stroke="url(#qm)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="82" cy="16" r="6" fill="#34D399"/></svg>
+      </span><span class="brand__name">Quantra<span class="brand__ai">AI</span></span></a>
+      <span class="bar__tag">Agent Desk</span>
+      <div class="bar__spacer"></div>
+      <nav class="bar__links">
+        <a href="terminal.html">Terminal</a>
+        <a href="agents.html" class="is-active">Agents</a>
+        <a href="brief.html">Brief</a>
+        <a href="discover.html">Discover</a>
+        <a href="calendar.html">Calendar</a>
+        <a href="paper.html">Paper</a>
+        <a href="portfolio.html">Portfolio</a>
+        <a href="community.html">Community</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container ag">
+    <h1>AI Agent Desk</h1>
+    <p class="ag-sub">Seven AI agents work any asset like a desk: four specialist analysts and three investor personas report in parallel, a bull and a bear debate the evidence, a head trader commits to a stance, and a risk manager gets the final veto. Research commentary — not investment advice.</p>
+
+    <div class="ag-search">
+      <div style="position:relative;flex:1;min-width:230px">
+        <input id="agQ" type="search" placeholder="Search a stock or crypto — e.g. RELIANCE.NS, AAPL, bitcoin" autocomplete="off" />
+        <div class="ag-dd" id="agDD"></div>
+      </div>
+      <div class="ag-sel" id="agSel" hidden><span class="sym" id="agSelSym"></span><span class="nm" id="agSelName" style="color:var(--muted-2);font-size:.82rem"></span></div>
+      <button class="btn btn--primary" id="agRun" disabled>Run the desk</button>
+    </div>
+
+    <div id="agBody"><div class="ag-state">Pick an asset and run the desk. A full run takes about a minute.</div></div>
+
+    <p class="ag-foot">Architecture inspired by the open-source TradingAgents (Apache-2.0) and ai-hedge-fund (MIT) research projects, re-implemented natively on Quantra's own data and AI engine. Personas are archetypes, not real people. All output is AI-generated analytical commentary with no guarantee of accuracy and is not investment advice, a recommendation, or an offer to buy or sell any security.</p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const onServer = location.protocol === 'http:' || location.protocol === 'https:';
+    const tok = (() => { try { return localStorage.getItem('quantra.sid') || ''; } catch { return ''; } })();
+    const hdrs = (json) => Object.assign(json ? { 'Content-Type': 'application/json' } : {}, tok ? { Authorization: 'Bearer ' + tok } : {});
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    let sel = null, pollTimer = null;
+
+    /* ---- asset search (stocks + crypto merged) ---- */
+    let qT = null;
+    $('agQ').addEventListener('input', () => { clearTimeout(qT); qT = setTimeout(search, 280); });
+    document.addEventListener('click', (e) => { if (!e.target.closest('.ag-search')) $('agDD').innerHTML = ''; });
+    async function search() {
+      const term = $('agQ').value.trim();
+      if (!onServer || term.length < 2) { $('agDD').innerHTML = ''; return; }
+      try {
+        const [st, cr] = await Promise.all([
+          fetch('/api/stock/search?q=' + encodeURIComponent(term), { headers: hdrs(), credentials: 'same-origin' }).then((r) => r.json()).catch(() => []),
+          fetch('/api/crypto/search?q=' + encodeURIComponent(term), { headers: hdrs(), credentials: 'same-origin' }).then((r) => r.json()).catch(() => []),
+        ]);
+        const rows = [...(Array.isArray(st) ? st : []), ...(Array.isArray(cr) ? cr : [])].slice(0, 12);
+        $('agDD').innerHTML = rows.map((r, i) => `<button data-i="${i}"><span class="sym">${esc(r.symbol)}</span><span class="nm">${esc(r.name || '')}</span><span class="tp">${esc(r.type)}</span></button>`).join('');
+        [...$('agDD').querySelectorAll('button')].forEach((b) => b.addEventListener('click', () => pick(rows[+b.dataset.i])));
+      } catch { $('agDD').innerHTML = ''; }
+    }
+    function pick(r) {
+      sel = r; $('agDD').innerHTML = ''; $('agQ').value = '';
+      $('agSelSym').textContent = r.symbol; $('agSelName').textContent = r.name || '';
+      $('agSel').hidden = false; $('agRun').disabled = false;
+    }
+
+    /* ---- run + poll ---- */
+    $('agRun').addEventListener('click', run);
+    async function run() {
+      if (!sel || !onServer) return;
+      $('agRun').disabled = true;
+      $('agBody').innerHTML = '<div class="ag-state">Starting the desk…</div>';
+      try {
+        const r = await (await fetch('/api/ai/agents', { method: 'POST', headers: hdrs(true), credentials: 'same-origin', body: JSON.stringify(sel) })).json();
+        if (r.done && r.result) return render(r.result, true);
+        if (!r.ok) return fail(reasonText(r.reason || r.error));
+        poll(r.jobId);
+      } catch (e) { fail('Could not reach the server.'); }
+    }
+    function reasonText(x) {
+      return { 'no-ai': 'AI is not configured on this server (missing ANTHROPIC_API_KEY / QUANTRA_AI_MODEL).',
+        plan: 'The Agent Desk needs a plan with AI verdicts — upgrade to Pro to use it.',
+        quota: 'Your workspace has used its daily AI allowance. It resets at midnight UTC.',
+        busy: 'The desk is at capacity right now — try again in a minute.' }[x] || ('Agent Desk error: ' + x);
+    }
+    function fail(msg) { $('agBody').innerHTML = `<div class="ag-err">${esc(msg)}</div>`; $('agRun').disabled = !sel; }
+    function poll(jobId) {
+      clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        try {
+          const j = await (await fetch('/api/ai/agents/status?job=' + encodeURIComponent(jobId), { headers: hdrs(), credentials: 'same-origin' })).json();
+          if (!j.ok) { clearInterval(pollTimer); return fail(j.error || 'Job lost.'); }
+          renderSteps(j.steps);
+          if (j.status === 'done') { clearInterval(pollTimer); render(j.result, false); }
+          if (j.status === 'error') { clearInterval(pollTimer); fail(j.error || 'The run failed.'); }
+        } catch {}
+      }, 2500);
+    }
+    function renderSteps(steps) {
+      const ic = { wait: '○', run: '◐', done: '●' };
+      $('agBody').innerHTML = `<div class="ag-steps">${(steps || []).map((s) =>
+        `<div class="ag-step ${s.state}"><span class="ic">${ic[s.state] || '○'}</span>${esc(s.label)}</div>`).join('')}</div>
+        <div class="ag-state">The agents are working — a full run takes about a minute.</div>`;
+    }
+
+    /* ---- result render ---- */
+    const stChip = (s) => `<span class="st ${esc(s)}">${esc(s)}</span>`;
+    function card(title, a) {
+      if (!a) return '';
+      return `<div class="ag-card"><h3>${esc(title)} ${stChip(a.stance)}</h3><p>${esc(a.view)}</p>
+        ${a.keyPoints && a.keyPoints.length ? '<ul>' + a.keyPoints.map((k) => '<li>' + esc(k) + '</li>').join('') + '</ul>' : ''}
+        <div class="ag-conf" style="margin-top:.5rem">Confidence ${Math.round(a.confidence)}%${a.degraded ? ' · local fallback' : ''}</div></div>`;
+    }
+    function render(r, cached) {
+      $('agRun').disabled = !sel;
+      const v = r.verdict || {}, rk = r.risk || {};
+      const stance = r.finalStance || v.stance || 'neutral';
+      const an = Object.fromEntries((r.analysts || []).map((a) => [a.key, a]));
+      const html = `
+        <div class="ag-banner ${esc(stance)}">
+          <div class="ag-banner__row">
+            <span class="ag-stance ${esc(stance)}">${esc(stance)}</span>
+            <span class="ag-chip">Conviction ${Math.round(v.conviction || 0)}%</span>
+            <span class="ag-chip">${esc(v.horizon || '—')}</span>
+            <span class="ag-chip ${rk.approved ? 'ok' : 'veto'}">${rk.approved ? '✓ Risk-approved' : '✗ Risk veto → ' + esc(rk.finalStance || 'neutral')}</span>
+            ${cached ? '<span class="ag-chip">cached today</span>' : ''}
+            <span class="ag-chip">${esc((r.asset && r.asset.symbol) || '')}</span>
+          </div>
+          <p>${esc(v.summary || '')}</p>
+        </div>
+        <div class="ag-h2">Analyst round</div>
+        <div class="ag-grid">
+          ${card('Technical', an.technical)}${card('Fundamental', an.fundamental)}
+          ${card('News & sentiment', an.news)}${card('Macro & regime', an.macro)}
+        </div>
+        <div class="ag-h2">Bull vs bear debate</div>
+        <div class="ag-grid ag-debate">
+          ${r.debate && r.debate.bull ? `<div class="ag-card bull"><h3>Bull researcher</h3><p>${esc(r.debate.bull.thesis)}</p><ul>${(r.debate.bull.points || []).map((p) => '<li>' + esc(p) + '</li>').join('')}</ul><p class="ag-conf" style="margin-top:.5rem">Rebuttal: ${esc(r.debate.bull.rebuttal)}</p></div>` : ''}
+          ${r.debate && r.debate.bear ? `<div class="ag-card bear"><h3>Bear researcher</h3><p>${esc(r.debate.bear.thesis)}</p><ul>${(r.debate.bear.points || []).map((p) => '<li>' + esc(p) + '</li>').join('')}</ul><p class="ag-conf" style="margin-top:.5rem">Rebuttal: ${esc(r.debate.bear.rebuttal)}</p></div>` : ''}
+        </div>
+        <div class="ag-h2">Investor personas</div>
+        <div class="ag-personas">${(r.personas || []).map((p) => card(p.label, p)).join('')}</div>
+        <div class="ag-h2">Risk manager</div>
+        <div class="ag-card">
+          ${rk.riskNotes && rk.riskNotes.length ? '<p style="margin-bottom:.3rem"><b>Key risks</b></p><ul>' + rk.riskNotes.map((n) => '<li>' + esc(n) + '</li>').join('') + '</ul>' : ''}
+          ${rk.invalidations && rk.invalidations.length ? '<p style="margin:.6rem 0 .3rem"><b>What would invalidate this read</b></p><ul>' + rk.invalidations.map((n) => '<li>' + esc(n) + '</li>').join('') + '</ul>' : ''}
+        </div>`;
+      $('agBody').innerHTML = html;
+    }
+
+    /* ---- deep link: agents.html?type=stock&id=AAPL&symbol=AAPL&name=Apple ---- */
+    (function fromURL() {
+      const p = new URLSearchParams(location.search);
+      if (p.get('symbol') && p.get('id')) {
+        pick({ type: p.get('type') || 'stock', id: p.get('id'), symbol: p.get('symbol'), name: p.get('name') || p.get('symbol') });
+        if (p.get('run') === '1') run();
+      }
+    })();
+  </script>
+  <script src="i18n.js?v=1" defer></script>
+</body>
+</html>
