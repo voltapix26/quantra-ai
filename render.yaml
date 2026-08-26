@@ -6,6 +6,15 @@ services:
   - type: web
     name: quantra-ai
     runtime: node
+    # REGION: Bybit geo-blocks US/cloud IPs, so US regions (oregon/ohio/virginia)
+    # CANNOT reach api.bybit.com — the Bybit data feed + live broker path go dark
+    # there. Frankfurt (EU) is the first candidate for reachability; Singapore is
+    # the fallback. Reachability is empirical: after deploy, open /status and check
+    # the "bybit data" row (or GET /api/config → bybitReachable). A Render service's
+    # region is FIXED at creation — changing it means creating a NEW service in the
+    # target region and re-entering every env var below, so keep the DB in the same
+    # region (or point DATABASE_URL at an external DB you already have).
+    region: frankfurt
     plan: free
     buildCommand: npm install
     startCommand: node server.js
@@ -20,10 +29,14 @@ services:
           property: connectionString
       # Optional features — set these in the Render dashboard if you use them:
       # - key: ANTHROPIC_API_KEY      (enables the premium LLM "Quantra AI" read)
-      # - key: QUANTRA_AI_MODEL       (e.g. your model id)
+      # - key: QUANTRA_AI_MODEL       (e.g. claude-sonnet-5)
+      # - key: BROKER_ENC_KEY         (encrypts stored broker API secrets at rest)
+      # - key: BROKER_LIVE_ENABLED    ('true' to allow live trading; testnet always works)
+      # - key: PUTER_AI               ('false' to disable the Puter.js AI fallback)
       # - key: STRIPE_SECRET_KEY      (enables real billing)
       # - key: APP_URL                (your final https URL, for email links)
 
 databases:
   - name: quantra-db
     plan: free
+    region: frankfurt   # keep the DB in the SAME region as the web service

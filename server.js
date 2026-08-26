@@ -1224,7 +1224,8 @@ const api = {
     // Puter when a verdict comes back rule-based (source!=='ai'), so the day the
     // server key is set, `ai` flips true and the Puter path stops firing on its own.
     return { cryptoStream: true, finnhub: !!FINNHUB_KEY, twelvedata: !!TWELVEDATA_KEY, polygon: !!POLYGON_KEY, rapidapi: !!RAPIDAPI_KEY, dhan: DHAN_ON,
-      ai: !!(ANTHROPIC_KEY && AI_MODEL), puterAI: process.env.PUTER_AI !== 'false' };
+      ai: !!(ANTHROPIC_KEY && AI_MODEL), puterAI: process.env.PUTER_AI !== 'false',
+      bybitReachable: bybitReach ? bybitReach.ok : null };   // null until first self-check; true from a Bybit-reachable region
   },
 
   /* ---- RapidAPI research: analyst-grade news + market analytics for a symbol ----
@@ -2553,6 +2554,7 @@ function tradeStream(req, res, u) {
    anything fails. It REPORTS and ALERTS; it never auto-rewrites code.
    ============================================================ */
 let healthLast = null, healthHistory = [], errCount = 0, lastHealthAlert = 0;
+let bybitReach = null;   // { ok, at } — last Bybit reachability probe (see selfCheck)
 function noteError() { errCount++; }
 function alertAdmins(result) {
   if (Date.now() - lastHealthAlert < 3600000) return; lastHealthAlert = Date.now();   // debounce: 1/hr
@@ -2567,7 +2569,9 @@ function alertAdmins(result) {
 let scBusy = false;
 async function selfCheck() {
   if (scBusy) return healthLast; scBusy = true;
-  const checks = [], add = (name, ok, detail) => checks.push({ name, ok: !!ok, detail: String(detail == null ? '' : detail) });
+  // `info` checks are shown on the status page but excluded from the overall OK,
+  // so an optional/region-gated source can't flip the whole system to "degraded".
+  const checks = [], add = (name, ok, detail, info) => checks.push({ name, ok: !!ok, detail: String(detail == null ? '' : detail), info: !!info });
   try {
     try { const c = await api['crypto/markets']({ page: '1' }); add('crypto_feed', Array.isArray(c) && c.length > 0 && c.every((x) => x.price > 0), `${(c || []).length} coins live`); } catch (e) { add('crypto_feed', false, e.message); }
     try { const s = await api['stock/board']({}); add('stock_feed', Array.isArray(s) && s.length > 0, `${(s || []).length} symbols`); } catch (e) { add('stock_feed', false, e.message); }
@@ -2575,8 +2579,13 @@ async function selfCheck() {
     try { const tr = await trackRecord(); const cov = tr && tr.calibration && tr.calibration.coverage; add('forecast_calibration', !tr || tr.building || cov == null || (cov >= 0.5 && cov <= 0.98), cov != null ? `${(cov * 100).toFixed(0)}% band coverage` : 'building'); } catch (e) { add('forecast_calibration', false, e.message); }
     try { await store.allUsers(); add('storage', true, store.kind); } catch (e) { add('storage', false, e.message); }
     add('error_rate', errCount < 25, `${errCount} server errors since last check`);
+    // Informational: can THIS server region reach Bybit? Bybit geo-blocks US/cloud
+    // IPs, so this reads false on US Render and true from a reachable region — the
+    // one-glance signal for whether the Bybit data feed + live broker path work here.
+    try { const t0 = Date.now(); await getJSON('https://api.bybit.com/v5/market/time'); bybitReach = { ok: true, at: Date.now() }; add('bybit_data', true, `reachable (${Date.now() - t0}ms)`, true); }
+    catch (e) { bybitReach = { ok: false, at: Date.now() }; add('bybit_data', false, `blocked from this region — ${e.message}`, true); }
   } catch (e) { add('selfcheck', false, e.message); }
-  const ok = checks.every((c) => c.ok);
+  const ok = checks.filter((c) => !c.info).every((c) => c.ok);
   healthLast = { ts: Date.now(), ok, checks, uptimeSec: Math.round(process.uptime()) };
   healthHistory.push({ ts: healthLast.ts, ok, fails: checks.filter((c) => !c.ok).map((c) => c.name) });
   if (healthHistory.length > 60) healthHistory.shift();
@@ -2811,7 +2820,7 @@ store.ready().then(() => {
     // Public status — the self-diagnostics, read-only, no sensitive detail (names + pass/fail only)
     if (u.pathname === '/api/status') {
       const h = healthLast;
-      const checks = (h && h.checks || []).map((c) => ({ name: c.name, ok: c.ok }));
+      const checks = (h && h.checks || []).map((c) => ({ name: c.name, ok: c.ok, info: !!c.info, detail: c.detail || '' }));
       const recent = (healthHistory || []).slice(-30).map((r) => ({ ts: r.ts, ok: r.ok }));
       return send(res, 200, { ok: h ? h.ok : true, asOf: h ? h.ts : Date.now(), uptimeSec: Math.round(process.uptime()), checks, recent });
     }
